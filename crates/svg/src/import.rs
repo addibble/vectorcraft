@@ -27,6 +27,7 @@ mod css_transform;
 mod depth;
 mod files;
 mod fx;
+pub use fx::effects_of_filters;
 mod spread;
 mod symbol_units;
 mod text;

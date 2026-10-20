@@ -1671,11 +1671,8 @@ impl Writer<'_> {
             return 0;
         }
         let bounds = n.visual_bounds_with(&self.doc.symbol_boxes());
-        // An Outer Glow's silhouette grows by a quarter of a pixel of the document's raster grid first.
-        let grow = 18.0 / self.doc.raster_ppi();
-        let reach: f64 =
-            fx.iter().map(|f| f.outset(bounds.unwrap_or_default()) + if matches!(f, RasterFx::OuterGlow { .. }) { grow } else { 0.0 }).sum::<f64>()
-                + 2.0;
+        let grow = glow_growth(self.doc.raster_ppi());
+        let reach = filter_reach(&fx, bounds.unwrap_or_default(), grow);
         let region = bounds.map(|b| self.xf.transform_rect_bbox(b).inflate(reach, reach));
         let mut opened = 0;
         for f in fx.iter().rev() {
@@ -1694,66 +1691,9 @@ impl Writer<'_> {
                 ),
                 None => String::new(),
             };
-            let sd = |blur: f64| fmt_num((blur / 2.0).max(0.0), 3);
-            let flood = |c: &vectorcraft_color::Color, o: f32| {
-                format!("<feFlood flood-color=\"{}\" flood-opacity=\"{}\"/>", c.to_hex(), fmt_num(o as f64, 3))
-            };
-            let body = match f {
-                // Darkness: the object blurred and moved, each color channel times 1 − darkness.
-                RasterFx::DropShadow { opacity, dx, dy, blur, darkness: Some(darkness), .. } => format!(
-                    "<feGaussianBlur in=\"SourceGraphic\" stdDeviation=\"{}\"/><feOffset dx=\"{}\" dy=\"{}\"/><feComponentTransfer result=\"paint\"><feFuncR type=\"linear\" slope=\"{keep}\"/><feFuncG type=\"linear\" slope=\"{keep}\"/><feFuncB type=\"linear\" slope=\"{keep}\"/><feFuncA type=\"linear\" slope=\"{}\"/></feComponentTransfer><feMerge><feMergeNode in=\"paint\"/><feMergeNode in=\"SourceGraphic\"/></feMerge>",
-                    sd(*blur),
-                    self.num(*dx),
-                    self.num(*dy),
-                    fmt_num(*opacity as f64, 3),
-                    keep = fmt_num(1.0 - *darkness as f64, 3)
-                ),
-                RasterFx::DropShadow { opacity, dx, dy, blur, color, .. } => format!(
-                    "<feGaussianBlur in=\"SourceAlpha\" stdDeviation=\"{}\"/><feOffset dx=\"{}\" dy=\"{}\" result=\"shadow\"/>{}<feComposite in2=\"shadow\" operator=\"in\" result=\"paint\"/><feMerge><feMergeNode in=\"paint\"/><feMergeNode in=\"SourceGraphic\"/></feMerge>",
-                    sd(*blur),
-                    self.num(*dx),
-                    self.num(*dy),
-                    flood(color, *opacity)
-                ),
-                // The glow blurs a solid silhouette (alpha × 255 makes any alpha full) grown by a quarter raster pixel.
-                RasterFx::OuterGlow { opacity, blur, color, .. } => format!(
-                    "<feComponentTransfer in=\"SourceAlpha\"><feFuncA type=\"linear\" slope=\"255\"/></feComponentTransfer><feMorphology operator=\"dilate\" radius=\"{}\"/><feGaussianBlur stdDeviation=\"{}\" result=\"glow\"/>{}<feComposite in2=\"glow\" operator=\"in\" result=\"paint\"/><feMerge><feMergeNode in=\"paint\"/><feMergeNode in=\"SourceGraphic\"/></feMerge>",
-                    fmt_num(grow, 3),
-                    sd(*blur),
-                    flood(color, *opacity)
-                ),
-                RasterFx::InnerGlow { opacity, blur, color, center, .. } => {
-                    // Edge: the blurred inverse silhouette; Center: the blurred silhouette; both clipped to the shape.
-                    let src = if *center {
-                        "<feGaussianBlur in=\"SourceAlpha\" stdDeviation=\"SD\" result=\"glow\"/>".replace("SD", &sd(*blur))
-                    } else {
-                        format!(
-                            "<feComponentTransfer in=\"SourceAlpha\"><feFuncA type=\"table\" tableValues=\"1 0\"/></feComponentTransfer><feGaussianBlur stdDeviation=\"{}\" result=\"glow\"/>",
-                            sd(*blur)
-                        )
-                    };
-                    format!(
-                        "{src}{}<feComposite in2=\"glow\" operator=\"in\"/><feComposite in2=\"SourceAlpha\" operator=\"in\" result=\"paint\"/><feMerge><feMergeNode in=\"SourceGraphic\"/><feMergeNode in=\"paint\"/></feMerge>",
-                        flood(color, *opacity)
-                    )
-                }
-                RasterFx::Feather { radius } => format!(
-                    "<feGaussianBlur in=\"SourceAlpha\" stdDeviation=\"{}\" result=\"soft\"/><feComposite in=\"SourceGraphic\" in2=\"soft\" operator=\"in\" result=\"f\"/><feComposite in=\"f\" in2=\"SourceAlpha\" operator=\"in\"/>",
-                    sd(*radius)
-                ),
-                RasterFx::GaussianBlur { radius } => format!("<feGaussianBlur in=\"SourceGraphic\" stdDeviation=\"{}\"/>", sd(*radius)),
-                RasterFx::Pixel(_) | RasterFx::Rasterize(_) => continue,
-            };
-            // Filters composite normally: a shadow's or glow's other blend mode is recorded for import.
-            let mode = match f {
-                RasterFx::DropShadow { mode, .. } | RasterFx::OuterGlow { mode, .. } | RasterFx::InnerGlow { mode, .. }
-                    if *mode != BlendMode::Normal =>
-                {
-                    format!(" {}=\"{}\"", crate::import::BLEND, blend_css(*mode))
-                }
-                _ => String::new(),
-            };
-            self.def(1, &format!("<filter id=\"{fid}\"{region_attr}{mode} color-interpolation-filters=\"sRGB\">{body}</filter>"));
+            let num = |v: f64| self.num(v);
+            let Some(element) = filter_element(f, &fid, &region_attr, grow, &num) else { continue };
+            self.def(1, &element);
             self.line(&format!("<g filter=\"url(#{fid})\">"));
             self.depth += 1;
             opened += 1;
@@ -2534,4 +2474,153 @@ fn paints_opaque(n: &Node) -> bool {
         NodeKind::Mesh(m) => m.points.iter().all(|p| p.opacity >= 1.0),
         _ => false,
     }
+}
+
+/// One raster effect as the `<filter>` element the SVG export writes for it, with id `id` and the
+/// region attributes `region_attr` (empty for SVG's default region); `grow`: how far an Outer
+/// Glow's silhouette grows first, and `num` the export's number format. `None` for an effect SVG
+/// has no filter for (pixel effects).
+fn filter_element(f: &vectorcraft_effects::RasterFx, id: &str, region_attr: &str, grow: f64, num: &dyn Fn(f64) -> String) -> Option<String> {
+    use vectorcraft_effects::RasterFx;
+    let sd = |blur: f64| fmt_num((blur / 2.0).max(0.0), 3);
+    let flood =
+        |c: &vectorcraft_color::Color, o: f32| format!("<feFlood flood-color=\"{}\" flood-opacity=\"{}\"/>", c.to_hex(), fmt_num(o as f64, 3));
+    let body = match f {
+        // Darkness: the object blurred and moved, each color channel times 1 − darkness.
+        RasterFx::DropShadow { opacity, dx, dy, blur, darkness: Some(darkness), .. } => format!(
+            "<feGaussianBlur in=\"SourceGraphic\" stdDeviation=\"{}\"/><feOffset dx=\"{}\" dy=\"{}\"/><feComponentTransfer result=\"paint\"><feFuncR type=\"linear\" slope=\"{keep}\"/><feFuncG type=\"linear\" slope=\"{keep}\"/><feFuncB type=\"linear\" slope=\"{keep}\"/><feFuncA type=\"linear\" slope=\"{}\"/></feComponentTransfer><feMerge><feMergeNode in=\"paint\"/><feMergeNode in=\"SourceGraphic\"/></feMerge>",
+            sd(*blur),
+            num(*dx),
+            num(*dy),
+            fmt_num(*opacity as f64, 3),
+            keep = fmt_num(1.0 - *darkness as f64, 3)
+        ),
+        RasterFx::DropShadow { opacity, dx, dy, blur, color, .. } => format!(
+            "<feGaussianBlur in=\"SourceAlpha\" stdDeviation=\"{}\"/><feOffset dx=\"{}\" dy=\"{}\" result=\"shadow\"/>{}<feComposite in2=\"shadow\" operator=\"in\" result=\"paint\"/><feMerge><feMergeNode in=\"paint\"/><feMergeNode in=\"SourceGraphic\"/></feMerge>",
+            sd(*blur),
+            num(*dx),
+            num(*dy),
+            flood(color, *opacity)
+        ),
+        // The glow blurs a solid silhouette (alpha × 255 makes any alpha full) grown by a quarter raster pixel.
+        RasterFx::OuterGlow { opacity, blur, color, .. } => format!(
+            "<feComponentTransfer in=\"SourceAlpha\"><feFuncA type=\"linear\" slope=\"255\"/></feComponentTransfer><feMorphology operator=\"dilate\" radius=\"{}\"/><feGaussianBlur stdDeviation=\"{}\" result=\"glow\"/>{}<feComposite in2=\"glow\" operator=\"in\" result=\"paint\"/><feMerge><feMergeNode in=\"paint\"/><feMergeNode in=\"SourceGraphic\"/></feMerge>",
+            fmt_num(grow, 3),
+            sd(*blur),
+            flood(color, *opacity)
+        ),
+        RasterFx::InnerGlow { opacity, blur, color, center, .. } => {
+            // Edge: the blurred inverse silhouette; Center: the blurred silhouette; both clipped to the shape.
+            let src = if *center {
+                "<feGaussianBlur in=\"SourceAlpha\" stdDeviation=\"SD\" result=\"glow\"/>".replace("SD", &sd(*blur))
+            } else {
+                format!(
+                    "<feComponentTransfer in=\"SourceAlpha\"><feFuncA type=\"table\" tableValues=\"1 0\"/></feComponentTransfer><feGaussianBlur stdDeviation=\"{}\" result=\"glow\"/>",
+                    sd(*blur)
+                )
+            };
+            format!(
+                "{src}{}<feComposite in2=\"glow\" operator=\"in\"/><feComposite in2=\"SourceAlpha\" operator=\"in\" result=\"paint\"/><feMerge><feMergeNode in=\"SourceGraphic\"/><feMergeNode in=\"paint\"/></feMerge>",
+                flood(color, *opacity)
+            )
+        }
+        RasterFx::Feather { radius } => format!(
+            "<feGaussianBlur in=\"SourceAlpha\" stdDeviation=\"{}\" result=\"soft\"/><feComposite in=\"SourceGraphic\" in2=\"soft\" operator=\"in\" result=\"f\"/><feComposite in=\"f\" in2=\"SourceAlpha\" operator=\"in\"/>",
+            sd(*radius)
+        ),
+        RasterFx::GaussianBlur { radius } => format!("<feGaussianBlur in=\"SourceGraphic\" stdDeviation=\"{}\"/>", sd(*radius)),
+        RasterFx::Pixel(_) | RasterFx::Rasterize(_) => return None,
+    };
+    // Filters composite normally: a shadow's or glow's other blend mode is recorded for import.
+    let mode = match f {
+        RasterFx::DropShadow { mode, .. } | RasterFx::OuterGlow { mode, .. } | RasterFx::InnerGlow { mode, .. } if *mode != BlendMode::Normal => {
+            format!(" {}=\"{}\"", crate::import::BLEND, blend_css(*mode))
+        }
+        _ => String::new(),
+    };
+    Some(format!("<filter id=\"{id}\"{region_attr}{mode} color-interpolation-filters=\"sRGB\">{body}</filter>"))
+}
+
+/// How far an Outer Glow's silhouette grows before it is blurred: a quarter of a pixel of the
+/// document's raster grid (`ppi`, Document Raster Effects Settings).
+fn glow_growth(ppi: f64) -> f64 {
+    18.0 / if ppi.is_finite() { ppi.clamp(1.0, 2400.0) } else { 72.0 }
+}
+
+/// How far beyond `bounds` the filters of `fx` may paint: the filter region is the bounds grown by
+/// this, with a margin of 2.
+fn filter_reach(fx: &[vectorcraft_effects::RasterFx], bounds: Rect, grow: f64) -> f64 {
+    use vectorcraft_effects::RasterFx;
+    fx.iter().map(|f| f.outset(bounds) + if matches!(f, RasterFx::OuterGlow { .. }) { grow } else { 0.0 }).sum::<f64>() + 2.0
+}
+
+/// How [`filter_elements`] writes raster effects as SVG filters.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FilterOptions {
+    /// The bounds of the element the filters apply to, in its user space: the filter region is
+    /// these grown by how far the effects paint beyond them, as the export computes it. `None`
+    /// leaves SVG's default region, 10% around the element's bounding box, which may cut off a
+    /// long shadow or a wide glow.
+    pub bounds: Option<Rect>,
+    /// The document's raster effects resolution in ppi (`Document::raster_ppi`): an Outer Glow
+    /// grows its silhouette by a quarter of one of its pixels first.
+    pub raster_ppi: f64,
+    /// Decimal places of the numbers written, as [`crate::ExportOptions::decimals`].
+    pub decimals: u8,
+}
+
+impl Default for FilterOptions {
+    fn default() -> Self {
+        Self { bounds: None, raster_ppi: 72.0, decimals: 3 }
+    }
+}
+
+/// One `<filter>` element written by [`filter_elements`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FilterElement {
+    /// Its id, made of ASCII letters, digits, `-` and `_` only, so it is referenced as it is:
+    /// `url(#id)`.
+    pub id: String,
+    /// The `<filter>` element.
+    pub svg: String,
+}
+
+/// The visible raster effects of `effects` (blurs, drop shadows, glows, feathers) as the SVG
+/// `<filter>` elements the export writes for them, in the order they apply, each with its id:
+/// `{prefix}-1`, `{prefix}-2`, …, a character of `prefix` that isn't an ASCII letter, digit, `-`
+/// or `_` written as `_`, and an `f` put first when it doesn't start with a letter or `_` (so two
+/// prefixes may give the same ids: give each element on a page a prefix of its own). An
+/// element takes them all with the CSS `filter: url(#{prefix}-1) url(#{prefix}-2)`, which applies
+/// them in the order the export's nested `<g filter>` elements do. Effects that aren't raster
+/// effects, and pixel effects SVG has no filter for, are left out.
+/// [`crate::effects_of_filters`] reads the elements back.
+pub fn filter_elements(effects: &[vectorcraft_doc::Effect], prefix: &str, opts: &FilterOptions) -> Vec<FilterElement> {
+    let num = |v: f64| fmt_num(v, opts.decimals);
+    let grow = glow_growth(opts.raster_ppi);
+    let fx = vectorcraft_effects::raster_effects(effects);
+    let region_attr = match opts.bounds.filter(|b| [b.x0, b.y0, b.x1, b.y1].iter().all(|v| v.is_finite())) {
+        Some(b) => {
+            let reach = filter_reach(&fx, b, grow);
+            let r = b.inflate(reach, reach);
+            format!(
+                " filterUnits=\"userSpaceOnUse\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\"",
+                num(r.x0),
+                num(r.y0),
+                num(r.width()),
+                num(r.height())
+            )
+        }
+        None => String::new(),
+    };
+    let safe: String = prefix.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' }).collect();
+    // An id is an XML name: it starts with a letter or `_`.
+    let safe = if safe.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_') { safe } else { format!("f{safe}") };
+    let mut out = vec![];
+    for f in &fx {
+        let id = format!("{safe}-{}", out.len() + 1);
+        if let Some(svg) = filter_element(f, &id, &region_attr, grow, &num) {
+            out.push(FilterElement { id, svg });
+        }
+    }
+    out
 }

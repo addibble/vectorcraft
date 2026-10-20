@@ -33,6 +33,9 @@ pub(super) fn blends(xml: &roxmltree::Document, markers: &str) -> HashMap<String
         .collect()
 }
 
+/// The most layers a filter's merges may stack before it is no effect the canvas draws.
+const MAX_MERGED_LAYERS: usize = 16;
+
 /// The object's alpha, blurred (σ), moved and maybe inverted.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 struct Shape {
@@ -239,6 +242,11 @@ fn eval(f: &Filter, k: f64) -> Option<V> {
                     .flat_map(V::layers)
                     .filter(|v| !matches!(v, V::Flood(_, o) if *o <= 1e-6))
                     .collect();
+                // No effect merges more than a few layers; merges of merges would double them at
+                // each step (and the memory they take), so more than this isn't one.
+                if layers.len() > MAX_MERGED_LAYERS {
+                    return None;
+                }
                 match layers.len() {
                     0 => return None,
                     1 => layers.remove(0),
@@ -350,4 +358,120 @@ pub(super) fn effects(filters: &[Arc<Filter>], ts: Affine, blends: &HashMap<Stri
         out.push(Effect { id: id.into(), params, visible: true });
     }
     Some(out)
+}
+
+/// The longest fragment [`effects_of_filters`] reads, and the most filters in it.
+const MAX_FILTERS_LEN: usize = 1 << 20;
+const MAX_FILTERS: usize = 256;
+
+/// The live effects the SVG `<filter>` elements of `filters` stand for, applied in their order to
+/// an element: a fragment of one or more `<filter id="…">` elements and nothing else, as
+/// [`crate::filter_elements`] writes them. `None` when one isn't an effect the canvas draws
+/// (Gaussian Blur, Feather, Drop Shadow, Outer Glow, Inner Glow), does nothing, or holds values
+/// no document holds; when a filter has no id, shares one, or has one that would need escaping in
+/// `url(#…)`; when a filter holds anything but the primitives those effects are made of
+/// (`feImage` and `<style>` among the refused), or more than 64 elements; when the fragment holds
+/// anything but filters, nests too deep, is longer than 1 MiB, holds more than 256 filters, or
+/// doesn't parse. Nothing is read from outside the fragment.
+pub fn effects_of_filters(filters: &str) -> Option<Vec<Effect>> {
+    if filters.len() > MAX_FILTERS_LEN {
+        return None;
+    }
+    const NS: &str = "http://www.w3.org/2000/svg";
+    let defs = format!("<svg xmlns=\"{NS}\"><defs>{filters}</defs></svg>");
+    // usvg and roxmltree read elements by recursion: the nesting is capped first, and read on a
+    // deep stack, as the import does.
+    if super::depth::xml_too_deep(&defs) {
+        return None;
+    }
+    vectorcraft_doc::depth::with_deep_stack(|| {
+        // The fragment must be the one <defs> and a run of filters with ids of their own.
+        let ids: Vec<String> = {
+            let xml = roxmltree::Document::parse(&defs).ok()?;
+            if super::depth::too_deep(&xml) {
+                return None;
+            }
+            let mut root = xml.root_element().children().filter(roxmltree::Node::is_element);
+            let (Some(defs), None) = (root.next(), root.next()) else { return None };
+            let svg = |n: &roxmltree::Node, names: &[&str]| n.tag_name().namespace() == Some(NS) && names.contains(&n.tag_name().name());
+            // Each filter holds only the primitives the canvas's effects are made of (no images,
+            // which would read other documents, and no style sheets, which would restyle the
+            // probe), within a bound.
+            let filter = |n: roxmltree::Node| {
+                let ok = svg(&n, &["filter"])
+                    && n.descendants().skip(1).filter(roxmltree::Node::is_element).all(|c| svg(&c, PRIMITIVES))
+                    && n.descendants().filter(roxmltree::Node::is_element).count() <= MAX_PRIMITIVES;
+                n.attribute("id").filter(|id| ok && is_plain_id(id)).map(str::to_string)
+            };
+            let ids: Vec<String> = defs.children().filter(roxmltree::Node::is_element).map(filter).collect::<Option<_>>()?;
+            let unique: std::collections::HashSet<&String> = ids.iter().collect();
+            if ids.is_empty() || ids.len() > MAX_FILTERS || unique.len() != ids.len() {
+                return None;
+            }
+            ids
+        };
+        let refs: Vec<String> = ids.iter().map(|id| format!("url(#{id})")).collect();
+        let src = format!(
+            "<svg xmlns=\"{NS}\" width=\"100\" height=\"100\"><defs>{filters}</defs><rect width=\"100\" height=\"100\" filter=\"{}\"/></svg>",
+            crate::xml_escape(&refs.join(" "))
+        );
+        let xml = roxmltree::Document::parse(&src).ok()?;
+        // Images are read only from data: URLs, never from a file.
+        let opt = usvg::Options {
+            image_href_resolver: usvg::ImageHrefResolver {
+                resolve_data: usvg::ImageHrefResolver::default_data_resolver(),
+                resolve_string: Box::new(|_, _| None),
+            },
+            ..usvg::Options::default()
+        };
+        let tree = usvg::Tree::from_str(&src, &opt).ok()?;
+        let group = filtered_group(tree.root())?;
+        if group.filters().len() != ids.len() {
+            return None;
+        }
+        // A filter that does nothing, or one with values no document holds, is no effect.
+        effects(group.filters(), Affine::IDENTITY, &blends(&xml)).filter(|fx| !fx.is_empty() && fx.iter().all(|e| in_range(&e.params)))
+    })
+}
+
+/// The filter primitives the canvas's effects are written with ([`effects`] reads no others).
+const PRIMITIVES: &[&str] = &[
+    "feGaussianBlur",
+    "feOffset",
+    "feFlood",
+    "feComposite",
+    "feMerge",
+    "feMergeNode",
+    "feComponentTransfer",
+    "feFuncR",
+    "feFuncG",
+    "feFuncB",
+    "feFuncA",
+    "feMorphology",
+    "feColorMatrix",
+    "feDropShadow",
+];
+const MAX_PRIMITIVES: usize = 64;
+
+/// Is `id` one that needs no escaping in `url(#…)`: an ASCII letter or `_`, then letters, digits,
+/// `-` and `_` ([`crate::filter_elements`] writes no others)?
+fn is_plain_id(id: &str) -> bool {
+    id.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_') && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
+/// Are the numbers of an effect's `params` finite and within what a document holds (offsets and
+/// radii of at most 10,000 pt)?
+fn in_range(params: &serde_json::Value) -> bool {
+    params.as_object().is_some_and(|o| o.values().all(|v| v.as_f64().is_none_or(|x| x.is_finite() && x.abs() <= 1e4)))
+}
+
+/// The first group under `g` (or `g` itself) that has filters.
+fn filtered_group(g: &usvg::Group) -> Option<&usvg::Group> {
+    if !g.filters().is_empty() {
+        return Some(g);
+    }
+    g.children().iter().find_map(|n| match n {
+        usvg::Node::Group(c) => filtered_group(c),
+        _ => None,
+    })
 }

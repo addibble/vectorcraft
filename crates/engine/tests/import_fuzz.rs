@@ -631,6 +631,23 @@ fn svg_type_shifted_two_billion_points_exports_to_pdf() {
     assert!(vectorcraft_engine::export_pdf(&d, &vectorcraft_pdf::PdfOptions::default()).is_ok());
 }
 
+/// A filter whose merges each merge the one before twice: `depth` of them double the layers that
+/// many times.
+fn merge_chain(depth: usize) -> String {
+    let mut f = String::from(r#"<filter id="m"><feMerge result="r0"><feMergeNode in="SourceGraphic"/><feMergeNode in="SourceGraphic"/></feMerge>"#);
+    for i in 1..=depth {
+        f.push_str(&format!(r#"<feMerge result="r{i}"><feMergeNode in="r{p}"/><feMergeNode in="r{p}"/></feMerge>"#, p = i - 1));
+    }
+    f + "</filter>"
+}
+
+/// A filter drawing an SVG image from a data: URL, nested `depth` × 500 groups deep.
+fn data_svg_image(depth: usize) -> String {
+    let n = depth * 500;
+    let svg = format!(r#"<svg xmlns="http://www.w3.org/2000/svg">{}{}</svg>"#, "<g>".repeat(n), "</g>".repeat(n));
+    format!(r#"<filter id="i"><feImage href="data:image/svg+xml;base64,{}"/></filter>"#, vectorcraft_format::base64_encode(svg.as_bytes()))
+}
+
 proptest! {
     #![proptest_config(config())]
 
@@ -646,6 +663,25 @@ proptest! {
     ) {
         let svg = format!("<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\"{}>{}</svg>", root.concat(), body.concat());
         survive(&svg, || vectorcraft_svg::import(&svg).ok())?;
+    }
+
+    /// `effects_of_filters` reads a fragment an embedder hands it: hostile filters, other markup
+    /// and garbage are refused or read, never a panic.
+    #[test]
+    fn svg_filter_fragments_never_panic(
+        body in prop::collection::vec(arb_svg_element(2), 0..6),
+        garbage in ".{0,200}",
+        depth in 0usize..48,
+    ) {
+        for fragment in [format!("<filter id=\"a\">{}</filter>", body.concat()), body.concat(), garbage, merge_chain(depth), data_svg_image(depth)] {
+            // What reads back as effects writes filters again.
+            let r = catch_quiet(|| {
+                if let Some(effects) = vectorcraft_svg::effects_of_filters(&fragment) {
+                    let _ = vectorcraft_svg::filter_elements(&effects, "fz", &vectorcraft_svg::FilterOptions::default());
+                }
+            });
+            prop_assert!(r.is_ok(), "{fragment}: panicked: {:?}", r.err());
+        }
     }
 
     #[test]

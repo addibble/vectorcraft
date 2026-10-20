@@ -12,6 +12,9 @@
 //! * [`css_rules`] writes the CSS web pages style objects with (the CSS Properties panel): shapes'
 //!   paints as backgrounds and borders, type as fonts, shadows as `box-shadow`, each property
 //!   written as SVG export writes it in its style sheets.
+//! * [`filter_elements`] writes an object's raster effects as the `<filter>` elements the export
+//!   writes for them, for an element styled with a CSS `filter: url(#…)` list, and
+//!   [`effects_of_filters`] reads such elements back as live effects.
 //!
 //! ## Export approximations
 //!
@@ -534,7 +537,9 @@ pub fn import_with_report(svg: &str) -> Result<(Document, Vec<String>), SvgError
     import_with(svg, &ImportOptions::default())
 }
 
+pub use export::{FilterElement, FilterOptions, filter_elements};
 pub use import::MAX_ELEMENT_DEPTH;
+pub use import::effects_of_filters;
 
 /// Import an SVG document reading the files it links to as `opts` says, also returning warnings.
 pub fn import_with(svg: &str, opts: &ImportOptions) -> Result<(Document, Vec<String>), SvgError> {
