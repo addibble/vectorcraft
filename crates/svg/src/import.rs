@@ -42,14 +42,15 @@ pub(crate) fn import(svg: &str, opts: &ImportOptions) -> Result<(Document, Vec<S
     // Before anything reads the tree: the XML reader, usvg, and what is made of its tree, all by
     // recursion.
     let too_deep = || SvgError::TooDeep(depth::MAX_ELEMENT_DEPTH);
-    if depth::xml_too_deep(svg) {
+    let scan = depth::prescan(svg);
+    if scan.too_deep {
         return Err(too_deep());
     }
     let xml = parse(svg)?;
     if depth::too_deep(&xml) {
         return Err(too_deep());
     }
-    let (svg, found) = prepass(svg, &xml, opts);
+    let (svg, found) = prepass(svg, &scan.markers, &xml, opts);
     // The prepass's edits are in the text: the XML is read again only when it made any.
     let xml = match &svg {
         Cow::Borrowed(_) => xml,
@@ -86,7 +87,7 @@ pub(crate) fn import(svg: &str, opts: &ImportOptions) -> Result<(Document, Vec<S
         hidden: found.hidden,
         uses: found.uses,
         symbols: HashMap::new(),
-        blends: fx::blends(&xml),
+        blends: fx::blends(&xml, &scan.markers),
         files,
         non_scaling: found.non_scaling,
         data: found.data,
@@ -590,18 +591,22 @@ impl Edits {
 /// * linked files are read ([`files`]);
 /// * percentage lengths in a `<symbol>` with a `viewBox` become numbers ([`symbol_units`]);
 /// * what style sheet rules with a `:not()` set goes in `style` attributes ([`not_rules`]).
-fn prepass<'s>(svg: &'s str, xml: &roxmltree::Document, opts: &ImportOptions) -> (Cow<'s, str>, Found) {
+///
+/// Whether each is there at all is read from `markers`: `svg` with its data URLs left out
+/// ([`depth::prescan`]), so an embedded picture isn't searched a dozen times. The edits are made
+/// in `svg` itself.
+fn prepass<'s>(svg: &'s str, markers: &str, xml: &roxmltree::Document, opts: &ImportOptions) -> (Cow<'s, str>, Found) {
     let mut found = Found::default();
     // (`:` for prefixed elements such as `<svg:image>`.)
-    let css_transform = has_css_transform(svg);
-    let not = svg.contains(":not(");
-    let events = SVG_EVENTS.iter().any(|e| svg.contains(e));
+    let css_transform = has_css_transform(markers);
+    let not = markers.contains(":not(");
+    let events = SVG_EVENTS.iter().any(|e| markers.contains(e));
     if !css_transform
         && !not
         && !events
         && !["<a", "display", "<use", ":use", "<image", ":image", vector_effect::NON_SCALING, "data-", "groupmode", "script"]
             .iter()
-            .any(|t| svg.contains(t))
+            .any(|t| markers.contains(t))
     {
         return (svg.into(), found);
     }
@@ -612,7 +617,7 @@ fn prepass<'s>(svg: &'s str, xml: &roxmltree::Document, opts: &ImportOptions) ->
             found.links.insert(edits.id(svg, a), url.to_string());
         }
     }
-    if svg.contains("data-") {
+    if markers.contains("data-") {
         for e in elements().filter(|e| OBJECT_ELEMENTS.contains(&e.tag_name().name())) {
             let data = user_data(e);
             if !data.is_empty() {
@@ -628,7 +633,7 @@ fn prepass<'s>(svg: &'s str, xml: &roxmltree::Document, opts: &ImportOptions) ->
             }
         }
     }
-    if svg.contains("script") {
+    if markers.contains("script") {
         found.scripts = linked_scripts(xml, &mut found.warnings);
     }
     found.sublayers = elements().filter(|g| marked_layer(*g)).filter_map(|g| g.attribute("id")).map(str::to_string).collect();
@@ -638,7 +643,7 @@ fn prepass<'s>(svg: &'s str, xml: &roxmltree::Document, opts: &ImportOptions) ->
             found.uses.insert(edits.id(svg, u), sym.to_string());
         }
     }
-    let (display, non_scaling) = (svg.contains("display"), svg.contains(vector_effect::NON_SCALING));
+    let (display, non_scaling) = (markers.contains("display"), markers.contains(vector_effect::NON_SCALING));
     if display || non_scaling || not {
         let css = css::Styles::new(xml);
         // First: an undisplayed object shown for usvg is shown after these.
@@ -653,7 +658,7 @@ fn prepass<'s>(svg: &'s str, xml: &roxmltree::Document, opts: &ImportOptions) ->
         }
     }
     found.files = files::Files::read(svg, xml, opts, &mut edits, &mut found.warnings);
-    if !symbols.is_empty() && svg.contains('%') {
+    if !symbols.is_empty() && markers.contains('%') {
         edits.list.extend(symbol_units::rewrites(xml));
     }
     if css_transform {
@@ -662,9 +667,9 @@ fn prepass<'s>(svg: &'s str, xml: &roxmltree::Document, opts: &ImportOptions) ->
     (edits.apply(svg), found)
 }
 
-/// Is there a `transform` CSS declaration in `svg` (`transform` followed by `:`)?
-fn has_css_transform(svg: &str) -> bool {
-    svg.match_indices("transform").any(|(i, t)| svg.get(i + t.len()..).is_some_and(|s| s.trim_start().starts_with(':')))
+/// Is there a `transform` CSS declaration in `markers` (`transform` followed by `:`)?
+fn has_css_transform(markers: &str) -> bool {
+    markers.match_indices("transform").any(|(i, t)| markers.get(i + t.len()..).is_some_and(|s| s.trim_start().starts_with(':')))
 }
 
 /// usvg's style sheets drop rules with a `:not()` selector (#1557). The properties such rules set
