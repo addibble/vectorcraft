@@ -430,7 +430,8 @@ pub fn effects_of_filters(filters: &str) -> Option<Vec<Effect>> {
             return None;
         }
         // A filter that does nothing, or one with values no document holds, is no effect.
-        effects(group.filters(), Affine::IDENTITY, &blends(&xml)).filter(|fx| !fx.is_empty() && fx.iter().all(|e| in_range(&e.params)))
+        effects(group.filters(), Affine::IDENTITY, &blends(&xml, xml.input_text()))
+            .filter(|fx| !fx.is_empty() && fx.iter().all(|e| in_range(&e.params)))
     })
 }
 
