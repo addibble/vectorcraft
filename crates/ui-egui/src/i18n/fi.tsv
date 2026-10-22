@@ -5491,3 +5491,9 @@ axis	Y Axis	Y-akseli
 @msg	a live effect runs while the document is drawn, so it can't be `heavy`	live-tehoste suoritetaan asiakirjaa piirrettäessä, joten se ei voi olla `heavy`
 @msg	an exporter always gets an export's budget: leave `budget` out	vientilaajennus saa aina viennin budjetin: jätä `budget` pois
 @msg	“{_1}” asks for a heavy budget (each run up to {minutes} minutes and {times} times the usual instructions): install it with `allowHeavy: true` once the user agrees	”{_1}” pyytää suurta laskentabudjettia (jokainen ajo enintään {minutes} minuuttia ja {times} kertaa tavallinen määrä käskyjä): asenna se asetuksella `allowHeavy: true`, kun käyttäjä hyväksyy
+	Symbol Type:	Symbolin tyyppi:
+	Dynamic Symbol	Dynaaminen symboli
+	Static Symbol	Staattinen symboli
+	Symbol Definition	Symbolin määritys
+	Override Symbol Instance	Ohita symbolin ilmentymä
+	Reset Symbol Instance	Palauta symbolin ilmentymä

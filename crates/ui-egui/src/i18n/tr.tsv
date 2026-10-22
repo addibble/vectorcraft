@@ -5423,3 +5423,9 @@ axis	Y Axis	Y ekseni
 @msg	a live effect runs while the document is drawn, so it can't be `heavy`	canlı efekt belge çizilirken çalışır, bu yüzden `heavy` olamaz
 @msg	an exporter always gets an export's budget: leave `budget` out	dışa aktarma eklentisi her zaman bir dışa aktarmanın bütçesini alır: `budget` anahtarını çıkarın
 @msg	“{_1}” asks for a heavy budget (each run up to {minutes} minutes and {times} times the usual instructions): install it with `allowHeavy: true` once the user agrees	“{_1}” büyük bir hesaplama bütçesi istiyor (her çalıştırma en fazla {minutes} dakika ve olağan komutların {times} katı): kullanıcı onayladıktan sonra `allowHeavy: true` ile yükleyin
+	Symbol Type:	Sembol Türü:
+	Dynamic Symbol	Dinamik Sembol
+	Static Symbol	Statik Sembol
+	Symbol Definition	Sembol Tanımı
+	Override Symbol Instance	Sembol Örneğini Geçersiz Kıl
+	Reset Symbol Instance	Sembol Örneğini Sıfırla
