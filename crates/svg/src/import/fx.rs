@@ -388,9 +388,7 @@ pub fn effects_of_filters(filters: &str) -> Option<Vec<Effect>> {
         // The fragment must be the one <defs> and a run of filters with ids of their own.
         let ids: Vec<String> = {
             let xml = roxmltree::Document::parse(&defs).ok()?;
-            if super::depth::too_deep(&xml) {
-                return None;
-            }
+            super::depth::height(&xml, super::depth::MAX_ELEMENT_DEPTH)?;
             let mut root = xml.root_element().children().filter(roxmltree::Node::is_element);
             let (Some(defs), None) = (root.next(), root.next()) else { return None };
             let svg = |n: &roxmltree::Node, names: &[&str]| n.tag_name().namespace() == Some(NS) && names.contains(&n.tag_name().name());
