@@ -1510,6 +1510,8 @@
 	Insert Special Character	Infoga specialtecken
 	Insert Whitespace Character	Infoga blanksteg
 	Inspect Document	Inspektera dokumentet
+	Patch Document	Patcha dokumentet
+	Patch	Patch
 	Query Document	Fråga dokumentet
 	Document Schema	Dokumentschema
 	Inspect Object	Inspektera objekt

@@ -1470,6 +1470,8 @@
 	Insert Special Character	Εισαγωγή ειδικού χαρακτήρα
 	Insert Whitespace Character	Εισαγωγή χαρακτήρα κενού
 	Inspect Document	Επιθεώρηση εγγράφου
+	Patch Document	Εφαρμογή patch στο έγγραφο
+	Patch	Patch
 	Query Document	Ερώτημα στο έγγραφο
 	Document Schema	Σχήμα εγγράφου
 	Inspect Object	Επιθεώρηση αντικειμένου
