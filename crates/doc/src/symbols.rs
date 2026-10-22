@@ -386,7 +386,7 @@ fn art_box(art: &Arc<Node>, symbols: &SymbolBoxes) -> Option<ArtBox> {
 /// and strokes stand in for the object's own, and so do the opacity and blend mode; the object's
 /// geometry, effects and place in the art stay the symbol's. An override naming an object the art
 /// no longer holds (the symbol was redefined without it) changes nothing.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct SymbolOverride {
     /// The object in the symbol's art, by its id there.
     pub target: NodeId,
