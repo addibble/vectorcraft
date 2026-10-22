@@ -5409,3 +5409,9 @@ axis	Y Axis	Y ос
 	The plug-in is computing…	Приставката изчислява…
 	Inspect Plug-in	Проверка на приставка
 	Cancel Plug-in Run	Отказ от изпълнението на приставката
+	Symbol Type:	Тип на символа:
+	Dynamic Symbol	Динамичен символ
+	Static Symbol	Статичен символ
+	Symbol Definition	Дефиниция на символ
+	Override Symbol Instance	Замяна в екземпляр на символ
+	Reset Symbol Instance	Нулиране на екземпляр на символ

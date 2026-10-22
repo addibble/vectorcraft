@@ -5468,3 +5468,9 @@ axis	Y Axis	Y-as
 	The plug-in is computing…	De plug-in is aan het rekenen…
 	Inspect Plug-in	Plug-in inspecteren
 	Cancel Plug-in Run	Plug-in-run annuleren
+	Symbol Type:	Symbooltype:
+	Dynamic Symbol	Dynamisch symbool
+	Static Symbol	Statisch symbool
+	Symbol Definition	Symbooldefinitie
+	Override Symbol Instance	Symboolinstantie overschrijven
+	Reset Symbol Instance	Symboolinstantie opnieuw instellen
