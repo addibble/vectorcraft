@@ -112,6 +112,7 @@ Text options: {e}
 `names` must be a list of names
 `newName` is empty
 `new` is a design name, or true
+`opacity` is a number 0..1
 `params` must be an object
 `path` must be a folder
 `path` must be a path object
@@ -138,6 +139,7 @@ Text options: {e}
 `spacing` must be a number
 `starts` must be an array of anchor indices (or nulls)
 `stop` must be a stop index
+`stroke.width` is a number of points, 0 or more
 `strokeMode` applies to strokes (stroke: true)
 `style` must be roman or japanese
 `symbol` must be a symbol name
@@ -173,6 +175,7 @@ Text options: {e}
 `{key}` has no colours
 `{key}` is a design name
 `{key}` is a design name or a list of them
+`{key}` is an object: {{color?|swatch?|none?|gradient?}}
 `{key}` is longer than {MAX_NAME} characters
 `{key}` is out of range
 `{key}` must be [min, desired, max] or {{min?, desired?, max?}}, in percent
@@ -181,7 +184,9 @@ Text options: {e}
 `{key}` must be a profile name or null
 `{key}` must be an appearance item index (paint order) or null
 `{key}` must be an array of asset ids (see assets.list)
+`{key}` takes color, none, swatch or gradient
 `{key}`: not a colour: {v}
+`{key}`: {msg}
 `{k}.family` is required
 `{k}` is a number 0..1
 `{k}` is true or false
@@ -222,6 +227,8 @@ Text options: {e}
 `{n}` can't be moved
 `{n}` isn't a solid colour
 `{n}`: colour groups hold solid colours only
+`{symbol}` has no object {_1} in its art
+`{symbol}` is a static symbol: Symbol Options › Symbol Type makes it dynamic
 `{tag}` is not an axis tag: a tag is four characters, such as "wght"
 `{to}` is empty or already used
 `{what}` is longer than {MAX_TEXT} bytes
@@ -617,6 +624,7 @@ missing `rule`
 missing `source` id
 missing `start` (the byte offset of a character)
 missing `target` id
+missing `target`: the id of an object in the symbol's art (symbol.get)
 missing `text`
 missing `to`
 missing `to` (an index)
@@ -863,8 +871,10 @@ parameter `{k}`: {what}
 parameter `{name}`: {what}
 parameters must be an object
 params must be an object
+pass fill, stroke, opacity and/or blend
 pass newName, registration and/or exportType
 pass newName, registration, exportType and/or nineSlice
+pass newName, registration, exportType, symbolType and/or nineSlice
 passwords can have up to {MAX_PASSWORD} bytes
 path has no open end
 paths must be strings
@@ -1004,6 +1014,7 @@ subLines is missing
 subLines must be a list or null
 subLines must contain at most {MAX_SUB_LINES} valid lanes
 swatchConflict must be "merge" or "add", not {v}
+symbolType must be dynamic or static, not `{s}`
 text must be {characterSet?, platform?, removeLineReturns?, removeParagraphReturns?, replaceSpaces?}
 text transform is collapsed or unrepresentable
 text.replaceSpaces must be a whole number from 2 to 100
@@ -1063,6 +1074,7 @@ the module must export its linear memory as `memory`
 the name is empty
 the object has no fill, stroke or effect
 the object has no graphic style (pass `name`)
+the object has no stroke to give a width: pass `stroke: {color}` as well
 the object is hidden or locked
 the object is outside the isolated group
 the objects don't match the plan
@@ -1087,6 +1099,7 @@ the selection has no art to export
 the selection has no bounds
 the selection has no graphic style
 the slice would leave the canvas
+the symbol is missing
 the text file is too large to place as type (at most {_1} MB)
 the text is empty
 the text is over {_1} MB
@@ -1136,6 +1149,7 @@ unknown File Info field `{k}`
 unknown OpenType feature `{t}` (liga, calt, dlig, smcp, frac, onum, tnum, ordn, swsh, ss01–ss20, salt, titl, pnum, lnum, sups, subs; prefix - to turn off)
 unknown PDF preset `{name}` (presets: {_1})
 unknown Warp style
+unknown `blend` mode
 unknown align `{other}`
 unknown alignToPath `{a}`
 unknown arrowhead {v}
