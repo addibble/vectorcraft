@@ -5402,3 +5402,9 @@ axis	Y Axis	Eje Y
 @msg	a live effect runs while the document is drawn, so it can't be `heavy`	un efecto interactivo se ejecuta mientras se dibuja el documento, así que no puede ser `heavy`
 @msg	an exporter always gets an export's budget: leave `budget` out	un plugin de exportación siempre recibe el presupuesto de una exportación: omite `budget`
 @msg	“{_1}” asks for a heavy budget (each run up to {minutes} minutes and {times} times the usual instructions): install it with `allowHeavy: true` once the user agrees	“{_1}” pide un presupuesto de cálculo grande (cada ejecución hasta {minutes} minutos y {times} veces las instrucciones habituales): instálalo con `allowHeavy: true` cuando el usuario lo acepte
+	Symbol Type:	Tipo de símbolo:
+	Dynamic Symbol	Símbolo dinámico
+	Static Symbol	Símbolo estático
+	Symbol Definition	Definición del símbolo
+	Override Symbol Instance	Anular instancia de símbolo
+	Reset Symbol Instance	Restablecer instancia de símbolo
