@@ -1584,6 +1584,8 @@ file-filter	Templates	Modelli
 	Insert Special Character	Inserisci carattere speciale
 	Insert Whitespace Character	Inserisci carattere spazio
 	Inspect Document	Ispeziona documento
+	Query Document	Interroga documento
+	Document Schema	Schema del documento
 	Inspect Object	Ispeziona oggetto
 	Install Plug-in	Installa plug-in
 	Install Plug-in…	Installa plug-in…

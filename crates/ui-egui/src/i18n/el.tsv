@@ -1486,6 +1486,8 @@ font-technology	Variable	Μεταβλητές
 	Insert Special Character	Εισαγωγή ειδικού χαρακτήρα
 	Insert Whitespace Character	Εισαγωγή χαρακτήρα κενού
 	Inspect Document	Επιθεώρηση εγγράφου
+	Query Document	Ερώτημα στο έγγραφο
+	Document Schema	Σχήμα εγγράφου
 	Inspect Object	Επιθεώρηση αντικειμένου
 	Install Plug-in	Εγκατάσταση προσθέτου
 	Install Plug-in…	Εγκατάσταση προσθέτου…
