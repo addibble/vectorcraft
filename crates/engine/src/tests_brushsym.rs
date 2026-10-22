@@ -1219,3 +1219,162 @@ fn symbol_nine_slice_guides_round_trip() {
     s.execute("symbol.delete", &json!({"name": "Box copy"})).unwrap();
     assert!(s.doc().unwrap().doc.unknown.get(vectorcraft_doc::SYMBOL_NINE_SLICE).is_none());
 }
+
+// ---------- dynamic symbols ----------
+
+/// The id of the one path in symbol `name`'s art.
+fn art_path(s: &Session, name: &str) -> NodeId {
+    let d = &s.doc().unwrap().doc;
+    let art = &d.symbols.iter().find(|x| x.name == name).unwrap().art;
+    let mut found = None;
+    art.walk(&mut |n| {
+        if matches!(n.kind, NodeKind::Path { .. }) {
+            found = Some(n.id);
+        }
+    });
+    found.unwrap()
+}
+
+/// What instance `id` draws: its art with its overrides applied.
+fn shown(s: &Session, id: NodeId) -> Node {
+    let d = &s.doc().unwrap().doc;
+    let inst = d.node(id).unwrap();
+    (*d.overridden_instance_art(inst).unwrap()).clone()
+}
+
+#[test]
+fn an_override_gives_one_instance_its_own_look_and_the_symbol_stays_shared() {
+    let mut s = session();
+    let (a, name, _) = make_symbol(&mut s);
+    let b = NodeId(s.execute("symbol.place", &json!({"x": 300, "y": 200})).unwrap()["id"].as_u64().unwrap());
+    let get = s.execute("symbol.get", &json!({"name": name})).unwrap();
+    assert_eq!((get["symbolType"].as_str(), get["instances"].as_u64()), (Some("dynamic"), Some(2)));
+    let target = NodeId(get["art"]["id"].as_u64().unwrap());
+    assert_eq!(target, art_path(&s, &name), "symbol.get shows the art with its ids");
+    let r = s.execute("symbol.override", &json!({"ids": [b.0], "target": target.0, "fill": {"color": "#ff0000"}, "opacity": 0.5})).unwrap();
+    assert_eq!(r["target"].as_u64(), Some(target.0));
+    let red = Paint::solid(Color::rgb(1.0, 0.0, 0.0));
+    assert_eq!(shown(&s, b).appearance.fill_paint(), red);
+    assert_eq!(shown(&s, b).opacity, 0.5);
+    assert_ne!(shown(&s, a).appearance.fill_paint(), red, "the other instance shows the symbol's art");
+    assert_ne!(s.doc().unwrap().doc.symbols[0].art.appearance.fill_paint(), red, "which is as it was");
+    assert!(matches!(&node(&s, b).kind, NodeKind::SymbolInstance { symbol, .. } if *symbol == name), "still linked");
+    // A later call changes the fields it gives and keeps the rest.
+    s.execute("symbol.override", &json!({"ids": [b.0], "target": target.0, "stroke": {"color": "#0000ff", "width": 6}, "blend": "multiply"}))
+        .unwrap();
+    let art = shown(&s, b);
+    assert_eq!(art.appearance.fill_paint(), red);
+    assert_eq!((art.appearance.stroke_width(), art.opacity, art.blend), (6.0, 0.5, vectorcraft_color::BlendMode::Multiply));
+    assert_eq!(node(&s, b).symbol_overrides().len(), 1, "one override per object");
+    // The bounding box grows by the stroke the override adds.
+    let st = s.doc().unwrap();
+    let boxes = st.doc.symbol_boxes();
+    let plain = st.doc.node(a).unwrap().visual_bounds_with(&boxes).unwrap();
+    let stroked = st.doc.node(b).unwrap().visual_bounds_with(&boxes).unwrap();
+    // A 6 pt stroke in place of the art's 1 pt one: 2.5 pt more on each side.
+    assert!((stroked.width() - plain.width() - 5.0).abs() < 1e-6, "{stroked:?} vs {plain:?}");
+    // Undo takes the override back; the document round-trips with it.
+    s.execute("edit.undo", &json!({})).unwrap();
+    assert_eq!(shown(&s, b).appearance.stroke_width(), 1.0);
+    s.execute("edit.redo", &json!({})).unwrap();
+    let bytes = vectorcraft_format::save(&s.doc().unwrap().doc, true);
+    let back = vectorcraft_format::load(&bytes).unwrap();
+    assert_eq!(back.node(b).unwrap().symbol_overrides(), node(&s, b).symbol_overrides());
+    assert_eq!(back.overridden_instance_art(back.node(b).unwrap()).unwrap().appearance.stroke_width(), 6.0);
+    // Reset drops the overrides.
+    let r = s.execute("symbol.reset", &json!({"ids": [b.0]})).unwrap();
+    assert_eq!(r["removed"].as_u64(), Some(1));
+    assert!(node(&s, b).symbol_overrides().is_empty());
+    assert_eq!(shown(&s, b).appearance.fill_paint(), shown(&s, a).appearance.fill_paint());
+}
+
+#[test]
+fn override_params_are_checked() {
+    let mut s = session();
+    let (inst, name, _) = make_symbol(&mut s);
+    let target = art_path(&s, &name);
+    let err = |s: &mut Session, p: Value| s.execute("symbol.override", &p).unwrap_err().to_string();
+    assert!(err(&mut s, json!({"ids": [inst.0], "fill": {"color": "#f00"}})).contains("target"));
+    assert!(err(&mut s, json!({"ids": [inst.0], "target": target.0})).contains("pass fill"));
+    assert!(err(&mut s, json!({"ids": [inst.0], "target": 999_999, "fill": {"color": "#f00"}})).contains("no object"));
+    assert!(err(&mut s, json!({"ids": [inst.0], "target": target.0, "fill": "#f00"})).contains("object"));
+    assert!(err(&mut s, json!({"ids": [inst.0], "target": target.0, "opacity": "x"})).contains("opacity"));
+    assert!(err(&mut s, json!({"ids": [inst.0], "target": target.0, "blend": "nope"})).contains("blend"));
+    assert!(node(&s, inst).symbol_overrides().is_empty(), "nothing changed");
+    // A static symbol's instances take no overrides; making a symbol static drops them.
+    s.execute("symbol.override", &json!({"ids": [inst.0], "target": target.0, "fill": {"color": "#f00"}})).unwrap();
+    assert_eq!(node(&s, inst).symbol_overrides().len(), 1);
+    let r = s.execute("symbol.options", &json!({"name": name, "symbolType": "static"})).unwrap();
+    assert_eq!(r["symbolType"], "static");
+    assert!(node(&s, inst).symbol_overrides().is_empty());
+    assert!(err(&mut s, json!({"ids": [inst.0], "target": target.0, "fill": {"color": "#f00"}})).contains("static"));
+    assert_eq!(s.execute("symbol.list", &json!({})).unwrap()["symbols"][0]["symbolType"], "static");
+    assert!(s.execute("symbol.options", &json!({"name": name, "symbolType": "fluid"})).is_err());
+    // Renaming keeps the type; a duplicate takes it; symbol.new takes one.
+    s.execute("symbol.options", &json!({"name": name, "newName": "Crate"})).unwrap();
+    assert_eq!(s.execute("symbol.get", &json!({"name": "Crate"})).unwrap()["symbolType"], "static");
+    assert_eq!(s.execute("symbol.duplicate", &json!({"name": "Crate"})).unwrap()["symbolType"], "static");
+    rect(&mut s, 0.0, 0.0, 10.0, 10.0);
+    assert_eq!(s.execute("symbol.new", &json!({"name": "Fixed", "symbolType": "static"})).unwrap()["symbolType"], "static");
+    rect(&mut s, 0.0, 0.0, 10.0, 10.0);
+    assert_eq!(s.execute("symbol.new", &json!({"name": "Free"})).unwrap()["symbolType"], "dynamic");
+    assert!(s.doc().unwrap().doc.unknown.get("symbolType").unwrap().get("Free").is_none(), "the default isn't stored");
+}
+
+#[test]
+fn redefining_the_symbol_keeps_the_overrides_of_its_instances() {
+    let mut s = session();
+    let (a, name, _) = make_symbol(&mut s);
+    let b = NodeId(s.execute("symbol.place", &json!({"x": 300, "y": 200})).unwrap()["id"].as_u64().unwrap());
+    let target = art_path(&s, &name);
+    s.execute("symbol.override", &json!({"ids": [b.0], "target": target.0, "fill": {"color": "#ff0000"}})).unwrap();
+    // Edit Symbol puts the art, with its ids, in place of the instance; Redefine keeps them.
+    select(&mut s, &[a]);
+    let r = s.execute("symbol.edit", &json!({})).unwrap();
+    let art = NodeId(r["ids"][0].as_u64().unwrap());
+    assert_eq!(art, target, "the art's own ids");
+    s.execute("paint.setStroke", &json!({"ids": [art.0], "color": "#00ff00"})).unwrap();
+    s.execute("symbol.update", &json!({"name": name})).unwrap();
+    assert_eq!(art_path(&s, &name), target);
+    let green = Paint::solid(Color::rgb(0.0, 1.0, 0.0));
+    assert_eq!(s.doc().unwrap().doc.symbols[0].art.appearance.stroke_paint(), green, "the master changed");
+    assert_eq!(node(&s, b).symbol_overrides().len(), 1, "the override survives");
+    let red = Paint::solid(Color::rgb(1.0, 0.0, 0.0));
+    assert_eq!(shown(&s, b).appearance.fill_paint(), red, "and still shows");
+    assert_ne!(shown(&s, b).appearance.stroke_paint(), green, "the override's stroke is its own");
+    // Edit Symbol shows the master, not the instance's look.
+    select(&mut s, &[b]);
+    let r = s.execute("symbol.edit", &json!({})).unwrap();
+    let art = NodeId(r["ids"][0].as_u64().unwrap());
+    assert_ne!(node(&s, art).appearance.fill_paint(), red);
+    s.execute("edit.undo", &json!({})).unwrap();
+    // Redefining from other art drops the overrides that name objects it doesn't hold.
+    let fresh = rect(&mut s, 0.0, 0.0, 30.0, 30.0);
+    s.execute("symbol.update", &json!({"name": name, "ids": [fresh.0]})).unwrap();
+    assert!(node(&s, b).symbol_overrides().is_empty());
+    assert_eq!(art_path(&s, &name), fresh, "the selection's own id");
+}
+
+#[test]
+fn breaking_the_link_replacing_and_deleting_bake_or_drop_the_overrides() {
+    let mut s = session();
+    let (a, name, _) = make_symbol(&mut s);
+    let b = NodeId(s.execute("symbol.place", &json!({"x": 300, "y": 200})).unwrap()["id"].as_u64().unwrap());
+    let target = art_path(&s, &name);
+    let red = Paint::solid(Color::rgb(1.0, 0.0, 0.0));
+    s.execute("symbol.override", &json!({"ids": [a.0, b.0], "target": target.0, "fill": {"color": "#ff0000"}})).unwrap();
+    let r = s.execute("symbol.breakLink", &json!({"ids": [a.0]})).unwrap();
+    let plain = NodeId(r["ids"][0].as_u64().unwrap());
+    assert_eq!(node(&s, plain).appearance.fill_paint(), red, "the instance's look is what the plain art keeps");
+    rect(&mut s, 0.0, 0.0, 20.0, 20.0);
+    s.execute("symbol.new", &json!({"name": "Small"})).unwrap();
+    s.execute("symbol.replace", &json!({"name": "Small", "ids": [b.0]})).unwrap();
+    assert!(node(&s, b).symbol_overrides().is_empty(), "overrides named the old art");
+    let small = art_path(&s, "Small");
+    s.execute("symbol.override", &json!({"ids": [b.0], "target": small.0, "opacity": 0.25})).unwrap();
+    s.execute("symbol.delete", &json!({"name": "Small"})).unwrap();
+    let doc = &s.doc().unwrap().doc;
+    let mut faded = 0;
+    doc.walk(|n| faded += usize::from(matches!(n.kind, NodeKind::Path { .. }) && n.opacity == 0.25));
+    assert_eq!(faded, 1, "the expanded instance keeps its override");
+}

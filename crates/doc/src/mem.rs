@@ -256,6 +256,7 @@ fn node_bytes(n: &Node, other: Option<&Node>) -> usize {
         b += e.objects_on_path.as_deref().map_or(0, |o| {
             ALLOC + size_of::<crate::objects_on_path::ObjectsOnPath>() + o.members.capacity() * size_of::<crate::objects_on_path::Member>()
         });
+        b += e.symbol_overrides.iter().map(|o| size_of::<crate::symbols::SymbolOverride>() + vec_bytes(&o.items)).sum::<usize>();
     }
     b += match &n.kind {
         NodeKind::Path { path, live, .. } => path_bytes(path) + boxed(live),

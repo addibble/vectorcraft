@@ -2238,13 +2238,13 @@ fn open_art<'a>(n: &'a Node, xf: Affine, grow: f64, kept: f64, parts: &mut Vec<P
 }
 
 /// Whether [`open`] opens `n`: a group without a clip, a Shaper construction, effects or an opacity
-/// mask of its own, or a symbol instance without effects or an opacity mask of its own.
+/// mask of its own, or a symbol instance without effects, an opacity mask or overrides of its own.
 fn opens(n: &Node) -> bool {
     let visible = |effects: &[vectorcraft_doc::Effect]| effects.iter().any(|e| e.visible);
     let effects = visible(&n.appearance.effects) || n.appearance.items.iter().any(|i| visible(i.effects()));
     let kind = match n.kind {
         NodeKind::Group { clip, .. } => !clip && n.extras().shaper.is_none(),
-        NodeKind::SymbolInstance { .. } => true,
+        NodeKind::SymbolInstance { .. } => n.symbol_overrides().is_empty(),
         _ => false,
     };
     kind && !effects && n.extras().mask.is_none()

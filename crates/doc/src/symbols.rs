@@ -6,9 +6,11 @@ use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use serde::{Deserialize, Serialize};
+use vectorcraft_color::BlendMode;
 use vectorcraft_geom::{Affine, Rect};
 
-use crate::{AppearanceItem, Document, Node, NodeKind, SYMBOL_HALF};
+use crate::{AppearanceItem, Document, Node, NodeId, NodeKind, SYMBOL_HALF};
 
 /// The box a symbol instance is measured by when its symbol's art has no box
 /// ([`SymbolBoxes::art`]), and in [`Node::geometric_bounds`]: the 20 × 20 square around the origin
@@ -379,6 +381,107 @@ fn art_box(art: &Arc<Node>, symbols: &SymbolBoxes) -> Option<ArtBox> {
     Some(ArtBox { geometric, visual, reach, effects, brush })
 }
 
+/// Dynamic symbols: the look a symbol instance gives one object in its symbol's art, kept while
+/// the instance stays linked to the symbol ([`crate::NodeExtras::symbol_overrides`]). The fills
+/// and strokes stand in for the object's own, and so do the opacity and blend mode; the object's
+/// geometry, effects and place in the art stay the symbol's. An override naming an object the art
+/// no longer holds (the symbol was redefined without it) changes nothing.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SymbolOverride {
+    /// The object in the symbol's art, by its id there.
+    pub target: NodeId,
+    /// The fills and strokes the instance draws the object with.
+    #[serde(default)]
+    pub items: Vec<AppearanceItem>,
+    #[serde(default = "one", skip_serializing_if = "crate::skip::is_one")]
+    pub opacity: f32,
+    #[serde(default, skip_serializing_if = "crate::skip::is_default")]
+    pub blend: BlendMode,
+}
+
+fn one() -> f32 {
+    1.0
+}
+
+impl SymbolOverride {
+    /// An override that draws `object` as the art does: its own fills, strokes, opacity and blend
+    /// mode, to change from there.
+    pub fn of(object: &Node) -> Self {
+        Self { target: object.id, items: object.appearance.items.clone(), opacity: object.opacity, blend: object.blend }
+    }
+}
+
+impl Node {
+    /// The overrides of this symbol instance ([`SymbolOverride`]; none for other objects).
+    pub fn symbol_overrides(&self) -> &[SymbolOverride] {
+        &self.extras().symbol_overrides
+    }
+
+    /// How far past its symbol's art, as `symbols` measures it, this instance's overrides paint:
+    /// the farthest any side of the overridden art's visual box lies past the art's own, in
+    /// symbol space (strokes keep their weight when the instance scales). 0 without overrides.
+    pub(crate) fn overrides_pad(&self, symbols: &SymbolBoxes) -> f64 {
+        if self.symbol_overrides().is_empty() {
+            return 0.0;
+        }
+        let NodeKind::SymbolInstance { symbol, .. } = &self.kind else { return 0.0 };
+        let (Some(own), Some(art)) = (symbols.art(symbol), symbols.document().overridden_instance_art(self)) else { return 0.0 };
+        let (Some(v), Some(g)) = symbols.in_art(|| (art.visual(Some(symbols)), art.geometric(Some(symbols)))) else { return 0.0 };
+        let sides = |v: Rect, g: Rect| [g.x0 - v.x0, g.y0 - v.y0, v.x1 - g.x1, v.y1 - g.y1];
+        sides(v, g).into_iter().zip(sides(own.visual, own.geometric)).map(|(a, b)| a - b).fold(0.0, f64::max)
+    }
+}
+
+/// The object `id` in `art`, if the art holds it.
+pub fn art_object(art: &Node, id: NodeId) -> Option<&Node> {
+    if art.id == id {
+        return Some(art);
+    }
+    art.children().into_iter().flatten().find_map(|c| art_object(c, id))
+}
+
+/// Symbol art `art` as instance `inst` shows it: each object an override of the instance names
+/// is drawn with the override's fills, strokes, opacity and blend mode. The art itself (no copy)
+/// when no override names an object in it.
+pub fn overridden_art(art: &Arc<Node>, inst: &Node) -> Arc<Node> {
+    let overrides = inst.symbol_overrides();
+    if !overrides.iter().any(|o| art_object(art, o.target).is_some()) {
+        return art.clone();
+    }
+    let mut copy = (**art).clone();
+    apply_overrides(&mut copy, overrides);
+    Arc::new(copy)
+}
+
+/// Draws each object of symbol art `n` that one of `overrides` names as the override says
+/// ([`overridden_art`] for the art of an instance).
+pub fn apply_overrides(n: &mut Node, overrides: &[SymbolOverride]) {
+    if overrides.is_empty() {
+        return;
+    }
+    if let Some(o) = overrides.iter().find(|o| o.target == n.id) {
+        n.appearance.items = o.items.clone();
+        n.opacity = o.opacity;
+        n.blend = o.blend;
+    }
+    if let Some(children) = n.children_mut() {
+        for c in children {
+            apply_overrides(Arc::make_mut(c), overrides);
+        }
+    }
+}
+
+impl Document {
+    /// The art symbol instance `inst` shows: its symbol's art with the instance's overrides
+    /// ([`overridden_art`]). `None` for other objects and for an instance of a symbol this document
+    /// doesn't have.
+    pub fn overridden_instance_art(&self, inst: &Node) -> Option<Arc<Node>> {
+        let NodeKind::SymbolInstance { symbol, .. } = &inst.kind else { return None };
+        let sym = self.symbols.iter().find(|s| &s.name == symbol)?;
+        Some(overridden_art(&sym.art, inst))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use vectorcraft_color::{Color, Paint};
@@ -561,5 +664,63 @@ mod tests {
         // A symbol whose art holds no instance is measured past the limit too.
         assert_eq!(s.effects_reach("Leaf", [2.0, 0.0, 0.0, 2.0], &measure(7.0)), 7.0);
         assert_eq!(runs.get(), MAX_REACHES + 2);
+    }
+
+    /// The overrides of a dynamic symbol's instance: the art is copied only for an instance with
+    /// an override naming an object in it, the named object takes the override's fills, strokes,
+    /// opacity and blend mode, and the symbol's own art stays as it was.
+    #[test]
+    fn an_override_redraws_one_object_of_the_art_for_one_instance() {
+        let mut d = Document::new(200.0, 200.0);
+        let bar = rect(&mut d, Rect::new(0.0, 0.0, 20.0, 10.0), 0.0);
+        let dot = rect(&mut d, Rect::new(5.0, 2.0, 10.0, 6.0), 0.0);
+        let (bar_id, dot_id) = (bar.id, dot.id);
+        symbol(&mut d, "Badge", vec![bar, dot]);
+        let plain = instance(&mut d, "Badge", Affine::IDENTITY);
+        let mut red = instance(&mut d, "Badge", Affine::translate((50.0, 0.0)));
+        let mut o = SymbolOverride::of(art_object(&d.symbols[0].art, dot_id).unwrap());
+        assert_eq!((o.target, o.opacity, o.blend), (dot_id, 1.0, BlendMode::Normal));
+        o.items = Appearance::basic(Paint::solid(Color::rgb(1.0, 0.0, 0.0)), Paint::solid(Color::BLACK), 4.0).items;
+        o.opacity = 0.5;
+        red.extras_mut().symbol_overrides.push(o);
+        let mut stale = instance(&mut d, "Badge", Affine::IDENTITY);
+        stale.extras_mut().symbol_overrides.push(SymbolOverride { target: NodeId(9_999), items: vec![], opacity: 0.1, blend: BlendMode::Normal });
+        let path = rect(&mut d, Rect::new(0.0, 0.0, 1.0, 1.0), 0.0);
+        let art = &d.symbols[0].art;
+        assert!(Arc::ptr_eq(&overridden_art(art, &plain), art), "no override: the art itself");
+        assert!(Arc::ptr_eq(&d.overridden_instance_art(&plain).unwrap(), art));
+        let shown = d.overridden_instance_art(&red).unwrap();
+        assert!(!Arc::ptr_eq(&shown, art));
+        let dot = art_object(&shown, dot_id).unwrap();
+        assert_eq!(dot.appearance.fill_paint(), Paint::solid(Color::rgb(1.0, 0.0, 0.0)));
+        assert_eq!((dot.appearance.stroke_width(), dot.opacity), (4.0, 0.5));
+        assert_eq!(art_object(&shown, bar_id).unwrap().appearance.fill_paint(), Paint::solid(Color::BLACK), "the other object is the art's");
+        assert_eq!(art_object(art, dot_id).unwrap().appearance.fill_paint(), Paint::solid(Color::BLACK), "the symbol's art is untouched");
+        assert_eq!(art_object(art, dot_id).unwrap().opacity, 1.0);
+        // An override naming an object the art doesn't hold changes nothing.
+        assert!(Arc::ptr_eq(&overridden_art(art, &stale), art));
+        assert!(d.overridden_instance_art(&path).is_none(), "not an instance");
+    }
+
+    /// An instance's visual bounds grow by the strokes its overrides add: the art is measured
+    /// once for every instance of the symbol, without them.
+    #[test]
+    fn an_instances_visual_bounds_grow_by_the_strokes_of_its_overrides() {
+        let mut d = Document::new(200.0, 200.0);
+        let bar = rect(&mut d, Rect::new(0.0, 0.0, 20.0, 10.0), 0.0);
+        let bar_id = bar.id;
+        symbol(&mut d, "Bar", vec![bar]);
+        let mut stroked = instance(&mut d, "Bar", Affine::translate((20.0, 30.0)));
+        let mut o = SymbolOverride::of(art_object(&d.symbols[0].art, bar_id).unwrap());
+        o.items = Appearance::basic(Paint::solid(Color::BLACK), Paint::solid(Color::BLACK), 6.0).items;
+        stroked.extras_mut().symbol_overrides.push(o);
+        // As far around the bar as the same stroke paints on a plain path.
+        let plain = rect(&mut d, Rect::new(20.0, 30.0, 40.0, 40.0), 6.0).visual_bounds().unwrap();
+        assert!(plain.x0 < 20.0 && plain.y1 > 40.0);
+        let s = d.symbol_boxes();
+        assert_eq!(stroked.geometric_bounds_with(&s), Some(Rect::new(20.0, 30.0, 40.0, 40.0)));
+        assert_eq!(stroked.visual_bounds_with(&s), Some(plain));
+        let s = d.symbol_boxes().without_art_strokes();
+        assert_eq!(stroked.visual_bounds_with(&s), Some(Rect::new(20.0, 30.0, 40.0, 40.0)), "measured without the art's strokes");
     }
 }
