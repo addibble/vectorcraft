@@ -1510,6 +1510,8 @@ file-filter	Templates	模板
 	Insert Special Character	插入特殊字符
 	Insert Whitespace Character	插入空白字符
 	Inspect Document	检查文档
+	Query Document	查询文档
+	Document Schema	文档架构
 	Inspect Object	检查对象
 	Install Plug-in	安装插件
 	Install Plug-in…	安装增效工具…

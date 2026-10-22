@@ -146,7 +146,7 @@ pub enum DocError {
 }
 
 /// Measurement units (display only; the model is always in points).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub enum Unit {
     #[default]
     Points,
@@ -418,7 +418,7 @@ pub fn parse_number(s: &str) -> Option<f64> {
     Unit::Points.parse(s.strip_prefix('+').unwrap_or(s))
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub enum ColorMode {
     #[default]
     Rgb,
@@ -435,7 +435,7 @@ impl ColorMode {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Artboard {
     pub id: u32,
     pub name: String,
@@ -603,14 +603,14 @@ impl std::fmt::Debug for NewArtIds {
 }
 
 /// Opacity-mask editing mode: `object`'s mask art lives on the temporary `layer` while editing.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct MaskEdit {
     pub object: NodeId,
     pub layer: NodeId,
 }
 
 /// A saved view (View → New View…): zoom, centre and rotation, listed at the bottom of the View menu.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct SavedView {
     pub name: String,
     pub center: Point,
@@ -621,7 +621,7 @@ pub struct SavedView {
 
 /// A saved selection (Select → Save Selection…): the objects that were selected, listed by name at
 /// the bottom of the Select menu.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct SavedSelection {
     pub name: String,
     pub objects: Vec<NodeId>,
@@ -645,7 +645,7 @@ impl SavedSelection {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Guide {
     /// true = vertical guide at `pos` (x), false = horizontal at `pos` (y).
     pub vertical: bool,
@@ -673,7 +673,7 @@ impl Guide {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GridPrefs {
     pub spacing: f64,
     pub subdivisions: u32,
@@ -686,7 +686,7 @@ impl Default for GridPrefs {
 }
 
 /// A named graphic style (Graphic Styles panel): an appearance plus the object's transparency.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GraphicStyle {
     pub name: String,
     pub appearance: Appearance,
@@ -762,14 +762,14 @@ impl GraphicStyle {
 }
 
 /// A symbol definition.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Symbol {
     pub name: String,
     pub art: Arc<Node>,
 }
 
 /// Encoded image bytes (PNG/JPEG/WebP…) shared by image objects.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ImageBlob {
     pub mime: String,
     #[serde(skip)]
@@ -782,7 +782,7 @@ pub struct ImageBlob {
 
 /// What the rulers measure from (View › Rulers): the active artboard's origin, the default of a
 /// new document, or one origin for the whole document.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum RulerMode {
     #[default]
@@ -797,7 +797,7 @@ impl RulerMode {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Document {
     pub version: u32,
     #[serde(default)]
