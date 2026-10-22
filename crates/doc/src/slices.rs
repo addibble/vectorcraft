@@ -23,6 +23,7 @@ macro_rules! keyed {
     ($(#[$m:meta])* $name:ident { $($(#[$vm:meta])* $v:ident = ($key:literal, $label:literal)),+ $(,)? }) => {
         $(#[$m])*
         #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+        #[derive(schemars::JsonSchema)]
         #[serde(rename_all = "camelCase")]
         pub enum $name {
             $($(#[$vm])* $v,)+
@@ -88,7 +89,7 @@ keyed!(
 );
 
 /// Slice Options: how web output writes a slice.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct SliceOptions {
     #[serde(skip_serializing_if = "crate::skip::is_default")]
@@ -121,7 +122,7 @@ pub struct SliceOptions {
 }
 
 /// A user slice: a rectangle drawn with the Slice tool or made by an Object → Slice command.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Slice {
     /// From the document's id counter (never an object's id).
     pub id: NodeId,
@@ -131,7 +132,7 @@ pub struct Slice {
 }
 
 /// Where a slice comes from.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum SliceSource {
     /// A [`Slice`] of the document.
