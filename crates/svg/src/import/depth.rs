@@ -8,6 +8,7 @@
 //! (`clip-path: url(#a)` on an element of a clip path makes a chain as deep as there are clip
 //! paths). So each element's depth is the deepest of what it holds and what it refers to.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 
@@ -69,21 +70,49 @@ fn references<'a, 'i>(n: XNode<'a, 'i>, ids: &HashMap<&str, XNode<'a, 'i>>, css:
     }
 }
 
-/// Do the elements of the XML text `svg` nest deeper than [`MAX_ELEMENT_DEPTH`]? Read from the
-/// text, before any XML reader: roxmltree (ours and usvg's) reads elements by recursion too. Tags
-/// are counted as the text has them; markup in the values of a document type's entities counts
-/// ten times (how deep entities may refer to one another), on top of the deepest element.
+/// What one pass over the XML text `svg` finds before any XML reader: whether its elements nest
+/// deeper than [`MAX_ELEMENT_DEPTH`] (roxmltree, ours and usvg's, reads elements by recursion
+/// too), and the text the prepass searches for its markers, with every `data:` attribute value
+/// left out. An embedded picture is such a value and is most of the text when there is one: with
+/// a 1 MB picture, each of the prepass's dozen substring searches was a pass over a megabyte, and
+/// no tag, attribute name, selector or CSS declaration can be inside a data URL.
+pub(crate) struct Prescan<'s> {
+    pub too_deep: bool,
+    /// `svg` with the value of every `data:` attribute left out, its quotes kept. Borrowed when
+    /// there is none.
+    pub markers: Cow<'s, str>,
+}
+
+/// [`Prescan::too_deep`] of `svg` alone (a linked file, a filter's definitions).
 pub(crate) fn xml_too_deep(svg: &str) -> bool {
+    prescan(svg).too_deep
+}
+
+/// The one pass: tags are counted as the text has them; markup in the values of a document
+/// type's entities counts ten times (how deep entities may refer to one another), on top of the
+/// deepest element. Past the cap the pass stops, and the markers are the whole text.
+pub(crate) fn prescan(svg: &str) -> Prescan<'_> {
     let b = svg.as_bytes();
     let find =
         |from: usize, what: &[u8]| b.get(from..).and_then(|rest| rest.windows(what.len()).position(|w| w == what)).map(|at| from + at + what.len());
+    // The `data:` attribute values seen: each from past its opening quote to its closing quote.
+    let mut data_values: Vec<(usize, usize)> = vec![];
     // The end of the tag starting at `from` (past its `>`), and whether it closes itself.
-    let tag_end = |from: usize| {
+    let mut tag_end = |from: usize| {
         let mut quote = None;
+        let mut data = None;
         for (i, c) in b.iter().enumerate().skip(from) {
             match (quote, c) {
-                (None, b'"' | b'\'') => quote = Some(*c),
-                (Some(q), c) if q == *c => quote = None,
+                (None, b'"' | b'\'') => {
+                    quote = Some(*c);
+                    data = b.get(i + 1..i + 6).filter(|v| v.eq_ignore_ascii_case(b"data:")).map(|_| i + 1);
+                }
+                (Some(q), c) if q == *c => {
+                    quote = None;
+                    if let Some(start) = data.take() {
+                        data_values.push((start, i));
+                    }
+                }
                 (None, b'>') => return (i + 1, b.get(i.wrapping_sub(1)) == Some(&b'/')),
                 _ => {}
             }
@@ -128,10 +157,23 @@ pub(crate) fn xml_too_deep(svg: &str) -> bool {
             end
         };
         if elements.1 + 10 * entities.1 > MAX_ELEMENT_DEPTH {
-            return true;
+            return Prescan { too_deep: true, markers: Cow::Borrowed(svg) };
         }
     }
-    false
+    let markers = if data_values.is_empty() {
+        Cow::Borrowed(svg)
+    } else {
+        let mut text = String::with_capacity(svg.len() - data_values.iter().map(|(start, end)| end - start).sum::<usize>());
+        let mut from = 0;
+        for &(start, end) in &data_values {
+            // Both ends are at a quote, so both are character boundaries.
+            text.push_str(svg.get(from..start).unwrap_or_default());
+            from = end;
+        }
+        text.push_str(svg.get(from..).unwrap_or_default());
+        Cow::Owned(text)
+    };
+    Prescan { too_deep: false, markers }
 }
 
 /// Does anything in `xml` nest deeper than [`MAX_ELEMENT_DEPTH`], references followed? Without
@@ -217,6 +259,31 @@ mod tests {
         let bomb = format!("<!DOCTYPE svg [ <!ENTITY a \"{}&a;{}\"> ]>", "<g>".repeat(tenth), "</g>".repeat(tenth));
         assert!(xml_too_deep(&format!("{bomb}<svg>&a;</svg>")));
         assert!(!xml_too_deep(""));
+    }
+
+    /// The prepass searches the markers, not the text: an embedded picture is left out of them,
+    /// and everything a search may need to find stays, a short `style` value included.
+    #[test]
+    fn the_markers_leave_out_every_data_url_and_keep_the_rest() {
+        let picture = format!("data:image/png;base64,{}", "<use>display<script>".repeat(1000));
+        let text = svg(&format!(
+            r#"<image href="{picture}"/><image xlink:href='{picture}'/><rect style="display:none" data-x='1' d="M0 0h1"/><a HREF="DATA:text/plain,<g>"><g/></a>"#
+        ));
+        let scan = prescan(&text);
+        assert!(!scan.too_deep);
+        let markers = scan.markers.as_ref();
+        assert!(!markers.contains("<use") && !markers.contains("script") && !markers.contains("base64"), "{markers}");
+        assert!(markers.contains(r#"href=""/>"#) && markers.contains("xlink:href=''/>") && markers.contains(r#"HREF="""#), "{markers}");
+        assert!(markers.contains(r#"style="display:none" data-x='1' d="M0 0h1""#) && markers.contains("<g/></a>"), "{markers}");
+        assert!(markers.len() < text.len() / 10);
+        // Without one, the text itself is the markers, unchanged.
+        let plain = svg("<rect width='1' height='1' style='fill:url(#p)'/>");
+        assert!(matches!(prescan(&plain).markers, Cow::Borrowed(m) if m == plain));
+        // A quote inside a comment or character data starts no value.
+        let odd = svg(r#"<!-- "data:x --><![CDATA["data:y]]><rect/>"#);
+        assert!(matches!(prescan(&odd).markers, Cow::Borrowed(_)));
+        // Past the cap, nothing more is read.
+        assert!(prescan(&svg(&groups(MAX_ELEMENT_DEPTH))).too_deep);
     }
 
     #[test]
