@@ -2649,6 +2649,32 @@ fn document_inspect_scopes_by_ids_kind_and_page() {
 
 /// `document.find` searches names, kinds and type content across the whole tree and
 /// answers ids with ancestor paths plus the total, so capped replies stay explicit.
+/// `document.query` and `document.schema` read a large model a part at a time: a JSONPath's
+/// matches with their normalized paths, bounded by `limit` and `depth`; one type's schema, or
+/// the type of the value at a path.
+#[test]
+fn document_query_and_schema_read_the_model_a_part_at_a_time() {
+    let mut s = session();
+    let a = rect(&mut s, 0.0, 0.0, 10.0, 10.0).0;
+    s.execute("object.setProps", &json!({"ids": [a], "name": "Hero Banner"})).unwrap();
+    let v = s.execute("document.query", &json!({"path": "$..[?@.name == 'Hero Banner'].id"})).unwrap();
+    assert_eq!(v["total"], 1);
+    assert_eq!(v["matches"][0]["value"], a);
+    let v = s.execute("document.query", &json!({"path": "$.layers[0]", "depth": 2})).unwrap();
+    assert_eq!(v["matches"][0]["value"]["kind"]["children"], "[…1 items]", "{v}");
+    assert!(s.execute("document.query", &json!({})).is_err());
+    assert!(s.execute("document.query", &json!({"path": "$.x", "limit": "many"})).is_err());
+
+    let v = s.execute("document.schema", &json!({})).unwrap();
+    assert_eq!(v["type"], "Document");
+    let v = s.execute("document.schema", &json!({"at": "$.layers[0].kind.children[0].kind"})).unwrap();
+    assert!(v["properties"].as_array().unwrap().iter().any(|p| p["name"] == "path"), "{v}");
+    assert!(v["variants"].is_null(), "the value's variant alone, not every kind: {v}");
+    assert!(s.execute("document.schema", &json!({"type": "Node", "at": "$"})).is_err());
+    assert!(s.execute("document.schema", &json!({"type": 5})).is_err());
+    assert_eq!(s.execute("document.schema", &json!({"index": true})).unwrap()["start"], "Document");
+}
+
 #[test]
 fn document_find_searches_names_kinds_and_text() {
     let mut s = session();
