@@ -1821,6 +1821,8 @@ font-technology	Variable	バリアブル
 	Ink	インキ
 	Insert Character	文字を挿入
 	Inspect Document	ドキュメントを調査
+	Patch Document	ドキュメントにパッチを適用
+	Patch	パッチ
 	Query Document	ドキュメントをクエリ
 	Document Schema	ドキュメントのスキーマ
 	Inspect Object	オブジェクトを調査

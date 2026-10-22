@@ -1560,6 +1560,8 @@ font-technology	Variable	Variables
 	Insert Special Character	Insertar carácter especial
 	Insert Whitespace Character	Insertar carácter de espacio
 	Inspect Document	Inspeccionar documento
+	Patch Document	Aplicar parche al documento
+	Patch	Parche
 	Query Document	Consultar documento
 	Document Schema	Esquema del documento
 	Inspect Object	Inspeccionar objeto

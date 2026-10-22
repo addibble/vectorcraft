@@ -110,9 +110,13 @@ fn dispatch(b: &mut dyn Backend, name: &str, a: &Args) -> Result<ToolResult, Str
                 a.iter().filter(|(k, _)| INSPECT_KEYS.contains(&k.as_str())).map(|(k, v)| (k.clone(), v.clone())).collect();
             j(b.call("document.inspect", Value::Object(slice))?)
         }
-        "query_document" | "document_schema" => {
+        "query_document" | "document_schema" | "patch_document" => {
             // The command checks its own arguments; the tool's schema already refused unknown keys.
-            let command = if name == "query_document" { "document.query" } else { "document.schema" };
+            let command = match name {
+                "query_document" => "document.query",
+                "document_schema" => "document.schema",
+                _ => "document.patch",
+            };
             j(b.call("engine.execute", json!({"command": command, "params": Value::Object(a.clone())}))?)
         }
         "ui_inspect" | "inspect_ui" => {

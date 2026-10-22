@@ -30,6 +30,15 @@ pub fn specs() -> Vec<CommandSpec> {
         cmd!(query "document.find", "Find Objects", [], None, "{name?: substring of the Layers panel name, kind?: panel label such as Group; Path; Type or Image (exact), text?: substring of type content, within?: [x, y, width, height] (an object's geometric bounds inside this rectangle, edges included; document points as document.inspect's bounds; layers never match this or the size filters), intersects?: [x, y, width, height] (bounds touching or overlapping it), minWidth?, maxWidth?, minHeight?, maxHeight?: pt (the bounds' size), minThickness?, maxThickness?: pt (the smaller of the bounds' width and height), minArea?, maxArea?: pt² (the bounds' width × height), minAnchors?, maxAnchors?: anchor points of a path (a compound path's members together; other objects never match), select?: bool (also select the matches, leaving out hidden and locked ones, those inside another match, and a compound path's members unless the compound path is isolated; Select > Reselect repeats it), limit?: max matches listed (default 100, 0 counts only)} → {matches: [{id, name, kind, path}], total, selected (with select: the count selected)}; at least one filter, all of them matching", has_doc, doc_find),
         cmd!(query "document.json", "Document JSON", [], None, "{} → complete document model", has_doc, |s, _| Ok(serde_json::to_value(&*s.doc()?.doc).unwrap_or(Value::Null))),
         cmd!(query "document.query", "Query Document", [], None, "{path: a JSONPath (RFC 9535) over the document model as document.json gives it; such as `$.artboards[*].name`; `$.layers[0].kind.children[?@.kind.type == 'path'].id`; `$..[?@.name == 'logo']` (document.schema describes the model), limit?: at most this many matches (default 100; 0 counts only), offset?: matches skipped first, depth?: levels of each match's value shown; containers below summarized as `{…n keys}` or `[…n items]` (default all)} → {matches: [{path: the match's normalized path, value}], total}; an answer past 1 MiB is an error asking for a narrower query", has_doc, doc_query),
+        cmd!(
+            "document.patch",
+            "Patch Document",
+            [],
+            None,
+            "{patch: a JSON Patch (RFC 6902); an array of operations (add; remove; replace; move; copy; test) with JSON Pointer paths (RFC 6901) into the document model as document.json gives it and document.query points at it (each match's `pointer`); applied in order; all or none; an object added without an `id` (or a copy whose id another object has) gets a fresh one, label?: the undo step's name (default Patch)} → {applied: operations, freshIds: objects given an id}; one undo step and one journal entry, so the patch is undone and replayed like any edit",
+            has_doc,
+            doc_patch
+        ),
         cmd!(query "document.schema", "Document Schema", [], None, "{type?: a type of the model to describe (default Document, the root), at?: a JSONPath (RFC 9535) into the active document; describes the type of the value there (its first match), index?: true lists every type with a line each} → one type at a time, so a large model is read as needed: {type, description, properties: [{name, type, required?, default?, description}], variants?: [{tag|name, description, properties}] for an enum, types: [the types the properties refer to, to describe next]}", has_doc, doc_schema),
         cmd!(
             "document.setUnits",
@@ -330,6 +339,38 @@ fn doc_query(s: &mut Session, p: &Value) -> Result<Value> {
         crate::query::QueryOpts { limit: opt_u64(p, C, "limit")?, offset: opt_u64(p, C, "offset")?.unwrap_or(0), depth: opt_u64(p, C, "depth")? };
     let value = serde_json::to_value(&*s.doc()?.doc).map_err(|e| bad(C, e.to_string()))?;
     crate::query::run(&value, path, opts).map_err(|e| bad(C, e))
+}
+
+fn doc_patch(s: &mut Session, p: &Value) -> Result<Value> {
+    const C: &str = "document.patch";
+    let ops: Vec<json_patch::PatchOperation> = match p.get("patch") {
+        Some(v @ Value::Array(a)) if !a.is_empty() => {
+            serde_json::from_value(v.clone()).map_err(|e| bad(C, format!("`patch` is not a JSON Patch (RFC 6902): {e}")))?
+        }
+        _ => {
+            return Err(bad(
+                C,
+                "`patch` must be a non-empty array of JSON Patch operations (RFC 6902), each with op (add, remove, replace, move, copy or test), path (a JSON Pointer) and value or from as the op takes",
+            ));
+        }
+    };
+    let label = str_param(p, "label").filter(|l| !l.is_empty()).unwrap_or("Patch");
+    let mut value = serde_json::to_value(&*s.doc()?.doc).map_err(|e| bad(C, e.to_string()))?;
+    let applied = crate::patch::apply(&mut value, &ops).map_err(|e| bad(C, e))?;
+    let fresh_ids = crate::patch::assign_ids(&mut value);
+    let mut doc: Document = serde_json::from_value(value).map_err(|e| bad(C, format!("the patched document does not load: {e}")))?;
+    // Picture bytes are not in the JSON; a patch never changes them.
+    doc.images = s.doc()?.doc.images.clone();
+    doc.fix_next_id();
+    doc.limit_depth();
+    Session::refresh_text_bounds(&mut doc);
+    s.edit(label, |d, sel| {
+        *d = doc;
+        // What was selected may be gone or changed beyond recognition.
+        sel.clear();
+        Ok(())
+    })?;
+    Ok(json!({"applied": applied, "freshIds": fresh_ids}))
 }
 
 fn doc_schema(s: &mut Session, p: &Value) -> Result<Value> {

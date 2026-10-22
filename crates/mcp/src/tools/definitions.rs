@@ -196,6 +196,19 @@ pub fn tool_definitions() -> Vec<Value> {
             true,
         ),
         tool(
+            "patch_document",
+            "Patch the document model",
+            "JSON Patch (RFC 6902) with JSON Pointer paths (RFC 6901) over the document model, at the pointers query_document answers: operations add, remove, replace, move, copy and test, applied in order, all or none, the result loaded through the model (what it refuses is refused whole). One undo step (named `label`) and one journal entry. An object added without an id, or a copy, gets a fresh id.",
+            obj(
+                json!({
+                    "patch": {"type": "array", "minItems": 1, "items": {"type": "object", "description": "{op: add|remove|replace|move|copy|test, path: a JSON Pointer such as /layers/0/kind/children/2/opacity (/- appends), value?, from?}"}, "description": "The operations, in order"},
+                    "label": string("The undo step's name (default Patch)")
+                }),
+                &["patch"],
+            ),
+            false,
+        ),
+        tool(
             "document_schema",
             "Describe the document model",
             "The document model's schema, generated from the model's own types and doc comments, one type at a time: no argument describes Document (the root), `type` one named type (its properties with their types, defaults and descriptions, and `types`, the named types to describe next), `at` the type of the value at a JSONPath into the active document (an enum resolved to the variant the value is), `index: true` every type with a line each.",

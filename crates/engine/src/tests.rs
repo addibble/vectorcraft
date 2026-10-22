@@ -2844,6 +2844,54 @@ fn document_query_and_schema_read_the_model_a_part_at_a_time() {
     assert_eq!(s.execute("document.schema", &json!({"index": true})).unwrap()["start"], "Document");
 }
 
+/// `document.patch` edits the model by JSON Patch at the pointers `document.query` answers: one
+/// undo step, journaled, all or none, with fresh ids for what is added or copied.
+#[test]
+fn document_patch_edits_the_model_at_query_pointers_as_one_undo_step() {
+    let mut s = session();
+    let a = rect(&mut s, 0.0, 0.0, 10.0, 10.0).0;
+    let v = s.execute("document.query", &json!({"path": format!("$.layers[0].kind.children[?@.id == {a}]")})).unwrap();
+    let pointer = v["matches"][0]["pointer"].as_str().unwrap().to_string();
+    assert_eq!(pointer, "/layers/0/kind/children/0");
+    let journal = s.journal.len();
+    let r = s
+        .execute(
+            "document.patch",
+            &json!({"label": "Fade and copy", "patch": [
+                {"op": "add", "path": format!("{pointer}/opacity"), "value": 0.5},
+                {"op": "copy", "from": pointer, "path": "/layers/0/kind/children/-"},
+                {"op": "replace", "path": "/artboards/0/name", "value": "ace"}
+            ]}),
+        )
+        .unwrap();
+    assert_eq!(r, json!({"applied": 3, "freshIds": 1}));
+    let d = s.doc().unwrap().doc.clone();
+    assert_eq!(d.node(NodeId(a)).unwrap().opacity, 0.5);
+    let copy = d.layers[0].children().unwrap()[1].clone();
+    assert_ne!(copy.id.0, a, "the copy has its own id");
+    assert_eq!(copy.opacity, 0.5);
+    assert_eq!(d.artboards[0].name, "ace");
+    assert!(d.peek_next_id() > copy.id.0);
+    assert_eq!(s.journal.len(), journal + 1, "one journal entry");
+    assert_eq!(s.doc().unwrap().history.undo.last().unwrap().label, "Fade and copy");
+    s.execute("edit.undo", &json!({})).unwrap();
+    let d = s.doc().unwrap().doc.clone();
+    assert_eq!((d.node(NodeId(a)).unwrap().opacity, d.layers[0].children().unwrap().len(), d.artboards[0].name.as_str()), (1.0, 1, "Artboard 1"));
+
+    // All or none: a failing `test` leaves the document as it was, naming the operation.
+    let before = s.doc().unwrap().doc.clone();
+    let err = s.execute("document.patch", &json!({"patch": [{"op": "replace", "path": "/artboards/0/name", "value": "x"}, {"op": "test", "path": "/artboards/0/name", "value": "nope"}]})).unwrap_err().to_string();
+    assert!(err.contains("'/1'"), "{err}");
+    assert_eq!(s.doc().unwrap().doc, before);
+    // What the model refuses is refused whole.
+    let err =
+        s.execute("document.patch", &json!({"patch": [{"op": "replace", "path": "/artboards", "value": "not a list"}]})).unwrap_err().to_string();
+    assert!(err.contains("does not load"), "{err}");
+    assert_eq!(s.doc().unwrap().doc, before);
+    assert!(s.execute("document.patch", &json!({"patch": []})).is_err());
+    assert!(s.execute("document.patch", &json!({"patch": [{"op": "frobnicate", "path": "/x"}]})).is_err());
+}
+
 #[test]
 fn document_find_searches_names_kinds_and_text() {
     let mut s = session();
