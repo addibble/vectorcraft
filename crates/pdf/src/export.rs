@@ -1205,7 +1205,8 @@ impl Exporter<'_> {
             NodeKind::Image(im) => self.image(s, im, alpha),
             NodeKind::SymbolInstance { symbol, xf } => {
                 if let Some(sym) = self.doc.symbols.iter().find(|x| &x.name == symbol) {
-                    let mut art = (*sym.art).clone();
+                    // The art as the instance shows it: its overrides applied, the whole stained.
+                    let mut art = vectorcraft_brush::instance_art(&sym.art, n);
                     art.transform(*xf, false);
                     self.node(s, &art, page, true);
                 }
