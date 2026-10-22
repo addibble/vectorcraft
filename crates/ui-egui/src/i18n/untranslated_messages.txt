@@ -114,6 +114,7 @@ Text options: {e}
 `new` is a design name, or true
 `opacity` is a number 0..1
 `params` must be an object
+`path` must be a JSONPath string, such as $.artboards[*].name
 `path` must be a folder
 `path` must be a path object
 `pivot` must be a whole number from 0 to 8
@@ -177,6 +178,7 @@ Text options: {e}
 `{key}` is a design name or a list of them
 `{key}` is an object: {{color?|swatch?|none?|gradient?}}
 `{key}` is longer than {MAX_NAME} characters
+`{key}` is not a property of {here}
 `{key}` is out of range
 `{key}` must be [min, desired, max] or {{min?, desired?, max?}}, in percent
 `{key}` must be a non-negative integer
@@ -493,6 +495,7 @@ give `path`, `data`, `dataBase64` or `csv`
 give `path`, `xml` or `dataBase64`
 give `script`, the JavaScript the event runs ("" removes the event)
 give `text` (the reading) or `remove`
+give `type` or `at`, not both
 give a mode or r/g/b, c/m/y/k, gray or tint adjustments
 give a name, or select a stroke with a saved profile
 give a pattern image id from links.patternImages
@@ -805,6 +808,8 @@ not an RTF file: it doesn't start with not an RTF file: it doesn't start with {\
 not an image VectorCraft reads (see document.formats)
 not area type (text in a frame) outside perspective
 not editing an opacity mask
+nothing at {walked}
+nothing in the document matches `{path}`
 nothing prints
 nothing to bind
 nothing to change
@@ -1069,6 +1074,8 @@ the library has no group `{name}`
 the library has no item `{item}`
 the library holds {MAX_GROUPS} groups already
 the library holds {MAX_ITEMS} items of this kind already
+the matches come to {bytes} bytes, past the {MAX_BYTES} a query answers: narrow `path`, lower `limit` or set `depth`
+the model has no schema
 the module imports `{_1}.{_2}`, but plug-ins get no host imports (no WASI, files or network)
 the module must export its linear memory as `memory`
 the name is empty
@@ -1266,6 +1273,8 @@ zoom must be positive
 {file} isn't linked
 {folder}: {e}
 {g} is not a Live Paint group
+{here} has no item {i}
+{here} is not an array
 {id} is not a slice
 {key} must be 0–{MAX_ADD_AROUND} pt
 {key} must be Unix seconds (an integer) or null

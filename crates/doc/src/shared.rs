@@ -104,6 +104,22 @@ impl<T: std::fmt::Debug> std::fmt::Debug for Shared<T> {
     }
 }
 
+/// A `Shared<T>` is a `T` in a file, so it is a `T` in the schema.
+impl<T: schemars::JsonSchema> schemars::JsonSchema for Shared<T> {
+    fn is_referenceable() -> bool {
+        false
+    }
+    fn schema_name() -> String {
+        T::schema_name()
+    }
+    fn schema_id() -> std::borrow::Cow<'static, str> {
+        T::schema_id()
+    }
+    fn json_schema(g: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
+        g.subschema_for::<T>()
+    }
+}
+
 impl<T: Serialize> Serialize for Shared<T> {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         self.0.serialize(s)

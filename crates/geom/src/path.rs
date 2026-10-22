@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::EPS;
 
 /// Fill rule for paths and compound paths.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 pub enum FillRule {
     /// Illustrator's default for compound paths created from overlapping shapes.
     #[default]
@@ -17,7 +17,7 @@ pub enum FillRule {
 }
 
 /// How an anchor's handles behave when edited.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 pub enum AnchorKind {
     /// Handles move independently (or there are none).
     #[default]
@@ -42,7 +42,7 @@ pub struct Anchor {
 
 /// Wire form of [`Anchor`]: points as `[x, y]` (format v2; `{"x", "y"}` maps from v1 files are
 /// still read), and absent handles mean "no handle" (equal to `p`).
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, schemars::JsonSchema)]
 struct AnchorRepr {
     p: WirePoint,
     #[serde(rename = "in", default, skip_serializing_if = "Option::is_none")]
@@ -55,6 +55,22 @@ struct AnchorRepr {
 
 fn is_corner(k: &AnchorKind) -> bool {
     *k == AnchorKind::Corner
+}
+
+/// The schema of a [`Anchor`] is its file form's ([`AnchorRepr`]).
+impl schemars::JsonSchema for Anchor {
+    fn schema_name() -> String {
+        "Anchor".into()
+    }
+    fn json_schema(g: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
+        let mut s = AnchorRepr::json_schema(g);
+        if let schemars::schema::Schema::Object(o) = &mut s {
+            o.metadata().description = Some(
+                "One anchor point: `p` as [x, y], handles `in` and `out` as [x, y] when they differ from `p`, and `kind` when not corner.".into(),
+            );
+        }
+        s
+    }
 }
 
 impl From<AnchorRepr> for Anchor {
@@ -73,6 +89,20 @@ impl From<Anchor> for AnchorRepr {
 
 /// A point written as `[x, y]`, read from `[x, y]` or `{"x": …, "y": …}`.
 struct WirePoint(Point);
+
+impl schemars::JsonSchema for WirePoint {
+    fn schema_name() -> String {
+        "Point".into()
+    }
+    fn json_schema(g: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
+        let mut o = schemars::schema::SchemaObject { instance_type: Some(schemars::schema::InstanceType::Array.into()), ..Default::default() };
+        o.array().items = Some(schemars::schema::SingleOrVec::Single(Box::new(g.subschema_for::<f64>())));
+        o.array().min_items = Some(2);
+        o.array().max_items = Some(2);
+        o.metadata().description = Some("A point as [x, y], in document points.".into());
+        o.into()
+    }
+}
 
 impl Serialize for WirePoint {
     fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
@@ -181,7 +211,7 @@ fn is_collinear(p: Point, a: Point, b: Point) -> bool {
 }
 
 /// An open or closed run of anchors.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct SubPath {
     pub anchors: Vec<Anchor>,
     #[serde(default)]
@@ -408,7 +438,7 @@ impl SubPath {
 }
 
 /// A (possibly multi-subpath) path.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct PathData {
     pub subpaths: Vec<SubPath>,
 }

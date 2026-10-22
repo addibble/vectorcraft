@@ -23,7 +23,7 @@ pub use swatch::{Swatch, SwatchGroup, default_swatches};
 use serde::{Deserialize, Serialize};
 
 /// A colour in its authoring model. Components are 0..=1, except Lab's.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "model", rename_all = "lowercase")]
 pub enum Color {
     Rgb {
@@ -324,7 +324,7 @@ pub fn keep_model(orig: Color, new: Color) -> Color {
 }
 
 /// What fills or strokes an object.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum Paint {
     #[default]

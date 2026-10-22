@@ -7,7 +7,7 @@ use chrono::{Datelike, Timelike};
 use serde::{Deserialize, Serialize};
 
 /// File Info → Copyright Status.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum CopyrightStatus {
     #[default]
@@ -41,7 +41,7 @@ impl CopyrightStatus {
 pub const MAX_RATING: u8 = 5;
 
 /// File → File Info.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct DocMetadata {
     pub author: String,

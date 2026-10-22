@@ -11,7 +11,7 @@ pub const MAX_GRAPH_CATEGORIES: usize = 10_000;
 pub const MAX_GRAPH_SERIES: usize = 256;
 
 /// The nine graph types, in the Graph tool group's order.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum GraphKind {
     #[default]
@@ -81,7 +81,7 @@ impl GraphKind {
 }
 
 /// A graph design (Object › Graph › Design…): named art that graphs draw in place of their default marks.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GraphDesign {
     pub name: String,
     pub art: std::sync::Arc<crate::Node>,
@@ -139,7 +139,7 @@ impl crate::Document {
 /// The character style a graph's labels keep through regeneration once formatted (Format the text in graphs): the
 /// value axis numbers, the category labels (category axis, radar spokes, pie names) and the legend labels (beside or
 /// across the top, or in pie wedges). `None` draws the default 9 pt black.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct LabelStyles {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -158,7 +158,7 @@ impl LabelStyles {
 
 /// Graph Type › Position for pie graphs with several pies: the same size (Even), sized by their totals (Ratio), or
 /// stacked one on another, sized by their totals (Stacked).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum PiePosition {
     #[default]
@@ -169,7 +169,7 @@ pub enum PiePosition {
 
 /// Graph Type › Sort for pie graphs: wedges in data order (None), largest first in each pie (All), or in the first
 /// pie's largest-first order in every pie (First).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum PieSort {
     #[default]
@@ -200,7 +200,7 @@ ids!(PieSort { None => "none", All => "all", First => "first" });
 /// along the value axis to the column's length at the column's width; Uniformly Scaled scales it both ways to that
 /// length, centered on the column; Repeating stacks copies that each stand for [`ColumnDesign::each`]; Sliding scales the
 /// part above its guide line (in a bar, right of it) in proportion to the column's width and stretches the rest.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum ColumnType {
     #[default]
@@ -212,7 +212,7 @@ pub enum ColumnType {
 
 /// Object › Graph › Column › For Fractions: a repeating design's last copy, for the part of a value less than one
 /// design, is cut off (Chop) or scaled down along the value axis (Scale).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum Fractions {
     #[default]
@@ -224,7 +224,7 @@ ids!(ColumnType { Vertical => "vertical", Uniform => "uniform", Repeating => "re
 ids!(Fractions { Chop => "chop", Scale => "scale" });
 
 /// Object › Graph › Column: the graph design a series' columns or bars are drawn with, and how it fills them.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct ColumnDesign {
     pub design: String,
@@ -248,7 +248,7 @@ impl Default for ColumnDesign {
 }
 
 /// Graph Type › Value Axis: which side of the plot the value axis is drawn on.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum ValueAxisSide {
     #[default]
@@ -274,7 +274,7 @@ impl ValueAxisSide {
 }
 
 /// Graph Type › Tick Marks › Length: no tick marks, short ones outside the axis, or lines across the whole plot.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum TickLength {
     None,
@@ -304,7 +304,7 @@ impl TickLength {
 
 /// The fill and stroke captured from one series' generated marks. An absent paint keeps whatever
 /// the generator draws for that part (greyscale for a series fill, the part's own stroke otherwise).
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct SeriesPaint {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -319,7 +319,7 @@ pub struct SeriesPaint {
 /// Graph data and options. `rows` are categories (one per row of the Graph Data window), each
 /// holding one value per series; `series` are the legend labels (the first row of the window).
 /// Scatter graphs read each series as (y, x) column pairs, like Illustrator.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct GraphSpec {
     /// Paint taken from the series' marks (Group Selection). One entry per series index; missing

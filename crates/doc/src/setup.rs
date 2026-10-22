@@ -10,7 +10,7 @@ use vectorcraft_geom::Rect;
 use crate::text::ScriptMetrics;
 
 /// Transparency grid cell size.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum GridSize {
     Small,
@@ -65,7 +65,7 @@ pub const GRID_COLOR_PRESETS: &[(&str, [Color; 2])] = &[
 ];
 
 /// How text is written to formats without live type (Document Setup → Type → Export).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum ExportText {
     /// Keep text as text (editable).
@@ -88,7 +88,7 @@ impl ExportText {
 }
 
 /// Quote characters (Document Setup → Type): opening and closing double and single quotes.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Quotes {
     pub double: [char; 2],
     pub single: [char; 2],
@@ -169,7 +169,7 @@ pub const DEFAULT_FLATTENER: &str = "Medium Resolution";
 
 /// Background Contents (New Document): what shows behind the art on the artboards, and what
 /// raster exports put there.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum Background {
     #[default]
@@ -205,7 +205,7 @@ pub fn bleed_in_range(bleed: [f64; 4]) -> [f64; 4] {
 }
 
 /// File → Document Setup.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct DocSetup {
     /// Bleed beyond every artboard edge in points: top, bottom, left, right.

@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 use vectorcraft_color::{BlendMode, Color, Paint};
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 pub enum LineCap {
     #[default]
     Butt,
@@ -12,7 +12,7 @@ pub enum LineCap {
     Square,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 pub enum LineJoin {
     #[default]
     Miter,
@@ -20,7 +20,7 @@ pub enum LineJoin {
     Bevel,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 pub enum StrokeAlign {
     #[default]
     Center,
@@ -28,7 +28,7 @@ pub enum StrokeAlign {
     Outside,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Dash {
     /// Dash, gap, dash, gap… (up to 6 values in the Stroke panel).
     pub pattern: Vec<f64>,
@@ -54,7 +54,7 @@ impl Dash {
 }
 
 /// An arrowhead shape. Saved by variant name: new shapes are appended, never renamed or reordered.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 pub enum Arrowhead {
     Triangle,
     TriangleOpen,
@@ -194,7 +194,7 @@ impl Arrowhead {
 
 /// Where an arrowhead sits relative to the end of its path. In both modes the stroke stops under
 /// the head, so the line never shows through a hollow head or past its tip.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 pub enum ArrowAlign {
     /// The tip extends past the end point (the path keeps its length).
     #[default]
@@ -206,7 +206,7 @@ pub enum ArrowAlign {
 /// Variable-width profile: (position 0..1 along the path, left width factor, right width factor),
 /// in order along the path. Two points at the same position make a discontinuous point: the
 /// first is the width just before it, the second the width just after it (a step).
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct WidthProfile {
     pub points: Vec<(f64, f64, f64)>,
 }
@@ -296,7 +296,7 @@ impl WidthProfile {
 /// Pen pressure recorded along a stroke (the Paintbrush with a graphics tablet): (position 0..1
 /// along the path, pressure 0..1) samples in order, positions measured as a [`WidthProfile`]'s
 /// are. Calligraphic brushes with Pressure variation read it; everything else ignores it.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct PressureProfile {
     pub points: Vec<(f64, f64)>,
 }
@@ -418,14 +418,14 @@ fn simplify_1d(pts: &[(f64, f64)], tol: f64) -> Vec<bool> {
 
 /// A width profile saved to the Profile list under a name (Add to Profiles), kept with the
 /// preferences.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct SavedProfile {
     pub name: String,
     pub profile: WidthProfile,
 }
 
 /// A live effect in an appearance stack. Parameters are interpreted by `vectorcraft-effects`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Effect {
     /// Stable id, e.g. `stylize.dropShadow`, `distort.roughen`, `path.offsetPath`, `warp.arc`.
     pub id: String,
@@ -442,7 +442,7 @@ fn one() -> f32 {
     1.0
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct FillLayer {
     pub paint: Paint,
     #[serde(default = "one", skip_serializing_if = "crate::skip::is_one")]
@@ -465,7 +465,7 @@ impl FillLayer {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct StrokeLayer {
     pub paint: Paint,
     /// Weight in points.
@@ -518,7 +518,7 @@ pub struct StrokeLayer {
 
 /// How a gradient on a stroke is laid out (the Gradient panel's Stroke buttons). Saved by variant
 /// name: new modes are appended, never renamed.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 pub enum StrokeGradientMode {
     /// Placed on the page like a fill's gradient and seen through the stroke.
     #[default]
@@ -658,7 +658,7 @@ pub fn stroke_paint_bounds(geometric: vectorcraft_geom::Rect, width: f64) -> vec
 }
 
 /// One entry of the appearance stack.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum AppearanceItem {
     Fill(FillLayer),
@@ -733,7 +733,7 @@ impl AppearanceItem {
 
 /// Appearance attributes. `items` is in paint order: `items[0]` is painted first (the bottom of the
 /// Appearance panel list).
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Appearance {
     #[serde(default)]
     pub items: Vec<AppearanceItem>,

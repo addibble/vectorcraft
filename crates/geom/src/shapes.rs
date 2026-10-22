@@ -22,7 +22,7 @@ pub fn rounded_rectangle(r: Rect, radius: f64) -> PathData {
 }
 
 /// How a rectangle's corner is cut (Live Corners).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum CornerKind {
     /// A quarter circle, bulging outwards.
