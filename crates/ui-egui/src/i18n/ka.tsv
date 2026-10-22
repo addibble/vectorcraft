@@ -2710,6 +2710,8 @@ theme	Appearance	იერსახე
 	Duplicate	დუბლირება
 	Find Objects	ობიექტების ძებნა
 	Inspect Document	დოკუმენტის შემოწმება
+	Patch Document	დოკუმენტზე პატჩის გამოყენება
+	Patch	პატჩი
 	Query Document	დოკუმენტის მოთხოვნა
 	Document Schema	დოკუმენტის სქემა
 	Inspect Object	ობიექტის შემოწმება

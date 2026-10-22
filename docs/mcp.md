@@ -263,6 +263,16 @@ arguments it describes `Document`, the root: each property with its type (`array
 properties refer to, to describe next with `type`. `at` describes the type of the value at a
 JSONPath into the active document, an enum resolved to the variant the value is (`kind` of a
 layer lists `children`, of a path lists `path`). `index: true` lists every type with a line each.
+To change the model where a command does not say it, `run_command document.patch {patch, label?}`
+(or the `patch_document` tool) applies a JSON Patch ([RFC 6902](https://www.rfc-editor.org/rfc/rfc6902))
+with JSON Pointer paths ([RFC 6901](https://www.rfc-editor.org/rfc/rfc6901)): the `pointer` each
+`document.query` match carries (`/layers/0/kind/children/2/opacity`; `/-` appends to an array),
+operations `add`, `remove`, `replace`, `move`, `copy` and `test`, applied in order, all or none,
+the result loaded through the model, so what the model cannot be is refused whole and the
+document stays as it was. It is one undo step (`label`, default Patch) and one journal entry,
+undone and replayed like any edit. An object added without an `id`, or a copy, gets a fresh id,
+as paste and duplicate give one. Prefer a command where one exists (`swatch.update` reaches
+every paint that links the swatch; a patch changes the swatch alone).
 `document.find` needs at least one filter and all given filters must match; matching
 ignores case, `name` is a substring of the Layers panel name, `text` a substring of type content and `kind` the
 exact panel label (`Layer`, `Group`, `Clip Group`, `Path`, `Compound Path`, `Type`, `Image`, `Rectangle`, ...).
@@ -427,6 +437,7 @@ objects' fills or strokes differ (`fillMixed` / `strokeMixed`, drawn as a "?" pr
 | `inspect_ui` | `{}` | UI state. Remote mode only. |
 | `query_document` | `{path, limit?, offset?, depth?}` | JSONPath (RFC 9535) over the document model: `{matches: [{path, value}], total}`, bounded (see [Resource templates](#resource-templates)). |
 | `document_schema` | `{type?, at?, index?}` | The model's schema one type at a time: `Document` by default, a named `type`, the type of the value `at` a JSONPath, or the `index` of every type. |
+| `patch_document` | `{patch, label?}` | JSON Patch (RFC 6902) at JSON Pointers (RFC 6901) over the document model, all or none, one undo step and journal entry; see [Resource templates](#resource-templates). |
 | `select_tool` | `{tool}` | `selection`, `directSelection`, `pen`, `rectangle`, `ellipse`, `polygon`, `star`, `lineSegment`, … |
 | `pointer_gesture` | `{events:[{kind,x,y,mods?}], tool?, mods?}` | `kind` is one of `down`, `drag`, `up`, `move`, `doubleclick`. Events go through the same path as the mouse. Headless, a `move` replies after the tool's highlight under the pointer is ready, including the Shape Builder's and the Live Paint Bucket's regions of a large selection, which the desktop app finds off the UI thread and highlights after the reply. |
 | `draw_path` | `{points \| d, closed?, fill?, stroke?, strokeWidth?, dash?, cap?, join?, opacity?, name?, effects?}` | `points` is `[[x,y],…]` or `[{x,y,in?,out?,smooth?},…]`. `d` is SVG path data. The options are below. |
