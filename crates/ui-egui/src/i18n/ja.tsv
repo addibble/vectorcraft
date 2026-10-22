@@ -1787,6 +1787,8 @@
 	Ink	インキ
 	Insert Character	文字を挿入
 	Inspect Document	ドキュメントを調査
+	Query Document	ドキュメントをクエリ
+	Document Schema	ドキュメントのスキーマ
 	Inspect Object	オブジェクトを調査
 	Install Plug-in	プラグインをインストール
 	Intensity:	強度:

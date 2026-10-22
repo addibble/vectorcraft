@@ -29,6 +29,8 @@ pub fn specs() -> Vec<CommandSpec> {
         cmd!(query "document.node", "Inspect Object", [], None, "{id, summary?: compact summary, depth?: child levels in the summary (default all), childLimit?: children shown per node (default all; a level that shows fewer reports childCount)} → one object", has_doc, doc_node),
         cmd!(query "document.find", "Find Objects", [], None, "{name?: substring of the Layers panel name, kind?: panel label such as Group; Path; Type or Image (exact), text?: substring of type content, limit?: max matches (default 100, 0 counts only)} → {matches: [{id, name, kind, path}], total}", has_doc, doc_find),
         cmd!(query "document.json", "Document JSON", [], None, "{} → complete document model", has_doc, |s, _| Ok(serde_json::to_value(&*s.doc()?.doc).unwrap_or(Value::Null))),
+        cmd!(query "document.query", "Query Document", [], None, "{path: a JSONPath (RFC 9535) over the document model as document.json gives it; such as `$.artboards[*].name`; `$.layers[0].kind.children[?@.kind.type == 'path'].id`; `$..[?@.name == 'logo']` (document.schema describes the model), limit?: at most this many matches (default 100; 0 counts only), offset?: matches skipped first, depth?: levels of each match's value shown; containers below summarized as `{…n keys}` or `[…n items]` (default all)} → {matches: [{path: the match's normalized path, value}], total}; an answer past 1 MiB is an error asking for a narrower query", has_doc, doc_query),
+        cmd!(query "document.schema", "Document Schema", [], None, "{type?: a type of the model to describe (default Document, the root), at?: a JSONPath (RFC 9535) into the active document; describes the type of the value there (its first match), index?: true lists every type with a line each} → one type at a time, so a large model is read as needed: {type, description, properties: [{name, type, required?, default?, description}], variants?: [{tag|name, description, properties}] for an enum, types: [the types the properties refer to, to describe next]}", has_doc, doc_schema),
         cmd!(
             "document.setUnits",
             "Units",
@@ -256,6 +258,36 @@ fn doc_find(s: &mut Session, p: &Value) -> Result<Value> {
     let limit = opt_u64(p, "document.find", "limit")?.unwrap_or(100);
     let (matches, total) = inspect::find_nodes(&s.doc()?.doc, &filter, limit);
     Ok(json!({"matches": matches, "total": total}))
+}
+
+fn doc_query(s: &mut Session, p: &Value) -> Result<Value> {
+    const C: &str = "document.query";
+    let path = str_param(p, "path").ok_or_else(|| bad(C, "`path` must be a JSONPath string, such as $.artboards[*].name"))?;
+    let opts =
+        crate::query::QueryOpts { limit: opt_u64(p, C, "limit")?, offset: opt_u64(p, C, "offset")?.unwrap_or(0), depth: opt_u64(p, C, "depth")? };
+    let value = serde_json::to_value(&*s.doc()?.doc).map_err(|e| bad(C, e.to_string()))?;
+    crate::query::run(&value, path, opts).map_err(|e| bad(C, e))
+}
+
+fn doc_schema(s: &mut Session, p: &Value) -> Result<Value> {
+    const C: &str = "document.schema";
+    let is_str = |key: &str| match p.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(v)) => Ok(Some(v.as_str())),
+        Some(_) => Err(bad(C, format!("`{key}` must be a string"))),
+    };
+    let (type_name, at) = (is_str("type")?, is_str("at")?);
+    if p.get("index").is_some_and(|v| v.as_bool() == Some(true)) {
+        return Ok(crate::schema::index());
+    }
+    match (type_name, at) {
+        (Some(_), Some(_)) => Err(bad(C, "give `type` or `at`, not both")),
+        (_, Some(at)) => {
+            let value = serde_json::to_value(&*s.doc()?.doc).map_err(|e| bad(C, e.to_string()))?;
+            crate::schema::at(&value, at).map_err(|e| bad(C, e))
+        }
+        (type_name, None) => crate::schema::describe(type_name.unwrap_or(crate::schema::ROOT)).map_err(|e| bad(C, e)),
+    }
 }
 
 /// Document Setup's units (also `document.setup {units}`).

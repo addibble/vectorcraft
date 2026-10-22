@@ -3115,6 +3115,8 @@ theme	Appearance	Motiv
 	Duplicate	Duplikovat
 	Find Objects	Najít objekty
 	Inspect Document	Prozkoumat dokument
+	Query Document	Dotaz na dokument
+	Document Schema	Schéma dokumentu
 	Inspect Object	Prozkoumat objekt
 	Begin Undo Group	Zahájit skupinu kroků zpět
 	End Undo Group	Ukončit skupinu kroků zpět

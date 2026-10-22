@@ -44,7 +44,7 @@ fn full_turn() -> f64 {
 // =====================================================================================
 
 /// Pattern Options → Tile Type.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum TileType {
     #[default]
@@ -144,7 +144,7 @@ pub fn tile_period(tt: TileType, w: f64, h: f64) -> (f64, f64) {
 }
 
 /// Pattern Options → Overlap.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Overlap {
     /// Right in front (default: left in front).
@@ -156,7 +156,7 @@ pub struct Overlap {
 }
 
 /// A pattern swatch definition.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PatternDef {
     pub name: String,
@@ -385,7 +385,7 @@ fn zero_ids(n: &mut Node) {
 }
 
 /// Pattern editing mode state (lives in the document so undo and the renderer see it).
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PatternEdit {
     /// Pattern being edited.
@@ -451,7 +451,7 @@ pub fn transform_pattern_paints(n: &mut Node, m: Affine) {
 // =====================================================================================
 
 /// The arrangement of a Repeat object.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum RepeatKind {
     /// Copies rotated around `center`; the source's centre is kept `radius` from it.
@@ -509,7 +509,7 @@ impl RepeatKind {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct RepeatSpec {
     pub kind: RepeatKind,
     pub source: Vec<Arc<Node>>,
