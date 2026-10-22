@@ -13,6 +13,7 @@ pub mod inspect;
 pub mod journal;
 pub mod link_watch;
 pub mod namematch;
+pub mod patch;
 pub mod query;
 pub mod schema;
 pub mod steps;

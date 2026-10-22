@@ -1545,6 +1545,8 @@ file-filter	Templates	Vorlagen
 	Insert Special Character	Sonderzeichen einfügen
 	Insert Whitespace Character	Leerraumzeichen einfügen
 	Inspect Document	Dokument untersuchen
+	Patch Document	Dokument patchen
+	Patch	Patch
 	Query Document	Dokument abfragen
 	Document Schema	Dokumentschema
 	Inspect Object	Objekt untersuchen
