@@ -1397,6 +1397,8 @@
 	Insert Special Character	Özel Karakter Ekle
 	Insert Whitespace Character	Boşluk Karakteri Ekle
 	Inspect Document	Belgeyi İncele
+	Patch Document	Belgeye Yama Uygula
+	Patch	Yama
 	Query Document	Belgeyi Sorgula
 	Document Schema	Belge Şeması
 	Inspect Object	Nesneyi İncele
