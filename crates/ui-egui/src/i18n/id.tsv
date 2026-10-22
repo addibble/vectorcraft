@@ -5425,3 +5425,9 @@ axis	Y Axis	Sumbu Y
 	The plug-in is computing…	Plug-in sedang menghitung…
 	Inspect Plug-in	Periksa plug-in
 	Cancel Plug-in Run	Batalkan jalannya plug-in
+	Symbol Type:	Jenis simbol:
+	Dynamic Symbol	Simbol dinamis
+	Static Symbol	Simbol statis
+	Symbol Definition	Definisi simbol
+	Override Symbol Instance	Timpa instans simbol
+	Reset Symbol Instance	Atur ulang instans simbol
