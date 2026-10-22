@@ -1564,6 +1564,8 @@ file-filter	Templates	Шаблони
 	Insert Special Character	Вставити спеціальний символ
 	Insert Whitespace Character	Вставити символ пропуску
 	Inspect Document	Перевірити документ
+	Query Document	Запит до документа
+	Document Schema	Схема документа
 	Inspect Object	Перевірити об’єкт
 	Install Plug-in	Встановити модуль
 	Install Plug-in…	Встановити модуль…
