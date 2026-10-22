@@ -114,6 +114,8 @@ Text options: {e}
 `new` is a design name, or true
 `opacity` is a number 0..1
 `params` must be an object
+`patch` is not a JSON Patch (RFC 6902): {e}
+`patch` must be a non-empty array of JSON Patch operations (RFC 6902), each with op (add, remove, replace, move, copy or test), path (a JSON Pointer) and value or from as the op takes
 `path` must be a JSONPath string, such as $.artboards[*].name
 `path` must be a folder
 `path` must be a path object
@@ -1091,6 +1093,7 @@ the operand stack overflowed
 the page has no area
 the paint behind the proxy is not a gradient
 the parent must be a layer or sublayer
+the patched document does not load: {e}
 the path can't be inside one of the objects to attach
 the path is empty
 the picture has no objects

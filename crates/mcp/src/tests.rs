@@ -368,7 +368,10 @@ fn query_document_and_document_schema_read_the_model_a_part_at_a_time() {
     let r = call(&mut s, 3, "query_document", json!({"path": "$.layers[0].kind.children[*].id"}));
     let v: Value = serde_json::from_str(&text_of(&r)).unwrap();
     assert_eq!(v["total"], 1, "{v}");
-    assert_eq!(v["matches"][0], json!({"path": "$['layers'][0]['kind']['children'][0]['id']", "value": id}));
+    assert_eq!(
+        v["matches"][0],
+        json!({"path": "$['layers'][0]['kind']['children'][0]['id']", "pointer": "/layers/0/kind/children/0/id", "value": id})
+    );
     let r = call(&mut s, 4, "query_document", json!({"path": "$.layers[*]", "depth": 1}));
     let v: Value = serde_json::from_str(&text_of(&r)).unwrap();
     assert!(v["matches"][0]["value"]["kind"].as_str().is_some_and(|k| k.starts_with("{…")), "{v}");
@@ -387,6 +390,15 @@ fn query_document_and_document_schema_read_the_model_a_part_at_a_time() {
     let v: Value = serde_json::from_str(&text_of(&r)).unwrap();
     assert!(v["types"].as_array().unwrap().len() > 50, "{v}");
     let r = call(&mut s, 9, "document_schema", json!({"type": "Nonesuch"}));
+    assert_eq!(r["isError"], true, "{r}");
+
+    let pointer = "/layers/0/kind/children/0/opacity";
+    let r = call(&mut s, 10, "patch_document", json!({"patch": [{"op": "add", "path": pointer, "value": 0.25}], "label": "Fade"}));
+    assert_eq!(r["isError"], false, "{r}");
+    let r = call(&mut s, 11, "query_document", json!({"path": "$.layers[0].kind.children[0].opacity"}));
+    let v: Value = serde_json::from_str(&text_of(&r)).unwrap();
+    assert_eq!(v["matches"][0]["value"], 0.25, "{v}");
+    let r = call(&mut s, 12, "patch_document", json!({"patch": [{"op": "test", "path": pointer, "value": 1}]}));
     assert_eq!(r["isError"], true, "{r}");
 }
 
