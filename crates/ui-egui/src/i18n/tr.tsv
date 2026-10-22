@@ -1409,6 +1409,8 @@ font-technology	Variable	Değişken
 	Insert Special Character	Özel Karakter Ekle
 	Insert Whitespace Character	Boşluk Karakteri Ekle
 	Inspect Document	Belgeyi İncele
+	Query Document	Belgeyi Sorgula
+	Document Schema	Belge Şeması
 	Inspect Object	Nesneyi İncele
 	Install Plug-in	Eklentiyi Yükle
 	Install Plug-in…	Eklentiyi Yükle…

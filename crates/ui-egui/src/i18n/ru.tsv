@@ -1580,6 +1580,8 @@ file-filter	Templates	Шаблоны
 	Insert Special Character	Вставить специальный символ
 	Insert Whitespace Character	Вставить символ пробела
 	Inspect Document	Проверить документ
+	Query Document	Запрос к документу
+	Document Schema	Схема документа
 	Inspect Object	Проверить объект
 	Install Plug-in	Установить модуль
 	Install Plug-in…	Установить модуль…

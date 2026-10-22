@@ -50,7 +50,11 @@ vectorcraft-affinity = { path = "crates/affinity" }
 vectorcraft-scriptcheck = { path = "crates/scriptcheck" }
 
 # foundation
-kurbo = { version = "0.13", features = ["serde"] }
+kurbo = { version = "0.13", features = ["serde", "schemars"] }
+# The document model's JSON Schema (`document.schema`): 0.8, the line kurbo's `schemars` feature uses.
+schemars = "0.8"
+# JSONPath (RFC 9535) over the document model (`document.query`).
+serde_json_path = "0.7"
 peniko = "0.6"
 thiserror = "2"
 serde = { version = "1", features = ["derive", "rc"] }
