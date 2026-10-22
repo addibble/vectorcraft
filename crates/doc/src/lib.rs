@@ -24,11 +24,13 @@ pub mod shared;
 mod symbol_export_type;
 mod symbol_nine_slice;
 mod symbol_registration;
+mod symbol_type;
 pub use inline::{SYMBOL_HALF, SYMBOL_SIZES};
 pub use shared::Shared;
 pub use symbol_export_type::{SYMBOL_EXPORT_TYPE, SymbolExportType};
 pub use symbol_nine_slice::{SYMBOL_NINE_SLICE, SymbolNineSlice};
 pub use symbol_registration::{SYMBOL_REGISTRATION, SymbolRegistration};
+pub use symbol_type::{SYMBOL_TYPE, SymbolType};
 pub mod links;
 pub mod live;
 pub mod live_paint;
@@ -58,7 +60,7 @@ pub mod slices;
 pub mod style_libs;
 pub mod swatches;
 mod symbols;
-pub use symbols::SymbolBoxes;
+pub use symbols::{SymbolBoxes, SymbolOverride, apply_overrides, art_object, overridden_art};
 pub mod text;
 pub mod trace;
 pub mod variables;
@@ -2112,6 +2114,42 @@ impl Document {
         let g = self.symbol_nine_slice(from);
         self.set_symbol_nine_slice(from, None);
         self.set_symbol_nine_slice(to, g);
+    }
+
+    /// Symbol Options › Symbol Type for `name` (default: Dynamic).
+    pub fn symbol_type(&self, name: &str) -> SymbolType {
+        self.unknown.get(SYMBOL_TYPE).and_then(|m| m.get(name)).and_then(SymbolType::from_value).unwrap_or_default()
+    }
+
+    /// Set or clear (when Dynamic, the default) the symbol type stored for `name`.
+    pub fn set_symbol_type(&mut self, name: &str, kind: SymbolType) {
+        if kind.is_default() {
+            self.clear_symbol_type(name);
+            return;
+        }
+        let m = self.unknown.entry(SYMBOL_TYPE.to_string()).or_insert_with(|| serde_json::json!({}));
+        let Some(o) = m.as_object_mut() else { return };
+        o.insert(name.into(), serde_json::json!(kind.id()));
+    }
+
+    /// Drop any stored symbol type for `name` (Dynamic default).
+    pub fn clear_symbol_type(&mut self, name: &str) {
+        let Some(m) = self.unknown.get_mut(SYMBOL_TYPE) else { return };
+        let Some(o) = m.as_object_mut() else { return };
+        o.remove(name);
+        if o.is_empty() {
+            self.unknown.remove(SYMBOL_TYPE);
+        }
+    }
+
+    /// Move the stored symbol type when a symbol is renamed.
+    pub fn rename_symbol_type(&mut self, from: &str, to: &str) {
+        if from == to {
+            return;
+        }
+        let kind = self.symbol_type(from);
+        self.clear_symbol_type(from);
+        self.set_symbol_type(to, kind);
     }
 }
 

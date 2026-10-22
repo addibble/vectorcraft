@@ -258,6 +258,34 @@ mod tests {
         assert_eq!(img.pixel(50, 50), [255, 0, 0, 255]);
     }
 
+    /// Dynamic symbols: an instance's override draws one object of the art its way, for that
+    /// instance only.
+    #[test]
+    fn an_overridden_instance_draws_its_own_look() {
+        let mut d = Document::new(100.0, 100.0);
+        let art = Node::path(
+            vectorcraft_doc::NodeId(1),
+            shapes::rectangle(Rect::new(-10.0, -10.0, 10.0, 10.0)),
+            Appearance::basic(Paint::solid(Color::BLACK), Paint::None, 0.0),
+        );
+        d.symbols.push(vectorcraft_doc::Symbol { name: "S".into(), art: std::sync::Arc::new(art) });
+        let l = d.layers[0].id;
+        let plain = Node::new(d.alloc_id(), vectorcraft_doc::NodeKind::SymbolInstance { symbol: "S".into(), xf: Affine::translate((25.0, 50.0)) });
+        let mut blue = Node::new(d.alloc_id(), vectorcraft_doc::NodeKind::SymbolInstance { symbol: "S".into(), xf: Affine::translate((75.0, 50.0)) });
+        let mut o = vectorcraft_doc::SymbolOverride::of(&d.symbols[0].art);
+        o.items = Appearance::basic(Paint::solid(Color::rgb(0.0, 0.0, 1.0)), Paint::None, 0.0).items;
+        blue.extras_mut().symbol_overrides.push(o);
+        d.insert(Some(l), 0, plain).unwrap();
+        d.insert(Some(l), 1, blue).unwrap();
+        let mut r = Renderer::new();
+        let img = r.render(&d, 100, 100, Affine::IDENTITY, &RenderOptions::default());
+        assert_eq!(img.pixel(25, 50), [0, 0, 0, 255]);
+        assert_eq!(img.pixel(75, 50), [0, 0, 255, 255]);
+        // The next frame, from the caches, draws the same.
+        let again = r.render(&d, 100, 100, Affine::IDENTITY, &RenderOptions::default());
+        assert_eq!(again.pixels, img.pixels);
+    }
+
     #[test]
     fn an_instance_is_culled_by_the_brushed_strokes_in_its_art() {
         // The art: a line from (0, 40) to (0, 60) with a 1 pt stroke painted by a 20 pt round nib,
