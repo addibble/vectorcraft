@@ -1830,6 +1830,8 @@ file-filter	Templates	Mẫu
 	Insert Whitespace Character	Chèn ký tự khoảng trắng
 	Inside	Bên trong
 	Inspect Document	Kiểm tra tài liệu
+	Patch Document	Vá tài liệu
+	Patch	Bản vá
 	Query Document	Truy vấn tài liệu
 	Document Schema	Lược đồ tài liệu
 	Inspect Object	Kiểm tra đối tượng
