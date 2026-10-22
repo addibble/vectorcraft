@@ -42,6 +42,8 @@ roxmltree = "0.21"
 kurbo = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+serde_json_path = { workspace = true }
+schemars = { workspace = true }
 thiserror = { workspace = true }
 log = { workspace = true }
 
