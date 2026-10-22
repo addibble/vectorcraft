@@ -5400,3 +5400,9 @@ axis	Y Axis	Y ekseni
 @msg	`dither` applies to gradient fills (paint.setFill)	`dither` degrade dolgulara uygulanır (paint.setFill)
 @msg	`dither` must be true or false	"dither" doğru veya yanlış olmalıdır
 @msg	`method` must be classic or perceptual	`method` classic veya perceptual olmalıdır
+	Symbol Type:	Sembol Türü:
+	Dynamic Symbol	Dinamik Sembol
+	Static Symbol	Statik Sembol
+	Symbol Definition	Sembol Tanımı
+	Override Symbol Instance	Sembol Örneğini Geçersiz Kıl
+	Reset Symbol Instance	Sembol Örneğini Sıfırla

@@ -1347,13 +1347,20 @@ Guides) can't be picked. An artboard guide is picked, drawn and snapped to acros
 These families are in the live catalog (`command_list` / `vectorcraft://commands`); the prompt `trace-and-style`
 already walks Image Trace. Short agent entry points:
 
-- Symbols: `symbol.list` (each row includes `registration` 0..8 and `exportType`: `movieClip`|`graphic`),
-  `symbol.new {name?, registration?, exportType?, nineSlice?, nineSliceGuides?, ids?}`,
-  `symbol.options {name?, newName?, registration?, exportType?, nineSlice?, nineSliceGuides?}` (`nineSlice` bool turns
-  9-slice guides on or off; `nineSliceGuides` is `[left, top, right, bottom]`, fractions 0..1 of the symbol size; rows
-  of `symbol.list` carry `nineSlice`: the guides or `null`),
+- Symbols: `symbol.list` (each row includes `registration` 0..8, `exportType`: `movieClip`|`graphic` and
+  `symbolType`: `dynamic`|`static`), `symbol.get {name?}` (the row and the symbol's `art`, in symbol space, whose
+  object ids `symbol.override` names),
+  `symbol.new {name?, registration?, exportType?, symbolType?, nineSlice?, nineSliceGuides?, ids?}`,
+  `symbol.options {name?, newName?, registration?, exportType?, symbolType?, nineSlice?, nineSliceGuides?}` (`nineSlice`
+  bool turns 9-slice guides on or off; `nineSliceGuides` is `[left, top, right, bottom]`, fractions 0..1 of the symbol
+  size; rows of `symbol.list` carry `nineSlice`: the guides or `null`),
   `symbol.place {name?, x?, y?}`, `symbol.breakLink {ids?}`, `symbol.replace`, `symbol.edit`, `symbol.duplicate`,
-  `symbol.selectInstances {name}`. `symbol.new` and `symbol.duplicate {name, newName?}` trim the white space around the
+  `symbol.selectInstances {name}`. Dynamic symbols (the default Symbol Type): `symbol.override {ids?, target, fill?:
+  {color|swatch|none|gradient}, stroke?: {…, width?}, opacity?, blend?}` gives the selected instances a look of their
+  own for one object of the symbol's art (`target`, an id from `symbol.get`'s `art`) and keeps them linked, so a
+  `symbol.update` changes them too; an override starts as the object's own look and later calls change only the
+  fields given; `symbol.reset {ids?, target?}` drops them. `symbol.edit` and `symbol.update` keep the art's object
+  ids, so overrides survive a redefinition; `symbol.options {symbolType: "static"}` drops them. `symbol.new` and `symbol.duplicate {name, newName?}` trim the white space around the
   name they are given, as `symbol.options` trims `newName`; a blank one gives "New Symbol" or "<name> copy".
 - The Brushes panel menu's Select All Unused: `brush.unused` (a query) lists the brushes no stroke paints with, in
   library order, and the panel selects them. Strokes in the art (opacity masks included), symbols, graph designs,
