@@ -5412,3 +5412,9 @@ axis	Y Axis	Sumbu Y
 @msg	`dither` applies to gradient fills (paint.setFill)	`dither` berlaku untuk isian gradien (paint.setFill)
 @msg	`dither` must be true or false	`dither` harus true atau false
 @msg	`method` must be classic or perceptual	`method` harus classic atau perceptual
+	Symbol Type:	Jenis simbol:
+	Dynamic Symbol	Simbol dinamis
+	Static Symbol	Simbol statis
+	Symbol Definition	Definisi simbol
+	Override Symbol Instance	Timpa instans simbol
+	Reset Symbol Instance	Atur ulang instans simbol

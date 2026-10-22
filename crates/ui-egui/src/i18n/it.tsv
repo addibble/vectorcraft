@@ -5059,3 +5059,9 @@ axis	Y Axis	Asse Y
 @msg	`dither` must be true or false	`dither` deve essere true o false
 	Perceptual	Percettivo
 @msg	`method` must be classic or perceptual	`method` deve essere classic o perceptual
+	Symbol Type:	Tipo di simbolo:
+	Dynamic Symbol	Simbolo dinamico
+	Static Symbol	Simbolo statico
+	Symbol Definition	Definizione simbolo
+	Override Symbol Instance	Sovrascrivi istanza di simbolo
+	Reset Symbol Instance	Reimposta istanza di simbolo

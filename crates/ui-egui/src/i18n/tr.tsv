@@ -5405,3 +5405,9 @@ axis	Y Axis	Y ekseni
 	Snap to Perpendicular	Dikeye Yasla
 	Geometric Guides	Geometrik Kılavuzlar
 @msg	`method` must be classic or perceptual	`method` classic veya perceptual olmalıdır
+	Symbol Type:	Sembol Türü:
+	Dynamic Symbol	Dinamik Sembol
+	Static Symbol	Statik Sembol
+	Symbol Definition	Sembol Tanımı
+	Override Symbol Instance	Sembol Örneğini Geçersiz Kıl
+	Reset Symbol Instance	Sembol Örneğini Sıfırla

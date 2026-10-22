@@ -5358,3 +5358,9 @@ axis	Y Axis	Y ღერძი
 @msg	`dither` applies to gradient fills (paint.setFill)	`dither` ვრცელდება გრადიენტულ შევსებებზე (paint.setFill)
 @msg	`dither` must be true or false	`dither` უნდა იყოს true ან false
 @msg	`method` must be classic or perceptual	`method` უნდა იყოს classic ან perceptual
+	Symbol Type:	სიმბოლოს ტიპი:
+	Dynamic Symbol	დინამიკური სიმბოლო
+	Static Symbol	სტატიკური სიმბოლო
+	Symbol Definition	სიმბოლოს განსაზღვრება
+	Override Symbol Instance	სიმბოლოს ეგზემპლარის გადაფარვა
+	Reset Symbol Instance	სიმბოლოს ეგზემპლარის ჩამოყრა

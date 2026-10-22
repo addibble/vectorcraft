@@ -5039,3 +5039,9 @@ axis	Y Axis	Trục Y
 @msg	`dither` must be true or false	`dither` phải là true hoặc false
 	Perceptual	Theo cảm nhận
 @msg	`method` must be classic or perceptual	`method` phải là classic hoặc perceptual
+	Symbol Type:	Kiểu ký hiệu:
+	Dynamic Symbol	Ký hiệu động
+	Static Symbol	Ký hiệu tĩnh
+	Symbol Definition	Định nghĩa ký hiệu
+	Override Symbol Instance	Ghi đè thực thể ký hiệu
+	Reset Symbol Instance	Đặt lại thực thể ký hiệu

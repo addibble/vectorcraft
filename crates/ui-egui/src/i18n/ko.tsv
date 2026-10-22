@@ -5022,3 +5022,9 @@ axis	Y Axis	Y축
 @msg	`dither` must be true or false	`dither`은(는) true 또는 false여야 합니다
 	Perceptual	지각적
 @msg	`method` must be classic or perceptual	`method`는 classic 또는 perceptual이어야 합니다
+	Symbol Type:	심볼 유형:
+	Dynamic Symbol	동적 심볼
+	Static Symbol	정적 심볼
+	Symbol Definition	심볼 정의
+	Override Symbol Instance	심볼 인스턴스 덮어쓰기
+	Reset Symbol Instance	심볼 인스턴스 재설정

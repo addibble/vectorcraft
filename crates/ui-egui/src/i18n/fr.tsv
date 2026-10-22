@@ -5441,3 +5441,9 @@ axis	Y Axis	Axe Y
 @msg	`dither` applies to gradient fills (paint.setFill)	`dither` s’applique aux fonds en dégradé (paint.setFill)
 @msg	`dither` must be true or false	`dither` doit valoir true ou false
 @msg	`method` must be classic or perceptual	`method` doit être classic ou perceptual
+	Symbol Type:	Type de symbole :
+	Dynamic Symbol	Symbole dynamique
+	Static Symbol	Symbole statique
+	Symbol Definition	Définition du symbole
+	Override Symbol Instance	Surcharger l’instance de symbole
+	Reset Symbol Instance	Réinitialiser l’instance de symbole

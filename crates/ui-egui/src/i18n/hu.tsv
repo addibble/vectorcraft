@@ -5428,3 +5428,9 @@ axis	Y Axis	Y tengely
 @msg	`dither` applies to gradient fills (paint.setFill)	A `dither` színátmenetes kitöltésekre vonatkozik (paint.setFill)
 @msg	`dither` must be true or false	`dither`: true vagy false kell
 @msg	`method` must be classic or perceptual	a `method` értéke classic vagy perceptual lehet
+	Symbol Type:	Szimbólum típusa:
+	Dynamic Symbol	Dinamikus szimbólum
+	Static Symbol	Statikus szimbólum
+	Symbol Definition	Szimbólumdefiníció
+	Override Symbol Instance	Szimbólumpéldány felülbírálása
+	Reset Symbol Instance	Szimbólumpéldány visszaállítása

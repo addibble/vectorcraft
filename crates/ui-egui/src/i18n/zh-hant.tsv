@@ -5078,3 +5078,9 @@ axis	Y Axis	Y 軸
 @msg	`dither` must be true or false	`dither` 必須是 true 或 false
 	Perceptual	感知
 @msg	`method` must be classic or perceptual	`method` 必須是 classic 或 perceptual
+	Symbol Type:	符號類型:
+	Dynamic Symbol	動態符號
+	Static Symbol	靜態符號
+	Symbol Definition	符號定義
+	Override Symbol Instance	覆寫符號範例
+	Reset Symbol Instance	重設符號範例

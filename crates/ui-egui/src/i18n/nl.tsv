@@ -5455,3 +5455,9 @@ axis	Y Axis	Y-as
 @msg	`dither` applies to gradient fills (paint.setFill)	`dither` geldt voor verloopvullingen (paint.setFill)
 @msg	`dither` must be true or false	`dither` moet true of false zijn
 @msg	`method` must be classic or perceptual	`method` moet classic of perceptual zijn
+	Symbol Type:	Symbooltype:
+	Dynamic Symbol	Dynamisch symbool
+	Static Symbol	Statisch symbool
+	Symbol Definition	Symbooldefinitie
+	Override Symbol Instance	Symboolinstantie overschrijven
+	Reset Symbol Instance	Symboolinstantie opnieuw instellen

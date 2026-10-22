@@ -5398,3 +5398,9 @@ axis	Y Axis	Y-axel
 @msg	`dither` applies to gradient fills (paint.setFill)	`dither` gäller övertoningsfyllningar (paint.setFill)
 @msg	`dither` must be true or false	`dither` måste vara true eller false
 @msg	`method` must be classic or perceptual	`method` måste vara classic eller perceptual
+	Symbol Type:	Symboltyp:
+	Dynamic Symbol	Dynamisk symbol
+	Static Symbol	Statisk symbol
+	Symbol Definition	Symboldefinition
+	Override Symbol Instance	Åsidosätt symbolinstans
+	Reset Symbol Instance	Återställ symbolinstans

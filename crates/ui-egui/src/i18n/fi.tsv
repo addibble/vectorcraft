@@ -5473,3 +5473,9 @@ axis	Y Axis	Y-akseli
 @msg	`dither` applies to gradient fills (paint.setFill)	`dither` koskee liukuväritäyttöjä (paint.setFill)
 @msg	`dither` must be true or false	`dither` on oltava true tai false
 @msg	`method` must be classic or perceptual	`method` on oltava classic tai perceptual
+	Symbol Type:	Symbolin tyyppi:
+	Dynamic Symbol	Dynaaminen symboli
+	Static Symbol	Staattinen symboli
+	Symbol Definition	Symbolin määritys
+	Override Symbol Instance	Ohita symbolin ilmentymä
+	Reset Symbol Instance	Palauta symbolin ilmentymä

@@ -5121,3 +5121,9 @@ axis	Y Axis	Y 軸
 @msg	`dither` must be true or false	`dither` には true または false を指定してください
 	Perceptual	知覚的
 @msg	`method` must be classic or perceptual	`method` には classic または perceptual を指定してください
+	Symbol Type:	シンボルの種類:
+	Dynamic Symbol	ダイナミックシンボル
+	Static Symbol	スタティックシンボル
+	Symbol Definition	シンボルの定義
+	Override Symbol Instance	シンボルインスタンスを上書き
+	Reset Symbol Instance	シンボルインスタンスをリセット

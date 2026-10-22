@@ -5396,3 +5396,9 @@ axis	Y Axis	Y ос
 @msg	`dither` applies to gradient fills (paint.setFill)	`dither` се прилага към градиентни запълки (paint.setFill)
 @msg	`dither` must be true or false	`dither` трябва да бъде true или false
 @msg	`method` must be classic or perceptual	`method` трябва да е classic или perceptual
+	Symbol Type:	Тип на символа:
+	Dynamic Symbol	Динамичен символ
+	Static Symbol	Статичен символ
+	Symbol Definition	Дефиниция на символ
+	Override Symbol Instance	Замяна в екземпляр на символ
+	Reset Symbol Instance	Нулиране на екземпляр на символ

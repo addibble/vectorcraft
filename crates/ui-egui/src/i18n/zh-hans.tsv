@@ -5282,3 +5282,9 @@ axis	Y Axis	Y 轴
 @msg	`dither` applies to gradient fills (paint.setFill)	`dither` 适用于渐变填色 (paint.setFill)
 @msg	`dither` must be true or false	`dither` 必须是 true 或 false
 @msg	`method` must be classic or perceptual	`method` 必须是 classic 或 perceptual
+	Symbol Type:	符号类型:
+	Dynamic Symbol	动态符号
+	Static Symbol	静态符号
+	Symbol Definition	符号定义
+	Override Symbol Instance	覆盖符号实例
+	Reset Symbol Instance	重置符号实例

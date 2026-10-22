@@ -5055,3 +5055,9 @@ axis	Y Axis	Ось Y
 @msg	`dither` must be true or false	`dither` должно быть true или false
 	Perceptual	Перцепционный
 @msg	`method` must be classic or perceptual	`method` должен быть classic или perceptual
+	Symbol Type:	Тип символа:
+	Dynamic Symbol	Динамический символ
+	Static Symbol	Статический символ
+	Symbol Definition	Определение символа
+	Override Symbol Instance	Переопределить экземпляр символа
+	Reset Symbol Instance	Сбросить экземпляр символа
