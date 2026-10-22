@@ -1524,6 +1524,8 @@ font-technology	Variable	Променливи
 	Insert Special Character	Вмъкване на специален знак
 	Insert Whitespace Character	Вмъкване на интервален знак
 	Inspect Document	Инспектиране на документа
+	Patch Document	Прилагане на пач към документа
+	Patch	Пач
 	Query Document	Заявка към документа
 	Document Schema	Схема на документа
 	Inspect Object	Инспектиране на обекта

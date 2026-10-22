@@ -64,6 +64,8 @@ kurbo = { version = "0.13", features = ["serde", "schemars"] }
 schemars = "0.8"
 # JSONPath (RFC 9535) over the document model (`document.query`).
 serde_json_path = "0.7"
+# JSON Patch (RFC 6902) with JSON Pointer paths (RFC 6901) over the document model (`document.patch`).
+json-patch = "4"
 peniko = "0.6"
 thiserror = "2"
 serde = { version = "1", features = ["derive", "rc"] }
