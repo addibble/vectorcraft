@@ -5115,3 +5115,9 @@ axis	Y Axis	Y-Achse
 	Rectangular Grid Tool Options	Optionen für das Rechteckiges-Raster-Werkzeug
 	Polar Grid Tool Options	Optionen für das Radiales-Raster-Werkzeug
 	Fill Line	Linie füllen
+	Symbol Type:	Symboltyp:
+	Dynamic Symbol	Dynamisches Symbol
+	Static Symbol	Statisches Symbol
+	Symbol Definition	Symboldefinition
+	Override Symbol Instance	Symbolinstanz überschreiben
+	Reset Symbol Instance	Symbolinstanz zurücksetzen

@@ -5533,3 +5533,9 @@ axis	Y Axis	osa Y
 	Rectangular Grid Tool Options	Možnosti nástroje Obdélníková mřížka
 	Polar Grid Tool Options	Možnosti nástroje Polární mřížka
 	Fill Line	Výplň úsečky
+	Symbol Type:	Typ symbolu:
+	Dynamic Symbol	Dynamický symbol
+	Static Symbol	Statický symbol
+	Symbol Definition	Definice symbolu
+	Override Symbol Instance	Přepsat instanci symbolu
+	Reset Symbol Instance	Obnovit instanci symbolu

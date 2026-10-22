@@ -98,6 +98,19 @@ fn has_instances_selected(app: &VectorcraftApp) -> bool {
     })
 }
 
+/// Is an instance with overrides of its own (a dynamic symbol's) selected, which Reset takes back?
+fn has_overridden_instances_selected(app: &VectorcraftApp) -> bool {
+    app.session.active().is_some_and(|st| {
+        st.selection.objects.iter().any(|id| {
+            let mut any = false;
+            if let Some(n) = st.doc.node(*id) {
+                n.walk(&mut |c| any |= !c.symbol_overrides().is_empty());
+            }
+            any
+        })
+    })
+}
+
 pub fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
     let Some(doc) = app.session.active().map(|d| d.doc.clone()) else { return };
@@ -200,8 +213,9 @@ pub fn menu(app: &mut VectorcraftApp, ui: &mut Ui) {
     let sel = current(app);
     let has_sel = app.session.active().is_some_and(|d| !d.selection.is_empty());
     let inst = has_instances_selected(app);
+    let overridden = has_overridden_instances_selected(app);
     let name = json!({"name": sel});
-    let items: [(&str, bool, &str, Value); 10] = [
+    let items: [(&str, bool, &str, Value); 11] = [
         (tl!("New Symbol…"), has_sel, "ui.symbolOptions", json!({})),
         (tl!("Redefine Symbol"), has_sel && sel.is_some(), "symbol.update", name.clone()),
         (tl!("Duplicate Symbol"), sel.is_some(), "symbol.duplicate", name.clone()),
@@ -211,6 +225,7 @@ pub fn menu(app: &mut VectorcraftApp, ui: &mut Ui) {
         (tl!("Place Symbol Instance"), sel.is_some(), "symbol.place", name.clone()),
         (tl!("Replace Symbol"), inst && sel.is_some(), "symbol.replace", name.clone()),
         (tl!("Break Link to Symbol"), inst, "symbol.breakLink", json!({})),
+        (tl!("Reset"), overridden, "symbol.reset", json!({})),
         (tl!("Select All Instances"), sel.is_some(), "symbol.selectInstances", name),
     ];
     for (label, enabled, cmd, params) in items {

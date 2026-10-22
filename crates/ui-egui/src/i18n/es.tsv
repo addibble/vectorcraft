@@ -5475,3 +5475,9 @@ axis	Y Axis	Eje Y
 	Rectangular Grid Tool Options	Opciones de la herramienta Cuadrícula rectangular
 	Polar Grid Tool Options	Opciones de la herramienta Cuadrícula polar
 	Fill Line	Rellenar línea
+	Symbol Type:	Tipo de símbolo:
+	Dynamic Symbol	Símbolo dinámico
+	Static Symbol	Símbolo estático
+	Symbol Definition	Definición del símbolo
+	Override Symbol Instance	Anular instancia de símbolo
+	Reset Symbol Instance	Restablecer instancia de símbolo

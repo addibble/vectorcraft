@@ -5472,3 +5472,9 @@ axis	Y Axis	Y ос
 	Rectangular Grid Tool Options	Опции на инструмента „Правоъгълна мрежа“
 	Polar Grid Tool Options	Опции на инструмента „Полярна мрежа“
 	Fill Line	Запълване на линия
+	Symbol Type:	Тип на символа:
+	Dynamic Symbol	Динамичен символ
+	Static Symbol	Статичен символ
+	Symbol Definition	Дефиниция на символ
+	Override Symbol Instance	Замяна в екземпляр на символ
+	Reset Symbol Instance	Нулиране на екземпляр на символ

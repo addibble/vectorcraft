@@ -5450,3 +5450,9 @@ axis	Y Axis	Eixo Y
 	Rectangular Grid Tool Options	Opções da Ferramenta Grade Retangular
 	Polar Grid Tool Options	Opções da Ferramenta Grade Polar
 	Fill Line	Preencher linha
+	Symbol Type:	Tipo de Símbolo:
+	Dynamic Symbol	Símbolo Dinâmico
+	Static Symbol	Símbolo Estático
+	Symbol Definition	Definição do Símbolo
+	Override Symbol Instance	Substituir Instância de Símbolo
+	Reset Symbol Instance	Redefinir Instância de Símbolo

@@ -5488,3 +5488,9 @@ axis	Y Axis	Y-akse
 	Rectangular Grid Tool Options	Indstillinger for rektangulært gitterværktøj
 	Polar Grid Tool Options	Indstillinger for polært gitterværktøj
 	Fill Line	Udfyld linje
+	Symbol Type:	Symboltype:
+	Dynamic Symbol	Dynamisk symbol
+	Static Symbol	Statisk symbol
+	Symbol Definition	Symboldefinition
+	Override Symbol Instance	Tilsidesæt symbolforekomst
+	Reset Symbol Instance	Nulstil symbolforekomst

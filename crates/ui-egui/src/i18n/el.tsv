@@ -5485,3 +5485,9 @@ axis	Y Axis	Άξονας Y
 	Rectangular Grid Tool Options	Επιλογές εργαλείου ορθογώνιου πλέγματος
 	Polar Grid Tool Options	Επιλογές εργαλείου πολικού πλέγματος
 	Fill Line	Γέμισμα γραμμής
+	Symbol Type:	Τύπος συμβόλου:
+	Dynamic Symbol	Δυναμικό σύμβολο
+	Static Symbol	Στατικό σύμβολο
+	Symbol Definition	Ορισμός συμβόλου
+	Override Symbol Instance	Παράκαμψη στιγμιότυπου συμβόλου
+	Reset Symbol Instance	Επαναφορά στιγμιότυπου συμβόλου

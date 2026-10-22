@@ -5532,3 +5532,9 @@ axis	Y Axis	Axe Y
 	Rectangular Grid Tool Options	Options de l’outil Grille rectangulaire
 	Polar Grid Tool Options	Options de l’outil Grille à coordonnées polaires
 	Fill Line	Remplir le trait
+	Symbol Type:	Type de symbole :
+	Dynamic Symbol	Symbole dynamique
+	Static Symbol	Symbole statique
+	Symbol Definition	Définition du symbole
+	Override Symbol Instance	Surcharger l’instance de symbole
+	Reset Symbol Instance	Réinitialiser l’instance de symbole

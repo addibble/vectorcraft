@@ -5372,3 +5372,9 @@ axis	Y Axis	Y 轴
 	Rectangular Grid Tool Options	矩形网格工具选项
 	Polar Grid Tool Options	极坐标网格工具选项
 	Fill Line	填充线段
+	Symbol Type:	符号类型:
+	Dynamic Symbol	动态符号
+	Static Symbol	静态符号
+	Symbol Definition	符号定义
+	Override Symbol Instance	覆盖符号实例
+	Reset Symbol Instance	重置符号实例

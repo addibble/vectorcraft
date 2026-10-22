@@ -5496,3 +5496,9 @@ axis	Y Axis	Y ekseni
 	Rectangular Grid Tool Options	Dikdörtgen Izgara Aracı Seçenekleri
 	Polar Grid Tool Options	Yuvarlak Izgara Aracı Seçenekleri
 	Fill Line	Çizgiyi doldur
+	Symbol Type:	Sembol Türü:
+	Dynamic Symbol	Dinamik Sembol
+	Static Symbol	Statik Sembol
+	Symbol Definition	Sembol Tanımı
+	Override Symbol Instance	Sembol Örneğini Geçersiz Kıl
+	Reset Symbol Instance	Sembol Örneğini Sıfırla

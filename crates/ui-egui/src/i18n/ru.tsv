@@ -5145,3 +5145,9 @@ axis	Y Axis	Ось Y
 	Rectangular Grid Tool Options	Параметры инструмента «Прямоугольная сетка»
 	Polar Grid Tool Options	Параметры инструмента «Полярная сетка»
 	Fill Line	Заливка отрезка
+	Symbol Type:	Тип символа:
+	Dynamic Symbol	Динамический символ
+	Static Symbol	Статический символ
+	Symbol Definition	Определение символа
+	Override Symbol Instance	Переопределить экземпляр символа
+	Reset Symbol Instance	Сбросить экземпляр символа

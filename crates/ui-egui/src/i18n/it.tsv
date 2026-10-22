@@ -5149,3 +5149,9 @@ axis	Y Axis	Asse Y
 	Rectangular Grid Tool Options	Opzioni strumento Griglia rettangolare
 	Polar Grid Tool Options	Opzioni strumento Griglia polare
 	Fill Line	Riempi linea
+	Symbol Type:	Tipo di simbolo:
+	Dynamic Symbol	Simbolo dinamico
+	Static Symbol	Simbolo statico
+	Symbol Definition	Definizione simbolo
+	Override Symbol Instance	Sovrascrivi istanza di simbolo
+	Reset Symbol Instance	Reimposta istanza di simbolo

@@ -1,10 +1,11 @@
-//! Symbol Options: name, Export Type (Graphic or Movie Clip) and Registration for a new symbol
-//! from the selection (`symbol.new`), or for the current symbol in the Symbols panel
-//! (`symbol.options`).
+//! Symbol Options: name, Export Type (Graphic or Movie Clip), Symbol Type (Dynamic or Static)
+//! and Registration for a new symbol from the selection (`symbol.new`), or for the current symbol
+//! in the Symbols panel (`symbol.options`).
 //!
 //! Fields: `name`, `nineSlice` (bool) with `sliceLeft` / `sliceTop` / `sliceRight` / `sliceBottom`
-//! (percent of the symbol's size), `exportType` (`movieClip` | `graphic`), `registration` (0..8, the 9-point grid;
-//! 4 = centre), `__edit` (true when editing an existing symbol). Help:
+//! (percent of the symbol's size), `exportType` (`movieClip` | `graphic`), `symbolType` (`dynamic` |
+//! `static`), `registration` (0..8, the 9-point grid; 4 = centre), `__edit` (true when editing an
+//! existing symbol). Help:
 //! <https://helpx.adobe.com/illustrator/desktop/manage-objects/traces-mockups-symbols/create-and-place-symbols.html>.
 
 use serde_json::{Map, Value, json};
@@ -41,6 +42,10 @@ fn slice_params(d: &Dialog) -> Value {
 /// Export Type choices: (value, label). Illustrator's default is Movie Clip.
 const EXPORT_TYPES: [(&str, &str); 2] = [("movieClip", "Movie Clip"), ("graphic", "Graphic")];
 
+/// Symbol Type choices: (value, label). The default is Dynamic: instances may be given a look of
+/// their own for objects of the art (`symbol.override`) and stay linked.
+const SYMBOL_TYPES: [(&str, &str); 2] = [("dynamic", "Dynamic Symbol"), ("static", "Static Symbol")];
+
 pub(super) const SPEC: DialogSpec = DialogSpec { heading: |_| tl!("Symbol Options").into(), body, confirm, min_width: 320.0, ..DialogSpec::FORM };
 
 /// Open Symbol Options to name a new symbol made from the selection.
@@ -50,7 +55,7 @@ pub fn open(app: &mut VectorcraftApp) -> Result<Value, String> {
         return Err("nothing selected".into());
     }
     let name = st.doc.unique_symbol_name("New Symbol");
-    let mut fields = json!({ "name": name, "exportType": "movieClip", "registration": 4, "__edit": false });
+    let mut fields = json!({ "name": name, "exportType": "movieClip", "symbolType": "dynamic", "registration": 4, "__edit": false });
     if let Some(o) = fields.as_object_mut() {
         o.extend(slice_fields(None));
     }
@@ -75,10 +80,12 @@ pub fn open_edit(app: &mut VectorcraftApp, name: Option<&str>) -> Result<Value, 
             .ok_or_else(|| "the document has no symbols".to_string())?,
     };
     let export = st.doc.symbol_export_type(&name).id();
+    let kind = st.doc.symbol_type(&name).id();
     let registration = st.doc.symbol_registration(&name).0;
     let mut fields = json!({
         "name": name,
         "exportType": export,
+        "symbolType": kind,
         "registration": registration,
         "__edit": true,
         "__from": name,
@@ -101,6 +108,15 @@ fn body(_: &mut VectorcraftApp, ui: &mut egui::Ui, d: &mut Dialog) -> bool {
         let labels = EXPORT_TYPES.map(|(_, l)| l);
         if let Some((value, _)) = widgets::dropdown(ui, "symbol-export-type", shown, &labels, 190.0).and_then(|i| EXPORT_TYPES.get(i)) {
             d.fields.insert("exportType".into(), json!(value));
+        }
+        ui.end_row();
+        label(ui, tl!("Symbol Type:"));
+        let cur = d.str("symbolType");
+        let shown = SYMBOL_TYPES.iter().find(|(v, _)| *v == cur).map_or(SYMBOL_TYPES[0].1, |(_, l)| *l);
+        let labels = [tl!("Dynamic Symbol"), tl!("Static Symbol")];
+        let shown = if shown == SYMBOL_TYPES[0].1 { labels[0] } else { labels[1] };
+        if let Some((value, _)) = widgets::dropdown(ui, "symbol-type", shown, &labels, 190.0).and_then(|i| SYMBOL_TYPES.get(i)) {
+            d.fields.insert("symbolType".into(), json!(value));
         }
         ui.end_row();
         label(ui, tl!("Registration:"));
@@ -134,18 +150,20 @@ fn confirm(app: &mut VectorcraftApp, d: &Dialog) -> Result<Value, String> {
         return Err("name is empty".into());
     }
     let export = d.str("exportType");
+    let kind = d.str("symbolType");
+    let kind = if kind.is_empty() { "dynamic".to_string() } else { kind };
     let registration = d.fields.get("registration").and_then(Value::as_u64).unwrap_or(4);
     let edit = d.fields.get("__edit").and_then(Value::as_bool).unwrap_or(false);
     let r = if edit {
         let from = d.fields.get("__from").and_then(Value::as_str).unwrap_or(name);
-        let mut params = json!({ "name": from, "exportType": export, "registration": registration });
+        let mut params = json!({ "name": from, "exportType": export, "symbolType": kind, "registration": registration });
         merge(&mut params, slice_params(d));
         if from != name {
             params["newName"] = json!(name);
         }
         app.run("symbol.options", params)
     } else {
-        let mut params = json!({ "name": name, "exportType": export, "registration": registration });
+        let mut params = json!({ "name": name, "exportType": export, "symbolType": kind, "registration": registration });
         merge(&mut params, slice_params(d));
         app.run("symbol.new", params)
     };
@@ -159,5 +177,30 @@ fn confirm(app: &mut VectorcraftApp, d: &Dialog) -> Result<Value, String> {
 fn merge(into: &mut Value, extra: Value) {
     if let (Some(a), Value::Object(b)) = (into.as_object_mut(), extra) {
         a.extend(b);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Symbol Type opens as the symbol has it (Dynamic by default) and OK applies the choice:
+    /// `symbol.options {symbolType}` on an existing symbol, `symbol.new {symbolType}` on a new one.
+    #[test]
+    fn symbol_type_round_trips_through_the_dialog() {
+        let mut app = VectorcraftApp::new(vectorcraft_engine::Session::new(), Default::default());
+        app.run("file.new", json!({"width": 100, "height": 100})).unwrap();
+        app.run("shape.rectangle", json!({"x": 10, "y": 10, "width": 30, "height": 20})).unwrap();
+        app.run("ui.symbolOptions", json!({})).unwrap();
+        assert_eq!(app.ui.dialog.as_ref().unwrap().str("symbolType"), "dynamic", "a new symbol is dynamic");
+        app.ui.dialog.as_mut().unwrap().fields.insert("symbolType".into(), json!("static"));
+        super::super::confirm(&mut app).unwrap();
+        let list = app.run("symbol.list", json!({})).unwrap();
+        assert_eq!((list["symbols"][0]["name"].as_str(), list["symbols"][0]["symbolType"].as_str()), (Some("New Symbol"), Some("static")));
+        app.run("ui.symbolOptions", json!({"name": "New Symbol"})).unwrap();
+        assert_eq!(app.ui.dialog.as_ref().unwrap().str("symbolType"), "static", "opens with the symbol's type");
+        app.ui.dialog.as_mut().unwrap().fields.insert("symbolType".into(), json!("dynamic"));
+        super::super::confirm(&mut app).unwrap();
+        assert_eq!(app.run("symbol.get", json!({"name": "New Symbol"})).unwrap()["symbolType"], "dynamic");
     }
 }

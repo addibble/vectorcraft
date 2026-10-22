@@ -5489,3 +5489,9 @@ axis	Y Axis	Y-axel
 	Rectangular Grid Tool Options	Alternativ för verktyget för rektangulärt rutnät
 	Polar Grid Tool Options	Alternativ för verktyget för polärt rutnät
 	Fill Line	Fyll linje
+	Symbol Type:	Symboltyp:
+	Dynamic Symbol	Dynamisk symbol
+	Static Symbol	Statisk symbol
+	Symbol Definition	Symboldefinition
+	Override Symbol Instance	Åsidosätt symbolinstans
+	Reset Symbol Instance	Återställ symbolinstans

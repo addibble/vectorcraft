@@ -5488,3 +5488,9 @@ axis	Y Axis	Sumbu Y
 	Rectangular Grid Tool Options	Opsi alat kisi persegi panjang
 	Polar Grid Tool Options	Opsi alat kisi polar
 	Fill Line	Isi garis
+	Symbol Type:	Jenis simbol:
+	Dynamic Symbol	Simbol dinamis
+	Static Symbol	Simbol statis
+	Symbol Definition	Definisi simbol
+	Override Symbol Instance	Timpa instans simbol
+	Reset Symbol Instance	Atur ulang instans simbol

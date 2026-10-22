@@ -5385,3 +5385,9 @@ axis	Y Axis	Oś Y
 	Rectangular Grid Tool Options	Opcje narzędzia Siatka prostokątna
 	Polar Grid Tool Options	Opcje narzędzia Siatka biegunowa
 	Fill Line	Wypełnij odcinek
+	Symbol Type:	Typ symbolu:
+	Dynamic Symbol	Symbol dynamiczny
+	Static Symbol	Symbol statyczny
+	Symbol Definition	Definicja symbolu
+	Override Symbol Instance	Nadpisz wystąpienie symbolu
+	Reset Symbol Instance	Resetuj wystąpienie symbolu
