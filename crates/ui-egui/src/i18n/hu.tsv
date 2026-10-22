@@ -1967,6 +1967,8 @@ file-filter	Templates	Sablonok
 	Insert Whitespace Character	Térközkarakter beszúrása
 	Inserting, deleting and rotating pages	Oldalak beszúrása, törlése és elforgatása
 	Inspect Document	Dokumentum vizsgálata
+	Patch Document	Javítás alkalmazása a dokumentumra
+	Patch	Javítás
 	Query Document	Dokumentum lekérdezése
 	Document Schema	Dokumentum sémája
 	Inspect Object	Objektum vizsgálata

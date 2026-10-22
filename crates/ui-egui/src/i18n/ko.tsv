@@ -1834,6 +1834,8 @@ font-technology	Variable	가변
 	Ink	잉크
 	Insert Character	문자 삽입
 	Inspect Document	문서 검사
+	Patch Document	문서에 패치 적용
+	Patch	패치
 	Query Document	문서 쿼리
 	Document Schema	문서 스키마
 	Inspect Object	개체 검사

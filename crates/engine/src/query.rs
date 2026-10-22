@@ -24,16 +24,21 @@ pub struct QueryOpts {
     pub depth: Option<u64>,
 }
 
-/// The matches of `path` in `value`: `{matches: [{path, value}], total}`, where `path` is the
-/// match's normalized path (`$['layers'][0]`) so a later query can name it exactly.
+/// The matches of `path` in `value`: `{matches: [{path, pointer, value}], total}`, where `path`
+/// is the match's normalized path (`$['layers'][0]`), so a later query names it exactly, and
+/// `pointer` the same as a JSON Pointer (`/layers/0`), what `document.patch` takes.
 pub fn run(value: &Value, path: &str, opts: QueryOpts) -> Result<Value, String> {
     let path = JsonPath::parse(path).map_err(|e| format!("`path` is not a JSONPath (RFC 9535): {e}"))?;
     let located = path.query_located(value);
     let total = located.len();
     let limit = usize::try_from(opts.limit.unwrap_or(DEFAULT_LIMIT)).unwrap_or(usize::MAX);
     let offset = usize::try_from(opts.offset).unwrap_or(usize::MAX);
-    let matches: Vec<Value> =
-        located.iter().skip(offset).take(limit).map(|m| json!({"path": m.location().to_string(), "value": clip(m.node(), opts.depth)})).collect();
+    let matches: Vec<Value> = located
+        .iter()
+        .skip(offset)
+        .take(limit)
+        .map(|m| json!({"path": m.location().to_string(), "pointer": m.location().to_json_pointer(), "value": clip(m.node(), opts.depth)}))
+        .collect();
     let answer = json!({"matches": matches, "total": total});
     let bytes = serde_json::to_string(&answer).map_or(0, |s| s.len());
     if bytes > MAX_BYTES {
@@ -72,7 +77,7 @@ mod tests {
     fn matches_come_with_their_normalized_paths() {
         let v = run(&doc(), "$.artboards[*].name", QueryOpts::default()).unwrap();
         assert_eq!(v["total"], 2);
-        assert_eq!(v["matches"][0], json!({"path": "$['artboards'][0]['name']", "value": "ace"}));
+        assert_eq!(v["matches"][0], json!({"path": "$['artboards'][0]['name']", "pointer": "/artboards/0/name", "value": "ace"}));
         let v = run(&doc(), "$..[?@.kind.type == 'path'].id", QueryOpts::default()).unwrap();
         assert_eq!(v["matches"].as_array().unwrap().iter().map(|m| m["value"].as_u64().unwrap()).collect::<Vec<_>>(), [2, 4]);
     }

@@ -3073,6 +3073,8 @@ theme	Appearance	Ulkoasu
 	Duplicate	Monista
 	Find Objects	Etsi objekteja
 	Inspect Document	Tarkastele asiakirjaa
+	Patch Document	Paikkaa asiakirja
+	Patch	Paikkaus
 	Query Document	Tee kysely asiakirjaan
 	Document Schema	Asiakirjan skeema
 	Inspect Object	Tarkastele objektia
