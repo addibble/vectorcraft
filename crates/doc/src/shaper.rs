@@ -9,19 +9,19 @@ pub const SOURCES: &str = "Shaper Sources";
 pub const FILL_PREFIX: &str = "Shaper Fill ";
 pub const STROKE_PREFIX: &str = "Shaper Stroke ";
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ShaperSpec {
     pub faces: Vec<FaceEdit>,
     pub edges: Vec<EdgeEdit>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct FaceSelector {
     pub sources: Vec<usize>,
     pub anchor: Point,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct FaceEdit {
     pub selector: FaceSelector,
     pub erase: bool,
@@ -31,7 +31,7 @@ pub struct FaceEdit {
     pub paint: Option<Appearance>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct EdgeEdit {
     pub source: usize,
     pub sides: [Vec<usize>; 2],
