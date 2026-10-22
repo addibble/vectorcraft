@@ -1544,6 +1544,8 @@
 	Insert Special Character	Insérer un caractère spécial
 	Insert Whitespace Character	Insérer une espace
 	Inspect Document	Inspecter le document
+	Query Document	Interroger le document
+	Document Schema	Schéma du document
 	Inspect Object	Inspecter l’objet
 	Install Plug-in	Installer un module externe
 	Install Plug-in…	Installer un module externe…

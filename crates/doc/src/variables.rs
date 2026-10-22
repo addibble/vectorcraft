@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use super::{Document, NodeId, NodeKind};
 
 /// What a variable drives.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum VariableKind {
     /// A type object's characters.
@@ -48,14 +48,14 @@ impl VariableKind {
 }
 
 /// One named variable.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Variable {
     pub name: String,
     pub kind: VariableKind,
 }
 
 /// One value a dataset gives a variable.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum DataValue {
     Text(String),
@@ -81,7 +81,7 @@ impl DataValue {
 }
 
 /// One named row of values, applied with `dataset.select`.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct DataSet {
     pub name: String,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -106,7 +106,7 @@ impl DataSet {
 /// variables are defined, which is what makes two text variables on one object deterministic:
 /// the last one wins, and `applied` counts both. Of two visibility variables on one object, the
 /// last one defined wins too.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Variables {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub variables: Vec<Variable>,

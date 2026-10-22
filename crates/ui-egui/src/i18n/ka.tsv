@@ -2692,6 +2692,8 @@ theme	Appearance	იერსახე
 	Duplicate	დუბლირება
 	Find Objects	ობიექტების ძებნა
 	Inspect Document	დოკუმენტის შემოწმება
+	Query Document	დოკუმენტის მოთხოვნა
+	Document Schema	დოკუმენტის სქემა
 	Inspect Object	ობიექტის შემოწმება
 	Begin Undo Group	დაბრუნების ჯგუფის დაწყება
 	End Undo Group	დაბრუნების ჯგუფის დასრულება
