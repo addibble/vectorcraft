@@ -1822,6 +1822,8 @@
 	Ink	잉크
 	Insert Character	문자 삽입
 	Inspect Document	문서 검사
+	Query Document	문서 쿼리
+	Document Schema	문서 스키마
 	Inspect Object	개체 검사
 	Install Plug-in	플러그인 설치
 	Intensity:	강도:
