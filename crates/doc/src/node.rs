@@ -15,7 +15,7 @@ use crate::symbols::{SYMBOL_SQUARE, SymbolBoxes};
 use crate::text::TextObject;
 
 /// Stable per-document object id. Never reused.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(transparent)]
 pub struct NodeId(pub u64);
 
@@ -26,7 +26,7 @@ impl std::fmt::Display for NodeId {
 }
 
 /// Layer colours used for selection highlighting (index into [`LAYER_COLORS`]) or a custom RGB.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub enum LayerColor {
     Preset(u8),
     Custom([u8; 3]),
@@ -74,7 +74,7 @@ impl LayerColor {
 
 /// Live shape parameters (Illustrator's "Live Shapes"). The node's path is regenerated from these
 /// while the shape stays live; editing anchors directly converts it to a plain path.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "shape", rename_all = "lowercase")]
 pub enum LiveShape {
     Rectangle {
@@ -418,7 +418,7 @@ impl From<bool> for Scaling {
 }
 
 /// Embedded or linked raster image.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ImageObject {
     /// Key into [`crate::Document::images`].
     pub key: String,
@@ -442,7 +442,7 @@ pub struct ImageObject {
 
 /// Written with its `type` first, then its fields (an internally tagged enum); read by
 /// [`kind_de`], which takes the fields straight from the file when `type` comes first.
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, schemars::JsonSchema)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum NodeKind {
     /// A top-level layer or sublayer.
@@ -825,7 +825,7 @@ impl Serialize for Node {
 
 /// How a [`Node`] is read: the flat field list of the file format. Fields move into the node
 /// (and its extras, allocated only when one is set) without a copy of what they own.
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 #[serde(rename = "Node")]
 struct NodeWire {
     id: NodeId,
@@ -884,6 +884,33 @@ struct NodeWire {
     symbol_overrides: Vec<crate::symbols::SymbolOverride>,
 }
 
+/// A node's schema is its file form's ([`NodeWire`]: the flat field list a node is written as).
+impl schemars::JsonSchema for Node {
+    fn schema_name() -> String {
+        "Node".into()
+    }
+    fn json_schema(g: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
+        let mut s = NodeWire::json_schema(g);
+        if let schemars::schema::Schema::Object(o) = &mut s {
+            o.metadata().description = Some("One object in the tree: a layer, group, path, type, image or another kind (`kind.type`), with its name, visibility, lock, opacity, blend mode and appearance.".into());
+        }
+        s
+    }
+}
+
+impl schemars::JsonSchema for Knockout {
+    fn schema_name() -> String {
+        "Knockout".into()
+    }
+    fn json_schema(_: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
+        let mut o = schemars::schema::SchemaObject { instance_type: Some(schemars::schema::InstanceType::String.into()), ..Default::default() };
+        o.enum_values = Some(Knockout::ALL.into_iter().map(|k| serde_json::Value::String(k.label().into())).collect());
+        o.metadata().description =
+            Some("Knockout Group: whether a container's children knock each other out (`neutral` follows the enclosing group).".into());
+        o.into()
+    }
+}
+
 impl From<NodeWire> for Node {
     fn from(w: NodeWire) -> Self {
         let extras = NodeExtras {
@@ -923,7 +950,7 @@ impl From<NodeWire> for Node {
 }
 
 /// Opacity mask: the luminance of the mask art sets the object's opacity (white = opaque).
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct OpacityMask {
     /// Mask art in document coordinates.
     pub art: Arc<Node>,
@@ -1792,7 +1819,7 @@ impl Node {
 }
 
 /// Window → Attributes: an object's settings that don't change how it prints.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ObjectAttributes {
     /// Show Center / Don't Show Center (`None`: the object kind's default, [`Node::shows_center`]).
@@ -1869,7 +1896,7 @@ pub const SVG_EVENTS: [&str; 19] = [
 pub const MAX_SVG_SCRIPTS: usize = 64;
 
 /// The Attributes panel's Image Map shapes.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ImageMap {
     #[default]
@@ -1981,7 +2008,7 @@ mod kind_de {
     /// The kinds and their fields as [`NodeKind`] has them, with the defaults its field attributes
     /// note (the compiler checks that every field is here), read externally tagged: the kind from
     /// `type`, its fields from the rest of the object ([`Tagged`]).
-    #[derive(Deserialize)]
+    #[derive(Deserialize, schemars::JsonSchema)]
     #[serde(remote = "NodeKind", rename_all = "lowercase")]
     enum KindDef {
         Layer {

@@ -6,7 +6,7 @@ use vectorcraft_geom::{Affine, PathData, Point, Rect, Vec2};
 
 use crate::appearance::{Appearance, AppearanceItem, Dash, FillLayer, LineCap, LineJoin, StrokeAlign, StrokeLayer};
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub enum Justify {
     /// Align to the start of each paragraph's direction ([`ParaStyle::direction`]): left for
     /// left-to-right paragraphs, right for right-to-left ones. New type's alignment.
@@ -22,7 +22,7 @@ pub enum Justify {
 }
 
 /// Character attributes (the Character panel).
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct CharStyle {
     pub font_family: String,
     #[serde(default = "regular")]
@@ -136,7 +136,7 @@ pub struct CharStyle {
 /// The numeral system digits are drawn in ([`CharStyle::digits`]): as typed, or every digit of
 /// the Western, Arabic-Indic and Eastern Arabic-Indic sets drawn in one of them. The text keeps
 /// the digits that were typed; only the glyphs change (like All Caps).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum Digits {
     /// Each digit as typed.
@@ -174,7 +174,7 @@ impl Digits {
 /// baseline, at the top (right, in vertical type), centre or bottom (left) of the ideographic
 /// em boxes, or at the top (right) or bottom (left) of the ideographic character faces (ICF, the
 /// average box of the ideographs inside the em box: OpenType's `icft` and `icfb` baselines).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum CharAlign {
     #[default]
@@ -187,7 +187,7 @@ pub enum CharAlign {
 }
 
 /// Superscript or subscript proportions in percent of the font size (Document Setup → Type).
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ScriptMetrics {
     /// Glyph size.
     pub size: f64,
@@ -219,7 +219,7 @@ impl Default for ScriptMetrics {
 
 /// Character position (Character panel Superscript / Subscript). The proportions are the
 /// document's when the position is applied, and follow later Document Setup changes.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum CharPosition {
     #[default]
@@ -448,7 +448,7 @@ impl crate::Document {
 }
 
 /// Tab stop alignment (Tabs panel).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum TabAlign {
     #[default]
@@ -460,7 +460,7 @@ pub enum TabAlign {
 }
 
 /// A tab stop, measured from the left edge of the text (area type: the frame's left edge).
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TabStop {
     pub position: f64,
@@ -556,7 +556,7 @@ impl ParaList {
 pub const LIST_HANGING_INDENT: f64 = 18.0;
 
 /// Paragraph composer (Paragraph panel menu): how lines are broken.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum Composer {
     /// Break each line as soon as it is full.
@@ -577,7 +577,7 @@ impl Composer {
 /// hyphenation may break, where, and on how many lines in a row. Saved only when they differ from
 /// the defaults: words longer than 5 letters, 3 letters on each side of the hyphen, no hyphen
 /// limit, no hyphenation zone, and capitalized words hyphenated.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default)]
 pub struct HyphenationOptions {
     /// Words Longer Than: only words with more letters than this are hyphenated.
@@ -605,7 +605,7 @@ impl Default for HyphenationOptions {
 }
 
 /// How a justified line holding a single word is set ([`JustificationOptions::single_word`]).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum SingleWordJustify {
     /// Spread across the line, between its letters.
@@ -624,7 +624,7 @@ pub enum SingleWordJustify {
 /// wide. Justified lines may vary them between Minimum and Maximum to fill the measure. Saved only
 /// when they differ from the defaults: word spacing 80/100/133, letter spacing 0/0/0, glyph
 /// scaling 100/100/100, Auto Leading 120 and Full Justify.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default)]
 pub struct JustificationOptions {
     /// Word Spacing, percent of the font's word space (0..1000).
@@ -701,7 +701,7 @@ impl Default for JustificationOptions {
 /// of joined letters, at most one in each word. Short, Medium and Long kashidas are at most a quarter
 /// of an em, half an em and an em long; a Stylistic kashida is a row of whole tatweels as the font
 /// draws them, at most an em long.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum Kashida {
     /// No kashidas: justified lines widen their word spaces.
@@ -812,7 +812,7 @@ impl ParaStyle {
 /// [`ParaStyle`] as saved. [`Justify::Auto`] is written as the alignment it has in the paragraph
 /// direction (`Right` for right to left, else `Left`) with `justify_auto` set: builds without Auto
 /// read the alignment and ignore the flag, and builds with it read Auto back.
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, schemars::JsonSchema)]
 struct ParaStyleFile {
     #[serde(default)]
     justify: Justify,
@@ -856,6 +856,20 @@ struct ParaStyleFile {
     roman_hanging: bool,
     #[serde(default, skip_serializing_if = "crate::skip::is_default")]
     kashida: Kashida,
+}
+
+/// The schema of a [`ParaStyle`] is its file form's ([`ParaStyleFile`]).
+impl schemars::JsonSchema for ParaStyle {
+    fn schema_name() -> String {
+        "ParaStyle".into()
+    }
+    fn json_schema(g: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
+        let mut s = ParaStyleFile::json_schema(g);
+        if let schemars::schema::Schema::Object(o) = &mut s {
+            o.metadata().description = Some("Paragraph attributes (the Paragraph panel).".into());
+        }
+        s
+    }
 }
 
 impl From<ParaStyle> for ParaStyleFile {
@@ -967,7 +981,7 @@ impl From<ParaStyleFile> for ParaStyle {
 
 /// A paragraph's base direction ([`ParaStyle::direction`]), or the direction characters are set
 /// in ([`CharStyle::char_direction`]).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum ParaDirection {
     LeftToRight,
@@ -975,7 +989,7 @@ pub enum ParaDirection {
 }
 
 /// How a paragraph's leading is measured.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum LeadingModel {
     /// From one line's baseline to the next's: a line's leading is the space above it, and area
@@ -991,7 +1005,7 @@ pub enum LeadingModel {
 /// How Japanese punctuation is spaced (JLREQ 3.1). Full-width punctuation is half a glyph and half
 /// a space: an opening bracket's space before it, a closing bracket's, a comma's or a full stop's
 /// after it.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum Mojikumi {
     /// Every character takes its full advance.
@@ -1009,7 +1023,7 @@ impl Mojikumi {
 }
 
 /// Which Japanese characters may not start or end a line (kinsoku shori).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum Kinsoku {
     /// No kinsoku: a line may break between any two characters that allow a break.
@@ -1027,7 +1041,7 @@ pub enum Kinsoku {
 /// stands outside the line's measure, in the space its punctuation spacing gives it (half width
 /// with Line-end Punctuation Half Width). Closing brackets and Latin punctuation don't hang. Shown
 /// as None / Regular / Force.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum Burasagari {
     /// A comma or full stop that doesn't fit goes to the next line with the character before it.
@@ -1040,7 +1054,7 @@ pub enum Burasagari {
 }
 
 /// Area Type Options "First Baseline" offset.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum FirstBaseline {
     /// The tallest glyph ascent touches the frame top (Illustrator's default).
@@ -1055,7 +1069,7 @@ pub enum FirstBaseline {
 }
 
 /// Area Type Options "Align" (vertical): where the lines of each row/column sit in it.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum VerticalAlign {
     /// Lines start at the top of the cell (the default).
@@ -1083,7 +1097,7 @@ impl VerticalAlign {
 }
 
 /// Text Wrap Options of a wrap object (Object → Text Wrap).
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default)]
 pub struct TextWrap {
     /// Distance kept between the text and the object, in points (Illustrator's default 6 pt).
@@ -1099,7 +1113,7 @@ impl Default for TextWrap {
 }
 
 /// A resolved wrap shape on an area text object: the outline of a wrap object in text space.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct WrapShape {
     pub path: PathData,
     #[serde(flatten)]
@@ -1107,7 +1121,7 @@ pub struct WrapShape {
 }
 
 /// Type on a Path effect: how each glyph is oriented on the path (Type → Type on a Path).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum PathEffect {
     /// Glyphs rotate with the path (the default).
@@ -1142,7 +1156,7 @@ impl PathEffect {
 }
 
 /// Type on a Path Options › Align to Path: which height of the type runs along the path.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum PathAlign {
     /// The font's top edge: the type hangs below the path.
@@ -1172,7 +1186,7 @@ impl PathAlign {
 }
 
 /// Area Type Options: rows and columns, gutters, inset and first baseline of area type.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct AreaOptions {
     #[serde(deserialize_with = "de_rows_or_columns")]
@@ -1222,7 +1236,7 @@ fn de_rows_or_columns<'de, D: serde::Deserializer<'de>>(d: D) -> Result<usize, D
 
 /// How area type and its frame fit each other. Serialized as `"none"`, `"autoHeight"` or
 /// `{"shrinkText": {"minPercent": 50}}`.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum AreaFit {
     /// The frame keeps its size; text that doesn't fit overflows.
@@ -1282,7 +1296,7 @@ impl AreaFit {
 
 /// A named character or paragraph style: the attributes it sets (a subset of [`CharStyle`] or
 /// [`ParaStyle`] fields, by their serialized names). Text using it records the name.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct TextStyleDef {
     pub name: String,
     #[serde(default)]
@@ -1290,7 +1304,7 @@ pub struct TextStyleDef {
 }
 
 /// A run of text sharing one character style.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct TextRun {
     pub text: String,
     pub style: CharStyle,
@@ -1325,7 +1339,7 @@ pub const INLINE_MAX_SCALE: f64 = 100.0;
 /// run's cap height, raised by `baseline_shift` (points, positive = up). Centred on the cap
 /// height the art lines up with capitals and figures (like a mana symbol in rules text) and, at
 /// the default scale, stays inside the font's ascent and descent so the leading doesn't change.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct InlineArt {
     /// Name of the document symbol ([`crate::Symbol::name`]).
     pub symbol: String,
@@ -1364,7 +1378,7 @@ impl InlineArt {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum TextKind {
     /// Point type: anchored at the baseline origin of the first line.
@@ -1417,7 +1431,7 @@ fn reverse_from_end(path: &mut PathData) {
 
 /// Where ruby (furigana) text sits: above its base text in horizontal type, right of it in
 /// vertical type (the Japanese convention), or below (left in vertical type).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum RubyPosition {
     #[default]
@@ -1426,7 +1440,7 @@ pub enum RubyPosition {
 }
 
 /// How ruby text lines up over its base text when the two are different widths.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum RubyAlign {
     /// Centred over the base text.
@@ -1444,7 +1458,7 @@ pub enum RubyAlign {
 /// [`crate::TextObject`] commands' `start`/`end`). The base text itself stays the text;
 /// emptying the reading removes the ruby. New ruby is half the base text's size, centred, and
 /// allowed to overhang neighbouring characters when the reading is longer than its base.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RubySpan {
     /// Byte offset of the first base character in the plain text.
@@ -1483,7 +1497,7 @@ impl RubySpan {
 /// paragraph's). Invariant (kept by [`TextObject::normalize_paras`]): `paras` is either empty —
 /// every paragraph uses `para` — or holds one style per paragraph with `paras[0] == para` and at
 /// least two different styles. Readers that only know `para` see the first paragraph's style.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct TextObject {
     /// Top-to-bottom, right-to-left writing. Defaults to horizontal for old documents.
     #[serde(default, skip_serializing_if = "crate::skip::is_default")]
@@ -2253,7 +2267,7 @@ mod tests {
     /// `justify_auto`); this build reads Auto back.
     #[test]
     fn auto_alignment_saves_readable_by_older_builds() {
-        #[derive(Deserialize, Debug, PartialEq)]
+        #[derive(Deserialize, Debug, PartialEq, schemars::JsonSchema)]
         enum OldJustify {
             Left,
             Center,
@@ -2263,11 +2277,11 @@ mod tests {
             JustifyRight,
             JustifyAll,
         }
-        #[derive(Deserialize)]
+        #[derive(Deserialize, schemars::JsonSchema)]
         struct OldPara {
             justify: OldJustify,
         }
-        #[derive(Deserialize)]
+        #[derive(Deserialize, schemars::JsonSchema)]
         struct OldText {
             para: OldPara,
         }

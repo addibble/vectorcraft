@@ -3073,6 +3073,8 @@ theme	Appearance	Ulkoasu
 	Duplicate	Monista
 	Find Objects	Etsi objekteja
 	Inspect Document	Tarkastele asiakirjaa
+	Query Document	Tee kysely asiakirjaan
+	Document Schema	Asiakirjan skeema
 	Inspect Object	Tarkastele objektia
 	Begin Undo Group	Aloita kumoamisryhmä
 	End Undo Group	Lopeta kumoamisryhmä
