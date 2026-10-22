@@ -11,8 +11,12 @@ use std::sync::Arc;
 
 use serde_json::{Value, json};
 use vectorcraft_brush::{self as brush, Bristle, Brush, BrushKind};
-use vectorcraft_color::{Color, Paint};
-use vectorcraft_doc::{AppearanceItem, Document, FillLayer, Node, NodeId, NodeKind, Symbol, SymbolExportType, SymbolNineSlice, SymbolRegistration};
+use vectorcraft_color::{BlendMode, Color, Paint};
+
+use vectorcraft_doc::{
+    Appearance, AppearanceItem, Document, FillLayer, Node, NodeId, NodeKind, Symbol, SymbolExportType, SymbolNineSlice, SymbolOverride,
+    SymbolRegistration, SymbolType, apply_overrides, art_object,
+};
 use vectorcraft_geom::{Affine, Point, Vec2};
 
 use super::edit::{outermost, selected_roots};
@@ -140,13 +144,22 @@ pub fn specs() -> Vec<CommandSpec> {
             brush_freehand
         ),
         // ----- symbols -----
-        cmd!(query "symbol.list", "Symbols", [], None, "{} → {symbols: [{name, instances, size: [w,h], registration: 0..8, exportType: movieClip|graphic}], current}", has_doc, symbol_list),
+        cmd!(query "symbol.list", "Symbols", [], None, "{} → {symbols: [{name, instances, size: [w,h], registration: 0..8, exportType: movieClip|graphic, symbolType: dynamic|static, nineSlice}], current}", has_doc, symbol_list),
+        cmd!(
+            query "symbol.get",
+            "Symbol Definition",
+            [],
+            None,
+            "{name? (default: current)} → {name, instances, size: [w,h], registration, exportType, symbolType, nineSlice, art: the symbol's art as document.node shows an object, in symbol space (the 20 × 20 square around the origin; an instance's transform places it); the ids of the objects in it are what symbol.override names as its target}",
+            has_doc,
+            symbol_get
+        ),
         cmd!(
             "symbol.new",
             "New Symbol…",
             [],
             None,
-            "{name?, ids?|id?, registration?: 0..8 (9-point grid, 4 = centre; Symbol Options › Registration), exportType?: movieClip (default)|graphic, nineSlice?: bool, nineSliceGuides?: array} make a symbol from the selection and replace it with an instance; nineSlice is Symbol Options › Enable Guides for 9-Slice Scaling, nineSliceGuides [left, top, right, bottom] as fractions 0..1 of the natural size (default a third each) → {name, id, registration, exportType, nineSlice}",
+            "{name?, ids?|id?, registration?: 0..8 (9-point grid, 4 = centre; Symbol Options › Registration), exportType?: movieClip (default)|graphic, symbolType?: dynamic (default)|static (Symbol Options › Symbol Type: instances of a dynamic symbol take overrides, symbol.override), nineSlice?: bool, nineSliceGuides?: array} make a symbol from the selection and replace it with an instance; nineSlice is Symbol Options › Enable Guides for 9-Slice Scaling, nineSliceGuides [left, top, right, bottom] as fractions 0..1 of the natural size (default a third each) → {name, id, registration, exportType, symbolType, nineSlice}",
             has_selection,
             symbol_new
         ),
@@ -155,9 +168,27 @@ pub fn specs() -> Vec<CommandSpec> {
             "Symbol Options…",
             [],
             None,
-            "{name?, newName?, registration?: 0..8, exportType?: movieClip|graphic, nineSlice?: bool, nineSliceGuides?: array} rename a symbol and/or set Symbol Options › Registration and Export Type and 9-slice guides (nineSliceGuides [left, top, right, bottom] fractions 0..1; default name: current) → {name, registration, exportType, nineSlice}",
+            "{name?, newName?, registration?: 0..8, exportType?: movieClip|graphic, symbolType?: dynamic|static (static drops the overrides of the symbol's instances), nineSlice?: bool, nineSliceGuides?: array} rename a symbol and/or set Symbol Options › Registration, Export Type, Symbol Type and 9-slice guides (nineSliceGuides [left, top, right, bottom] fractions 0..1; default name: current) → {name, registration, exportType, symbolType, nineSlice}",
             has_doc,
             symbol_options
+        ),
+        cmd!(
+            "symbol.override",
+            "Override Symbol Instance",
+            [],
+            None,
+            "{ids?|id? (the selected instances), target: the id of an object in the symbol's art (symbol.get), fill?: {color?|swatch?|none?|gradient? as paint.setFill}, stroke?: {color?|swatch?|none?|gradient?, width?: pt}, opacity?: 0..1, blend?: mode} give the selected instances of a dynamic symbol a fill, stroke, opacity and/or blend mode of their own for one object of the symbol's art, keeping them linked to the symbol: an override starts as the object's own look, and a later call changes only the fields it gives (a static symbol's instances are refused) → {ids, target}",
+            has_selection,
+            symbol_override
+        ),
+        cmd!(
+            "symbol.reset",
+            "Reset Symbol Instance",
+            [],
+            None,
+            "{ids?|id?, target?: drop the overrides of one object of the art only} drop the overrides of the selected instances: they show their symbol's art as it is → {ids, removed: how many overrides}",
+            has_selection,
+            symbol_reset
         ),
         cmd!(
             "symbol.place",
@@ -182,7 +213,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Edit Symbol",
             [],
             None,
-            "{id?, ids?: [id…] (instead of id)} break the link of the selected instance so its art can be edited; finish with symbol.update → {name, ids}",
+            "{id?, ids?: [id…] (instead of id)} put the symbol's art (as the symbol holds it: without the instance's stain and overrides) in place of the selected instance so it can be edited; finish with symbol.update. The art keeps its objects' ids when nothing else in the document has them, so the overrides the symbol's instances have for them survive the redefinition → {name, ids}",
             has_selection,
             symbol_edit
         ),
@@ -191,7 +222,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Redefine Symbol",
             [],
             None,
-            "{name, ids?|id?} replace the symbol's art with the selection (instances update; the selection becomes an instance) → {name, id}",
+            "{name, ids?|id?} replace the symbol's art with the selection (instances update; the selection becomes an instance). The objects keep their ids: an instance's override for an object the new art still holds stays, one for an object it no longer holds is dropped → {name, id}",
             has_selection,
             symbol_update
         ),
@@ -210,7 +241,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Replace Symbol",
             [],
             None,
-            "{name, ids?|id?} swap the symbol of the selected instances → {ids}",
+            "{name, ids?|id?} swap the symbol of the selected instances (their overrides, which named objects of the old symbol's art, are dropped) → {ids}",
             has_selection,
             symbol_replace
         ),
@@ -768,6 +799,13 @@ fn export_type_param(p: &Value, cmd: &str) -> Result<Option<SymbolExportType>> {
 /// `nineSlice` (bool) and `nineSliceGuides` ([left, top, right, bottom] fractions of the natural
 /// size): `None` leaves the symbol alone, `Some(None)` turns 9-slice off, `Some(Some(g))` turns it
 /// on with guides `g` (the symbol's current ones, else the centre third, when none are given).
+fn symbol_type_param(p: &Value, cmd: &str) -> Result<Option<SymbolType>> {
+    match str_param(p, "symbolType") {
+        None => Ok(None),
+        Some(s) => SymbolType::from_id(s).map(Some).ok_or_else(|| bad(cmd, format!("symbolType must be dynamic or static, not `{s}`"))),
+    }
+}
+
 fn nine_slice_param(p: &Value, cmd: &str, current: Option<SymbolNineSlice>) -> Result<Option<Option<SymbolNineSlice>>> {
     let on = match p.get("nineSlice") {
         None | Some(Value::Null) => None,
@@ -848,11 +886,30 @@ fn symbol_list(s: &mut Session, _: &Value) -> Result<Value> {
                 "size": [w, h],
                 "registration": d.symbol_registration(&sym.name).0,
                 "exportType": d.symbol_export_type(&sym.name).id(),
+                "symbolType": d.symbol_type(&sym.name).id(),
                 "nineSlice": nine_slice_json(d, &sym.name),
             })
         })
         .collect();
     Ok(json!({ "symbols": list, "current": current_symbol(d).or_else(|| symbol_names(d).into_iter().next()) }))
+}
+
+fn symbol_get(s: &mut Session, p: &Value) -> Result<Value> {
+    const C: &str = "symbol.get";
+    let d = &s.doc()?.doc;
+    let name = resolve_symbol(d, p, C)?;
+    let sym = d.symbols.iter().find(|x| x.name == name).ok_or_else(|| bad(C, format!("no symbol named `{name}`")))?;
+    let (w, h) = natural_size(d, &name);
+    Ok(json!({
+        "name": name,
+        "instances": instances_of(d, Some(&name)).len(),
+        "size": [w, h],
+        "registration": d.symbol_registration(&name).0,
+        "exportType": d.symbol_export_type(&name).id(),
+        "symbolType": d.symbol_type(&name).id(),
+        "nineSlice": nine_slice_json(d, &name),
+        "art": serde_json::to_value(&*sym.art).unwrap_or(Value::Null),
+    }))
 }
 
 /// Replace the root nodes `ids` with one instance of `name` (art already stored). Returns the id.
@@ -879,6 +936,7 @@ fn symbol_new(s: &mut Session, p: &Value) -> Result<Value> {
     let name = s.doc()?.doc.unique_symbol_name(str_param(p, "name").map(str::trim).filter(|n| !n.is_empty()).unwrap_or("New Symbol"));
     let reg = registration_param(p, C)?.unwrap_or(SymbolRegistration::CENTER);
     let export = export_type_param(p, C)?.unwrap_or_default();
+    let kind = symbol_type_param(p, C)?.unwrap_or_default();
     let nine = nine_slice_param(p, C, None)?.flatten();
     // Keep the art where it was: the geometric centre stays at `c`, whatever the registration is.
     let place = place_xf(c + reg.offset_from_center(size.0, size.1), size, reg);
@@ -888,26 +946,33 @@ fn symbol_new(s: &mut Session, p: &Value) -> Result<Value> {
         set_natural_size(d, &name, Some(size));
         d.set_symbol_registration(&name, reg);
         d.set_symbol_export_type(&name, export);
+        d.set_symbol_type(&name, kind);
         d.set_symbol_nine_slice(&name, nine);
         d.unknown.insert(CURRENT_SYMBOL.into(), json!(name));
         let id = replace_with_instance(d, &ids, &name, place)?;
         sel.set([id]);
         Ok(id)
     })?;
-    Ok(
-        json!({ "name": name, "id": id.0, "registration": reg.0, "exportType": export.id(), "nineSlice": nine.map_or(Value::Null, SymbolNineSlice::to_value) }),
-    )
+    Ok(json!({
+        "name": name,
+        "id": id.0,
+        "registration": reg.0,
+        "exportType": export.id(),
+        "symbolType": kind.id(),
+        "nineSlice": nine.map_or(Value::Null, SymbolNineSlice::to_value),
+    }))
 }
 
 fn symbol_options(s: &mut Session, p: &Value) -> Result<Value> {
     const C: &str = "symbol.options";
     let name = resolve_symbol(&s.doc()?.doc, p, C)?;
     let export = export_type_param(p, C)?;
+    let kind = symbol_type_param(p, C)?;
     let reg = registration_param(p, C)?;
     let nine = nine_slice_param(p, C, s.doc()?.doc.symbol_nine_slice(&name))?;
     let new_name = str_param(p, "newName").map(str::trim).filter(|n| !n.is_empty()).map(str::to_string);
-    if new_name.is_none() && export.is_none() && reg.is_none() && nine.is_none() {
-        return Err(bad(C, "pass newName, registration, exportType and/or nineSlice"));
+    if new_name.is_none() && export.is_none() && kind.is_none() && reg.is_none() && nine.is_none() {
+        return Err(bad(C, "pass newName, registration, exportType, symbolType and/or nineSlice"));
     }
     if let Some(ref n) = new_name
         && n != &name
@@ -931,6 +996,7 @@ fn symbol_options(s: &mut Session, p: &Value) -> Result<Value> {
             rename_natural_size(d, &name, n);
             d.rename_symbol_registration(&name, n);
             d.rename_symbol_export_type(&name, n);
+            d.rename_symbol_type(&name, n);
             d.rename_symbol_nine_slice(&name, n);
             if d.unknown.get(CURRENT_SYMBOL).and_then(Value::as_str) == Some(name.as_str()) {
                 d.unknown.insert(CURRENT_SYMBOL.into(), json!(n));
@@ -942,6 +1008,17 @@ fn symbol_options(s: &mut Session, p: &Value) -> Result<Value> {
         if let Some(kind) = export {
             d.set_symbol_export_type(&final_name, kind);
         }
+        if let Some(kind) = kind {
+            d.set_symbol_type(&final_name, kind);
+            if kind == SymbolType::Static {
+                // A static symbol's instances show its art as it is.
+                for id in instances_of(d, Some(&final_name)) {
+                    if let Some(n) = d.node_mut(id) {
+                        n.extras_mut().symbol_overrides.clear();
+                    }
+                }
+            }
+        }
         if let Some(g) = nine {
             d.set_symbol_nine_slice(&final_name, g);
         }
@@ -952,6 +1029,7 @@ fn symbol_options(s: &mut Session, p: &Value) -> Result<Value> {
         "name": final_name,
         "registration": d.symbol_registration(&final_name).0,
         "exportType": d.symbol_export_type(&final_name).id(),
+        "symbolType": d.symbol_type(&final_name).id(),
         "nineSlice": nine_slice_json(d, &final_name),
     }))
 }
@@ -984,17 +1062,32 @@ fn symbol_place(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 /// The plain art of instance `inst` in document space (fresh ids).
-fn expanded_instance(d: &mut Document, inst: &Node) -> Option<Node> {
+/// Does the document's art hold an object by the id of `art` or of anything in it?
+fn ids_taken(d: &Document, art: &Node) -> bool {
+    let mut taken = false;
+    art.walk(&mut |n| taken |= d.node(n.id).is_some());
+    taken
+}
+
+/// Symbol instance `inst` as plain art in its place: its symbol's art as the instance shows it
+/// (overrides applied, the whole stained; `master` instead takes the art as the symbol holds
+/// it, for editing), placed by the instance's transform, with fresh ids, or, for `master`, the
+/// art's own ids when nothing in the document has them: redefining the symbol from the same
+/// objects then keeps the overrides its instances have for them.
+fn expanded_instance(d: &mut Document, inst: &Node, master: bool) -> Option<Node> {
     let NodeKind::SymbolInstance { symbol, xf } = &inst.kind else { return None };
     let sym = d.symbols.iter().find(|s| &s.name == symbol)?;
     let mut art = (*sym.art).clone();
-    if let Some(f) = inst.appearance.fill()
-        && let Some(c) = f.paint.color()
-    {
-        brush::tint_node(&mut art, &c, f.opacity);
+    if !master {
+        apply_overrides(&mut art, inst.symbol_overrides());
+        if let Some(f) = inst.appearance.fill()
+            && let Some(c) = f.paint.color()
+        {
+            brush::tint_node(&mut art, &c, f.opacity);
+        }
     }
     art.transform(*xf, false);
-    let mut art = d.reid(&art);
+    let mut art = if master && !ids_taken(d, &art) { art } else { d.reid(&art) };
     if inst.opacity < 1.0 || inst.blend != vectorcraft_color::BlendMode::Normal {
         if !matches!(art.kind, NodeKind::Group { .. }) {
             let id = d.alloc_id();
@@ -1010,7 +1103,7 @@ fn break_links(d: &mut Document, ids: &[NodeId]) -> Result<Vec<NodeId>> {
     let mut out = vec![];
     for id in ids {
         let Some(inst) = d.node(*id).cloned() else { continue };
-        let Some(art) = expanded_instance(d, &inst) else { continue };
+        let Some(art) = expanded_instance(d, &inst, false) else { continue };
         let (par, idx, _) = d.position(*id).ok_or(EngineError::NoNode(*id))?;
         let aid = art.id;
         d.remove(*id)?;
@@ -1056,9 +1149,14 @@ fn symbol_edit(s: &mut Session, p: &Value) -> Result<Value> {
         _ => return Err(EngineError::Other("select a symbol instance".into())),
     };
     let out = s.edit("Edit Symbol", |d, sel| {
-        let out = break_links(d, &[first])?;
-        sel.set(out.iter().copied());
-        Ok(out)
+        let inst = d.node(first).cloned().ok_or(EngineError::NoNode(first))?;
+        let art = expanded_instance(d, &inst, true).ok_or_else(|| EngineError::Other("the symbol is missing".into()))?;
+        let (par, idx, _) = d.position(first).ok_or(EngineError::NoNode(first))?;
+        let aid = art.id;
+        d.remove(first)?;
+        d.insert(par, idx, art)?;
+        sel.set([aid]);
+        Ok(vec![aid])
     })?;
     Ok(json!({ "name": name, "ids": ids_json(&out) }))
 }
@@ -1074,19 +1172,32 @@ fn symbol_update(s: &mut Session, p: &Value) -> Result<Value> {
     let (art, size, c) = normalize(art)?;
     let old = natural_size(&s.doc()?.doc, &name);
     let id = s.edit("Redefine Symbol", |d, sel| {
-        let art = d.reid(&art);
+        // The selection leaves the document first: the art then keeps the objects' ids (a group
+        // made for several objects gets one), unless something still has one of them.
+        let reg = d.symbol_registration(&name);
+        let id = replace_with_instance(d, &ids, &name, place_xf(c + reg.offset_from_center(size.0, size.1), size, reg))?;
+        let mut art = art;
+        if art.id == NodeId(0) {
+            art.id = d.alloc_id();
+        }
+        let art = if ids_taken(d, &art) { d.reid(&art) } else { art };
+        let art = Arc::new(art);
         if let Some(sym) = d.symbols.iter_mut().find(|x| x.name == name) {
-            sym.art = Arc::new(art);
+            sym.art = art.clone();
         }
         set_natural_size(d, &name, Some(size));
         let fix = Affine::scale_non_uniform(size.0 / old.0, size.1 / old.1);
         for i in instances_of(d, Some(&name)) {
-            if let Some(NodeKind::SymbolInstance { xf, .. }) = d.node_mut(i).map(|n| &mut n.kind) {
+            // The new instance is placed at the new size already.
+            let Some(n) = d.node_mut(i).filter(|_| i != id) else { continue };
+            if let NodeKind::SymbolInstance { xf, .. } = &mut n.kind {
                 *xf *= fix;
             }
+            // Overrides for objects the new art doesn't hold are dropped.
+            if !n.symbol_overrides().is_empty() {
+                n.extras_mut().symbol_overrides.retain(|o| art_object(&art, o.target).is_some());
+            }
         }
-        let reg = d.symbol_registration(&name);
-        let id = replace_with_instance(d, &ids, &name, place_xf(c + reg.offset_from_center(size.0, size.1), size, reg))?;
         sel.set([id]);
         Ok(id)
     })?;
@@ -1130,6 +1241,7 @@ fn symbol_duplicate(s: &mut Session, p: &Value) -> Result<Value> {
     let size = natural_size(d, &name);
     let reg = d.symbol_registration(&name);
     let export = d.symbol_export_type(&name);
+    let kind = d.symbol_type(&name);
     let nine = d.symbol_nine_slice(&name);
     s.edit("Duplicate Symbol", |d, _| {
         let art = d.reid(&sym.art);
@@ -1137,10 +1249,17 @@ fn symbol_duplicate(s: &mut Session, p: &Value) -> Result<Value> {
         set_natural_size(d, &new, Some(size));
         d.set_symbol_registration(&new, reg);
         d.set_symbol_export_type(&new, export);
+        d.set_symbol_type(&new, kind);
         d.set_symbol_nine_slice(&new, nine);
         Ok(())
     })?;
-    Ok(json!({ "name": new, "registration": reg.0, "exportType": export.id(), "nineSlice": nine.map_or(Value::Null, SymbolNineSlice::to_value) }))
+    Ok(json!({
+        "name": new,
+        "registration": reg.0,
+        "exportType": export.id(),
+        "symbolType": kind.id(),
+        "nineSlice": nine.map_or(Value::Null, SymbolNineSlice::to_value),
+    }))
 }
 
 fn symbol_replace(s: &mut Session, p: &Value) -> Result<Value> {
@@ -1160,14 +1279,137 @@ fn symbol_replace(s: &mut Session, p: &Value) -> Result<Value> {
                 Some(NodeKind::SymbolInstance { symbol, .. }) => natural_size(d, symbol),
                 _ => continue,
             };
-            if let Some(NodeKind::SymbolInstance { symbol, xf }) = d.node_mut(*id).map(|n| &mut n.kind) {
+            let Some(n) = d.node_mut(*id) else { continue };
+            if let NodeKind::SymbolInstance { symbol, xf } = &mut n.kind {
                 *symbol = name.clone();
                 *xf *= Affine::scale_non_uniform(new.0 / old.0, new.1 / old.1);
+            }
+            if !n.symbol_overrides().is_empty() {
+                n.extras_mut().symbol_overrides.clear();
             }
         }
         Ok(())
     })?;
     Ok(json!({ "ids": ids_json(&ids) }))
+}
+
+// ---------- dynamic symbols ----------
+
+/// `key` of `p`, an object of paint params as `paint.setFill` takes them (`None` when absent or
+/// null).
+fn override_paint(s: &Session, p: &Value, key: &str, cmd: &str) -> Result<Option<(Paint, Option<f64>)>> {
+    let v = match p.get(key) {
+        None | Some(Value::Null) => return Ok(None),
+        Some(v @ Value::Object(_)) => v,
+        Some(_) => return Err(bad(cmd, format!("`{key}` is an object: {{color?|swatch?|none?|gradient?}}"))),
+    };
+    let paint = super::paint::paint_from(s, v).map_err(|e| match e {
+        EngineError::BadParams { msg, .. } => bad(cmd, format!("`{key}`: {msg}")),
+        e => e,
+    })?;
+    let width = match v.get("width") {
+        None | Some(Value::Null) => None,
+        Some(w) => {
+            Some(w.as_f64().filter(|w| w.is_finite() && *w >= 0.0).ok_or_else(|| bad(cmd, "`stroke.width` is a number of points, 0 or more"))?)
+        }
+    };
+    if paint.is_none() && width.is_none() {
+        return Err(bad(cmd, format!("`{key}` takes color, none, swatch or gradient")));
+    }
+    Ok(Some((paint.unwrap_or(Paint::None), width)))
+}
+
+fn symbol_override(s: &mut Session, p: &Value) -> Result<Value> {
+    const C: &str = "symbol.override";
+    let ids = selected_instances(s, p)?;
+    if ids.is_empty() {
+        return Err(EngineError::Other("no symbol instances selected".into()));
+    }
+    let target = id_param(p, "target").ok_or_else(|| bad(C, "missing `target`: the id of an object in the symbol's art (symbol.get)"))?;
+    let fill = override_paint(s, p, "fill", C)?.map(|(paint, _)| paint);
+    let stroke = override_paint(s, p, "stroke", C)?;
+    let stroke_given = p
+        .get("stroke")
+        .is_some_and(|v| v.get("color").is_some() || v.get("swatch").is_some() || v.get("none").is_some() || v.get("gradient").is_some());
+    let opacity = match p.get("opacity") {
+        None | Some(Value::Null) => None,
+        Some(v) => Some(v.as_f64().filter(|o| o.is_finite()).ok_or_else(|| bad(C, "`opacity` is a number 0..1"))?.clamp(0.0, 1.0) as f32),
+    };
+    let blend = match p.get("blend") {
+        None | Some(Value::Null) => None,
+        Some(v) => Some(v.as_str().and_then(BlendMode::parse).ok_or_else(|| bad(C, "unknown `blend` mode"))?),
+    };
+    if fill.is_none() && stroke.is_none() && opacity.is_none() && blend.is_none() {
+        return Err(bad(C, "pass fill, stroke, opacity and/or blend"));
+    }
+    s.edit("Override Symbol Instance", |d, _| {
+        for id in &ids {
+            let Some(NodeKind::SymbolInstance { symbol, .. }) = d.node(*id).map(|n| &n.kind) else { continue };
+            let symbol = symbol.clone();
+            if d.symbol_type(&symbol) == SymbolType::Static {
+                return Err(EngineError::Other(format!("`{symbol}` is a static symbol: Symbol Options › Symbol Type makes it dynamic")));
+            }
+            let Some(sym) = d.symbols.iter().find(|x| x.name == symbol) else { continue };
+            let Some(object) = art_object(&sym.art, target) else { return Err(bad(C, format!("`{symbol}` has no object {} in its art", target.0))) };
+            let fresh = SymbolOverride::of(object);
+            let Some(n) = d.node_mut(*id) else { continue };
+            let mut e = n.extras_mut();
+            if !e.symbol_overrides.iter().any(|o| o.target == target) {
+                e.symbol_overrides.push(fresh);
+            }
+            let Some(o) = e.symbol_overrides.iter_mut().find(|o| o.target == target) else { continue };
+            let mut ap = Appearance { items: std::mem::take(&mut o.items), ..Appearance::default() };
+            if let Some(paint) = &fill {
+                ap.set_fill(paint.clone());
+            }
+            if let Some((paint, width)) = &stroke {
+                if stroke_given {
+                    ap.set_stroke(paint.clone());
+                }
+                if let Some(w) = width {
+                    match ap.stroke_mut() {
+                        Some(st) => st.width = *w,
+                        None => return Err(bad(C, "the object has no stroke to give a width: pass `stroke: {color}` as well")),
+                    }
+                }
+            }
+            o.items = ap.items;
+            if let Some(opacity) = opacity {
+                o.opacity = opacity;
+            }
+            if let Some(blend) = blend {
+                o.blend = blend;
+            }
+        }
+        Ok(())
+    })?;
+    Ok(json!({ "ids": ids_json(&ids), "target": target.0 }))
+}
+
+fn symbol_reset(s: &mut Session, p: &Value) -> Result<Value> {
+    let ids = selected_instances(s, p)?;
+    if ids.is_empty() {
+        return Err(EngineError::Other("no symbol instances selected".into()));
+    }
+    let target = id_param(p, "target");
+    let removed = s.edit("Reset Symbol Instance", |d, _| {
+        let mut removed = 0;
+        for id in &ids {
+            let Some(n) = d.node_mut(*id) else { continue };
+            if n.symbol_overrides().is_empty() {
+                continue;
+            }
+            let mut e = n.extras_mut();
+            let before = e.symbol_overrides.len();
+            match target {
+                Some(t) => e.symbol_overrides.retain(|o| o.target != t),
+                None => e.symbol_overrides.clear(),
+            }
+            removed += before - e.symbol_overrides.len();
+        }
+        Ok(removed)
+    })?;
+    Ok(json!({ "ids": ids_json(&ids), "removed": removed }))
 }
 
 fn symbol_set_current(s: &mut Session, p: &Value) -> Result<Value> {

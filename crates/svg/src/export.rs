@@ -1660,8 +1660,9 @@ impl Writer<'_> {
     /// use. `None` when the instance needs its own copy of the art: stained by its fill, or moved
     /// by a transform under which the def would not look as the canvas paints it ([`Reuse`]).
     fn symbol_use(&mut self, sym: &vectorcraft_doc::Symbol, inst: &Node, xf: Affine) -> Option<String> {
-        // SVG Tiny has no `<symbol>`.
-        if self.tiny() || vectorcraft_brush::stain(inst).is_some() {
+        // SVG Tiny has no `<symbol>`. A stained instance, or one with overrides of its own, shows
+        // art of its own.
+        if self.tiny() || vectorcraft_brush::stain(inst).is_some() || !inst.symbol_overrides().is_empty() {
             return None;
         }
         if !self.symbols.contains_key(&sym.name) {

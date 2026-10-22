@@ -346,10 +346,7 @@ fn shape_bounds(symbols: &SymbolBoxes, n: &Node) -> Option<Rect> {
         // measured one by one with the effects of those fills and strokes), grown by how far the
         // effects in a symbol's art and a live object's content paint past it.
         _ if has_object_fx(n) => {
-            let symbol = match &n.kind {
-                NodeKind::SymbolInstance { symbol, .. } => symbols.document().symbols.iter().find(|s| s.name == *symbol).map(|s| s.art.clone()),
-                _ => None,
-            };
+            let symbol = symbols.document().overridden_instance_art(n);
             let reshaped = effects::reshape(Some(symbols.document()), n, symbol.as_deref());
             let b = match &reshaped {
                 Some(r) if matches!(n.kind, NodeKind::Text(_)) || (matches!(n.kind, NodeKind::Image(_)) && !r.clips()) => {
@@ -449,10 +446,7 @@ fn cull_bounds_in(symbols: &SymbolBoxes, n: &Node, after_reshape: bool) -> Optio
         // with the geometry effects of those fills and strokes), grown by how far the effects in a
         // symbol instance's art paint past that art.
         _ if has_object_fx(n) => {
-            let symbol = match &n.kind {
-                NodeKind::SymbolInstance { symbol, .. } => symbols.document().symbols.iter().find(|s| s.name == *symbol).map(|s| s.art.clone()),
-                _ => None,
-            };
+            let symbol = symbols.document().overridden_instance_art(n);
             let reshaped = effects::reshape(Some(symbols.document()), n, symbol.as_deref());
             let b = match &reshaped {
                 Some(r) if matches!(n.kind, NodeKind::Text(_)) || (matches!(n.kind, NodeKind::Image(_)) && !r.clips()) => {
