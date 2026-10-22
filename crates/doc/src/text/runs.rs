@@ -3,7 +3,7 @@ use super::*;
 
 /// A named character or paragraph style: the attributes it sets (a subset of [`CharStyle`] or
 /// [`ParaStyle`] fields, by their serialized names). Text using it records the name.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct TextStyleDef {
     pub name: String,
     #[serde(default)]
@@ -11,7 +11,7 @@ pub struct TextStyleDef {
 }
 
 /// A run of text sharing one character style.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct TextRun {
     pub text: String,
     pub style: CharStyle,
@@ -46,7 +46,7 @@ pub const INLINE_MAX_SCALE: f64 = 100.0;
 /// run's cap height, raised by `baseline_shift` (points, positive = up). Centred on the cap
 /// height the art lines up with capitals and figures (like a mana symbol in rules text) and, at
 /// the default scale, stays inside the font's ascent and descent so the leading doesn't change.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct InlineArt {
     /// Name of the document symbol ([`crate::Symbol::name`]).
     pub symbol: String,
@@ -85,7 +85,7 @@ impl InlineArt {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum TextKind {
     /// Point type: anchored at the baseline origin of the first line.
@@ -146,7 +146,7 @@ pub(super) fn reverse_from_end(path: &mut PathData) {
 
 /// Where ruby (furigana) text sits: above its base text in horizontal type, right of it in
 /// vertical type (the Japanese convention), or below (left in vertical type).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum RubyPosition {
     #[default]
@@ -155,7 +155,7 @@ pub enum RubyPosition {
 }
 
 /// How ruby text lines up over its base text when the two are different widths.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum RubyAlign {
     /// Centred over the base text.
@@ -173,7 +173,7 @@ pub enum RubyAlign {
 /// [`crate::TextObject`] commands' `start`/`end`). The base text itself stays the text;
 /// emptying the reading removes the ruby. New ruby is half the base text's size, centred, and
 /// allowed to overhang neighbouring characters when the reading is longer than its base.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RubySpan {
     /// Byte offset of the first base character in the plain text.

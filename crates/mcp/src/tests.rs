@@ -501,6 +501,39 @@ fn headless_hover_waits_for_the_shape_builder_map() {
 }
 
 /// inspect_document reads back the paint type's characters show, as add_text and set_paint give it.
+/// A large document is read a part at a time: `query_document` answers a JSONPath over the model
+/// with each match's normalized path, and `document_schema` describes the model one type at a
+/// time, or the type of the value at a path.
+#[test]
+fn query_document_and_document_schema_read_the_model_a_part_at_a_time() {
+    let mut s = server();
+    let r = call(&mut s, 2, "run_command", json!({"command": "shape.rectangle", "params": {"x": 10, "y": 10, "width": 50, "height": 20}}));
+    let id = serde_json::from_str::<Value>(&text_of(&r)).unwrap()["id"].clone();
+    let r = call(&mut s, 3, "query_document", json!({"path": "$.layers[0].kind.children[*].id"}));
+    let v: Value = serde_json::from_str(&text_of(&r)).unwrap();
+    assert_eq!(v["total"], 1, "{v}");
+    assert_eq!(v["matches"][0], json!({"path": "$['layers'][0]['kind']['children'][0]['id']", "value": id}));
+    let r = call(&mut s, 4, "query_document", json!({"path": "$.layers[*]", "depth": 1}));
+    let v: Value = serde_json::from_str(&text_of(&r)).unwrap();
+    assert!(v["matches"][0]["value"]["kind"].as_str().is_some_and(|k| k.starts_with("{…")), "{v}");
+    let r = call(&mut s, 5, "query_document", json!({"path": "layers["}));
+    assert_eq!(r["isError"], true, "{r}");
+
+    let r = call(&mut s, 6, "document_schema", json!({}));
+    let v: Value = serde_json::from_str(&text_of(&r)).unwrap();
+    assert_eq!(v["type"], "Document");
+    assert!(v["properties"].as_array().unwrap().iter().any(|p| p["name"] == "artboards" && p["type"] == "array of Artboard"), "{v}");
+    let r = call(&mut s, 7, "document_schema", json!({"at": "$.layers[0].kind.children[0].kind"}));
+    let v: Value = serde_json::from_str(&text_of(&r)).unwrap();
+    assert_eq!(v["path"], "$['layers'][0]['kind']['children'][0]['kind']");
+    assert!(v["properties"].as_array().unwrap().iter().any(|p| p["name"] == "path"), "{v}");
+    let r = call(&mut s, 8, "document_schema", json!({"index": true}));
+    let v: Value = serde_json::from_str(&text_of(&r)).unwrap();
+    assert!(v["types"].as_array().unwrap().len() > 50, "{v}");
+    let r = call(&mut s, 9, "document_schema", json!({"type": "Nonesuch"}));
+    assert_eq!(r["isError"], true, "{r}");
+}
+
 #[test]
 fn inspect_document_reports_the_paint_of_type() {
     let mut s = server();

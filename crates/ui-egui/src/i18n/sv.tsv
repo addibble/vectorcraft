@@ -1527,6 +1527,8 @@ font-technology	Variable	Variabla
 	Insert Special Character	Infoga specialtecken
 	Insert Whitespace Character	Infoga blanksteg
 	Inspect Document	Inspektera dokumentet
+	Query Document	Fråga dokumentet
+	Document Schema	Dokumentschema
 	Inspect Object	Inspektera objekt
 	Install Plug-in	Installera plugin
 	Install Plug-in…	Installera plugin…

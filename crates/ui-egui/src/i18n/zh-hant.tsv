@@ -1549,6 +1549,8 @@ file-filter	Templates	範本
 	Insert Special Character	插入特殊字元
 	Insert Whitespace Character	插入空白字元
 	Inspect Document	檢查文件
+	Query Document	查詢文件
+	Document Schema	文件結構描述
 	Inspect Object	檢查物件
 	Install Plug-in	安裝增效模組
 	Install Plug-in…	安裝增效模組…

@@ -29,7 +29,7 @@ pub use tabs_lists::{Bullet, DEFAULT_TAB_INTERVAL, LIST_HANGING_INDENT, NumberSt
 /// paragraph's). Invariant (kept by [`TextObject::normalize_paras`]): `paras` is either empty —
 /// every paragraph uses `para` — or holds one style per paragraph with `paras[0] == para` and at
 /// least two different styles. Readers that only know `para` see the first paragraph's style.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct TextObject {
     /// Top-to-bottom, right-to-left writing. Defaults to horizontal for old documents.
     #[serde(default, skip_serializing_if = "crate::skip::is_default")]

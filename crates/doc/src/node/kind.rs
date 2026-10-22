@@ -3,7 +3,7 @@ use super::live_shape::LiveShape;
 use super::*;
 
 /// Embedded or linked raster image.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ImageObject {
     /// Key into [`crate::Document::images`].
     pub key: String,
@@ -27,7 +27,7 @@ pub struct ImageObject {
 
 /// Written with its `type` first, then its fields (an internally tagged enum); read by
 /// [`kind_de`], which takes the fields straight from the file when `type` comes first.
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, schemars::JsonSchema)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum NodeKind {
     /// A top-level layer or sublayer.
@@ -146,7 +146,7 @@ mod kind_de {
     /// The kinds and their fields as [`NodeKind`] has them, with the defaults its field attributes
     /// note (the compiler checks that every field is here), read externally tagged: the kind from
     /// `type`, its fields from the rest of the object ([`Tagged`]).
-    #[derive(Deserialize)]
+    #[derive(Deserialize, schemars::JsonSchema)]
     #[serde(remote = "NodeKind", rename_all = "lowercase")]
     enum KindDef {
         Layer {

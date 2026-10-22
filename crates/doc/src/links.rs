@@ -18,7 +18,7 @@ pub const PROXY_MIME: &str = "image/png";
 
 /// A linked file: an image object shows the file at `path` (File → Place with Link) and the
 /// document saves only a preview of it.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct LinkInfo {
     /// The file's absolute path.
     pub path: String,
@@ -60,7 +60,7 @@ impl From<&str> for LinkInfo {
 
 /// [`ImageObject::link`] from a link object or, as files saved before links had details, a path.
 pub(crate) fn de_link<'de, D: Deserializer<'de>>(d: D) -> Result<Option<LinkInfo>, D::Error> {
-    #[derive(Deserialize)]
+    #[derive(Deserialize, schemars::JsonSchema)]
     #[serde(untagged)]
     enum Repr {
         Path(String),
@@ -208,7 +208,7 @@ impl Document {
 
 /// Links panel → Placement Options: how a file read again (Relink, Update Link) takes the place of
 /// the art it replaces.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct PlacementOptions {
     #[serde(default)]
     pub preserve: Preserve,
@@ -221,7 +221,7 @@ pub struct PlacementOptions {
 }
 
 /// What a relinked image keeps of the art it replaces.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum Preserve {
     /// Its scale (relative to each file's 100% size), rotation and position.
@@ -257,7 +257,7 @@ impl Preserve {
 }
 
 /// A point of the 3×3 alignment grid, row by row from the top left.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum Align {
     TopLeft,

@@ -249,6 +249,22 @@ are given) with its ancestor `path`, and `limit` / `offset` page the list. A sco
 `nodes` instead of `layers` (each the summary the full tree gives it, sliced by `depth` / `childLimit`) plus
 `total`, the entries before paging; artboards, selection and history stay whole. `limit` / `offset` alone page the
 top layers (`layers` and `total`). Without these options the reply is the whole layer tree as before.
+When a summary is not enough, read the model itself a part at a time: `run_command document.query
+{path, limit?, offset?, depth?}` (or the `query_document` tool) answers a JSONPath
+([RFC 9535](https://www.rfc-editor.org/rfc/rfc9535)) over the model as `document.json` gives it
+(`$.artboards[*].name`, `$.layers[0].kind.children[?@.kind.type == 'path'].id`,
+`$..[?@.name == 'logo']`) with `{matches: [{path, value}], total}`, where `path` is the match's
+normalized path (`$['layers'][0]['kind']`), so a later query or `document.schema {at}` names it
+exactly; `limit` (default 100; `0` counts only) and `offset` page the matches, `depth` cuts each
+value at that many levels with what lies below summarized as `{…n keys}` or `[…n items]`, and an
+answer past 1 MiB is an error asking for a narrower query. What the keys mean is
+`run_command document.schema {type?, at?, index?}` (or the `document_schema` tool): the model's
+JSON Schema, generated from its own types and doc comments, read one type at a time. Without
+arguments it describes `Document`, the root: each property with its type (`array of Artboard`,
+`map of ImageBlob`, `number | null`), default and description, and `types`, the named types the
+properties refer to, to describe next with `type`. `at` describes the type of the value at a
+JSONPath into the active document, an enum resolved to the variant the value is (`kind` of a
+layer lists `children`, of a path lists `path`). `index: true` lists every type with a line each.
 `document.find` needs at least one filter and all given filters must match; matching
 ignores case, `name` is a substring of the Layers panel name, `text` a substring of type content and `kind` the
 exact panel label (`Layer`, `Group`, `Clip Group`, `Path`, `Compound Path`, `Type`, `Image`, `Rectangle`, ...).
@@ -411,6 +427,8 @@ objects' fills or strokes differ (`fillMixed` / `strokeMixed`, drawn as a "?" pr
 | `run_command` | `{command, params?}` | Runs any command. Use it for everything without a dedicated tool. |
 | `inspect_document` | `{depth?, childLimit?, ids?, kind?, limit?, offset?}` | Artboards (with `color`, `#rrggbb`, for one with a background color), layer tree (ids, kinds, bounds, paint), selection, history, tool. A type node's `fill`, `stroke` and `strokeWidth` are the paint its characters show (its first run's); fills and strokes of the type object itself come as `objectFill`, `objectStroke` and `objectStrokeWidth`. Paint comes as a label (`"#ff0000"`, `"None"`, `"G1 40% (#ff9999)"` for a swatch at a tint); `paint.proxies` gives it as an object. |
 | `inspect_ui` | `{}` | UI state. Remote mode only. |
+| `query_document` | `{path, limit?, offset?, depth?}` | JSONPath (RFC 9535) over the document model: `{matches: [{path, value}], total}`, bounded (see [Resource templates](#resource-templates)). |
+| `document_schema` | `{type?, at?, index?}` | The model's schema one type at a time: `Document` by default, a named `type`, the type of the value `at` a JSONPath, or the `index` of every type. |
 | `select_tool` | `{tool}` | `selection`, `directSelection`, `pen`, `rectangle`, `ellipse`, `polygon`, `star`, `lineSegment`, … |
 | `pointer_gesture` | `{events:[{kind,x,y,mods?}], tool?, mods?}` | `kind` is one of `down`, `drag`, `up`, `move`, `doubleclick`. Events go through the same path as the mouse. Headless, a `move` replies after the tool's highlight under the pointer is ready, including the Shape Builder's and the Live Paint Bucket's regions of a large selection, which the desktop app finds off the UI thread and highlights after the reply. |
 | `draw_path` | `{points \| d, closed?, fill?, stroke?, strokeWidth?, dash?, cap?, join?, opacity?, name?, effects?}` | `points` is `[[x,y],…]` or `[{x,y,in?,out?,smooth?},…]`. `d` is SVG path data. The options are below. |

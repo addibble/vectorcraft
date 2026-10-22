@@ -1,7 +1,7 @@
 use super::*;
 
 /// Measurement units (display only; the model is always in points).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub enum Unit {
     #[default]
     Points,
@@ -275,7 +275,7 @@ pub fn parse_number(s: &str) -> Option<f64> {
     Unit::Points.parse(s.strip_prefix('+').unwrap_or(s))
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub enum ColorMode {
     #[default]
     Rgb,

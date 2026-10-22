@@ -3,7 +3,7 @@ use super::live_shape::LiveShape;
 use super::*;
 
 /// Window → Attributes: an object's settings that don't change how it prints.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ObjectAttributes {
     /// Show Center / Don't Show Center (`None`: the object kind's default, [`Node::shows_center`]).
@@ -39,7 +39,7 @@ pub struct ObjectAttributes {
 /// An attribute in another application's XML namespace: `plotter:pen="2"` with `xmlns:plotter=
 /// "https://example.org/plotter"` is `{ns: "https://example.org/plotter", prefix: "plotter", name:
 /// "pen", value: "2"}`.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ForeignAttribute {
     /// The namespace's URI, which names it.
     pub ns: String,
@@ -80,7 +80,7 @@ pub const SVG_EVENTS: [&str; 19] = [
 pub const MAX_SVG_SCRIPTS: usize = 64;
 
 /// The Attributes panel's Image Map shapes.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ImageMap {
     #[default]

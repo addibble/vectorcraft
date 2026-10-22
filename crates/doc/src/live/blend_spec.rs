@@ -5,7 +5,7 @@ use super::*;
 // =====================================================================================
 
 /// Blend Options → Spacing.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum BlendSpacing {
     /// Step count chosen from the colour difference (or the distance when colours match).
@@ -18,7 +18,7 @@ pub enum BlendSpacing {
 }
 
 /// Blend Options → Orientation.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum BlendOrientation {
     #[default]
@@ -27,7 +27,7 @@ pub enum BlendOrientation {
 }
 
 /// Distribution of blend steps, as offered by the Blend panel's Type menu.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum BlendEaseType {
     #[default]
@@ -49,7 +49,7 @@ impl BlendEaseType {
 }
 
 /// Blend panel Type and Ramp. Ramp is a fraction from 0 (even) to 1.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct BlendEase {
     #[serde(default)]
     pub kind: BlendEaseType,
@@ -83,7 +83,7 @@ impl BlendEase {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct BlendSpec {
     #[serde(default)]
     pub spacing: BlendSpacing,
@@ -117,7 +117,7 @@ impl BlendSpec {
 }
 
 /// Blend Options set with no blend selected: what new blends start with.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct BlendDefaults {
     #[serde(default)]
     pub spacing: BlendSpacing,

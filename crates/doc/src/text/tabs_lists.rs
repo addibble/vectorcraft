@@ -2,7 +2,7 @@ use super::char_style::{CharPosition, CharStyle};
 use super::*;
 
 /// Tab stop alignment (Tabs panel).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum TabAlign {
     #[default]
@@ -14,7 +14,7 @@ pub enum TabAlign {
 }
 
 /// A tab stop, measured from the left edge of the text (area type: the frame's left edge).
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TabStop {
     pub position: f64,
@@ -36,7 +36,7 @@ fn default_align_on() -> char {
 pub const DEFAULT_TAB_INTERVAL: f64 = 36.0;
 
 /// The bullet of a bulleted list ([`ParaList::bullet`]): the Paragraph panel's Bullets presets.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum Bullet {
     /// A filled dot (•).
@@ -64,7 +64,7 @@ impl Bullet {
 
 /// How a numbered list writes its numbers ([`ParaList::number`]): the Paragraph panel's Numbered
 /// List presets.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum NumberStyle {
     /// 1, 2, 3…
@@ -162,7 +162,7 @@ fn roman(mut n: u32) -> String {
 /// it starts at the next tab stop, the left indent counting as a stop. The marker is not a
 /// character of the text, and an empty paragraph has none. A saved list reads the fields it leaves
 /// out as their defaults, and a build ignores the fields it doesn't know.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default)]
 pub struct ParaList {
     /// The bullet each paragraph of a bulleted list starts with. A numbered list keeps it for

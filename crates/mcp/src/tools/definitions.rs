@@ -181,6 +181,35 @@ pub fn tool_definitions() -> Vec<Value> {
             true,
         ),
         tool(
+            "query_document",
+            "Query the document model",
+            "JSONPath (RFC 9535) over the document model as document.json gives it, for one part of a large document: $.artboards[*].name, $.layers[0].kind.children[?@.kind.type == 'path'].id, $..[?@.name == 'logo']. Answers {matches: [{path, value}], total}, bounded: at most `limit` matches, each value cut at `depth` levels (containers below are summarized), never past 1 MiB. document_schema describes the model's types and the type at a path.",
+            obj(
+                json!({
+                    "path": string("The JSONPath, from $ (the document)"),
+                    "limit": {"type": "integer", "minimum": 0, "description": "At most this many matches (default 100; 0 counts only)"},
+                    "offset": {"type": "integer", "minimum": 0, "description": "Matches skipped first (default 0)"},
+                    "depth": {"type": "integer", "minimum": 0, "description": "Levels of each match's value shown; what lies below is summarized as {…n keys} or […n items] (default all)"}
+                }),
+                &["path"],
+            ),
+            true,
+        ),
+        tool(
+            "document_schema",
+            "Describe the document model",
+            "The document model's schema, generated from the model's own types and doc comments, one type at a time: no argument describes Document (the root), `type` one named type (its properties with their types, defaults and descriptions, and `types`, the named types to describe next), `at` the type of the value at a JSONPath into the active document (an enum resolved to the variant the value is), `index: true` every type with a line each.",
+            obj(
+                json!({
+                    "type": string("A type of the model, such as Artboard, Node, Appearance (default Document)"),
+                    "at": string("A JSONPath into the active document; describes the type of its first match"),
+                    "index": {"type": "boolean", "description": "List every type of the model with a line each"}
+                }),
+                &[],
+            ),
+            true,
+        ),
+        tool(
             "inspect_ui",
             "Inspect UI",
             "UI state of the running desktop app: tool and options, panels, dialogs, view (zoom/center), window, documents, perf. Desktop app only. The same call as ui_inspect.",
