@@ -138,9 +138,12 @@ pub fn stain(inst: &Node) -> Option<(Color, f32)> {
     Some((f.paint.color()?, f.opacity))
 }
 
-/// A symbol's art for instance `inst`, stained by the instance's fill ([`stain`]).
+/// A symbol's art for instance `inst`: the objects its overrides name drawn as they say
+/// ([`vectorcraft_doc::apply_overrides`]), then the whole stained by the instance's fill
+/// ([`stain`]).
 pub fn instance_art(art: &Node, inst: &Node) -> Node {
     let mut a = art.clone();
+    vectorcraft_doc::apply_overrides(&mut a, inst.symbol_overrides());
     if let Some((c, amount)) = stain(inst) {
         tint_node(&mut a, &c, amount);
     }

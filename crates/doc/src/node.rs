@@ -620,6 +620,9 @@ pub struct NodeExtras {
     /// Object › Objects on Path: the group's path and the objects attached to it (see
     /// [`crate::objects_on_path`]).
     pub objects_on_path: Option<Box<crate::objects_on_path::ObjectsOnPath>>,
+    /// Symbol instance of a dynamic symbol: the objects of its symbol's art it draws with a look of
+    /// its own ([`crate::SymbolOverride`]).
+    pub symbol_overrides: Vec<crate::symbols::SymbolOverride>,
 }
 
 /// No extras: what [`Node::extras`] gives for a node without any.
@@ -639,6 +642,7 @@ static NO_EXTRAS: NodeExtras = NodeExtras {
     intertwine: None,
     live_paint_gaps: None,
     objects_on_path: None,
+    symbol_overrides: Vec::new(),
 };
 
 /// A node's [`NodeExtras`], if it has any ([`Node::extras`]). Extras that are all unset equal
@@ -774,6 +778,7 @@ impl Serialize for Node {
             e.intertwine.is_none(),
             e.live_paint_gaps.is_none(),
             e.objects_on_path.is_none(),
+            e.symbol_overrides.is_empty(),
         ];
         let mut st = s.serialize_struct("Node", skips.iter().filter(|s| !**s).count())?;
         let mut skip = skips.into_iter();
@@ -813,6 +818,7 @@ impl Serialize for Node {
         field!("intertwine", &e.intertwine);
         field!("live_paint_gaps", &e.live_paint_gaps);
         field!("objects_on_path", &e.objects_on_path);
+        field!("symbol_overrides", &e.symbol_overrides);
         st.end()
     }
 }
@@ -874,6 +880,8 @@ struct NodeWire {
     live_paint_gaps: Option<Box<crate::live_paint::GapOptions>>,
     #[serde(default)]
     objects_on_path: Option<Box<crate::objects_on_path::ObjectsOnPath>>,
+    #[serde(default)]
+    symbol_overrides: Vec<crate::symbols::SymbolOverride>,
 }
 
 impl From<NodeWire> for Node {
@@ -894,6 +902,7 @@ impl From<NodeWire> for Node {
             intertwine: w.intertwine,
             live_paint_gaps: w.live_paint_gaps,
             objects_on_path: w.objects_on_path,
+            symbol_overrides: w.symbol_overrides,
         };
         Node {
             id: w.id,
@@ -1302,7 +1311,9 @@ impl Node {
                     }
                     None => xf.transform_rect_bbox(SYMBOL_SQUARE),
                 };
-                let o = self.appearance.outset() + symbols.map_or(0.0, |s| s.brush_pad(symbol));
+                // The art is measured without the strokes the instance's overrides give it.
+                let overrides = symbols.filter(|s| s.art_strokes()).map_or(0.0, |s| self.overrides_pad(s));
+                let o = self.appearance.outset() + symbols.map_or(0.0, |s| s.brush_pad(symbol)) + overrides;
                 self.projected(Some(b)).map(|b| b.inflate(o, o))
             }
             NodeKind::Text(t) => {
@@ -2172,6 +2183,7 @@ mod tests {
             e.slice = Some(Box::default());
             e.perspective = Some(Box::new(crate::PerspectiveAttachment::new("left", 1.0)));
             e.live_paint_gaps = Some(Box::default());
+            e.symbol_overrides = vec![crate::symbols::SymbolOverride { target: NodeId(5), items: vec![], opacity: 0.5, blend: Default::default() }];
         }
         /// The top-level keys of a JSON object, in the order written.
         struct Keys(Vec<String>);
@@ -2214,6 +2226,7 @@ mod tests {
             "bbox_angle",
             "perspective",
             "live_paint_gaps",
+            "symbol_overrides",
         ];
         assert_eq!(keys, order);
         assert_eq!(serde_json::from_value::<Node>(v).unwrap(), n);

@@ -68,6 +68,25 @@ fn three_instances_give_one_symbol_and_three_uses() {
     assert!(boxes.iter().any(|b| (b.x0 - 90.0).abs() < 1e-3 && (b.y0 - 30.0).abs() < 1e-3), "{boxes:?}");
 }
 
+/// An instance of a dynamic symbol with an override of its own shows art of its own: the def
+/// stands for the others.
+#[test]
+fn an_overridden_instance_gets_its_own_art() {
+    let mut d = symbol_doc(0.0, &[Affine::translate((40.0, 60.0)), Affine::translate((100.0, 60.0))]);
+    let mut red = instance(&mut d, "My Mark", Affine::translate((160.0, 60.0)));
+    let mut o = vectorcraft_doc::SymbolOverride::of(&d.symbols[0].art);
+    o.items = Appearance::basic(Paint::solid(Color::rgb8(255, 0, 0)), Paint::None, 0.0).items;
+    red.extras_mut().symbol_overrides.push(o);
+    let id = red.id;
+    *d.node_mut(id).unwrap() = red;
+    let svg = export(&d, &ExportOptions::default());
+    assert_eq!((svg.matches("<symbol ").count(), svg.matches("<use ").count()), (1, 2), "{svg}");
+    assert_similar(&render_artboard(&d), &resvg_render(&svg, 200, 120), 24.0, 0.002);
+    let img = resvg_render(&svg, 200, 120);
+    assert_eq!(&img.rgba[(60 * 200 + 160) * 4..(60 * 200 + 160) * 4 + 3], [255, 0, 0]);
+    assert_eq!(&img.rgba[(60 * 200 + 100) * 4..(60 * 200 + 100) * 4 + 3], [30, 90, 220]);
+}
+
 #[test]
 fn instances_the_def_cant_stand_for_get_their_own_art() {
     // Rotated: shared (a stroke turns with its path). Scaled: stroke weights don't scale on the
