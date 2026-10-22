@@ -2912,6 +2912,8 @@ theme	Appearance	Vormgeving
 	Duplicate	Dupliceren
 	Find Objects	Objecten zoeken
 	Inspect Document	Document inspecteren
+	Patch Document	Document patchen
+	Patch	Patch
 	Query Document	Document bevragen
 	Document Schema	Documentschema
 	Inspect Object	Object inspecteren
