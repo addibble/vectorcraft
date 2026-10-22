@@ -5205,3 +5205,9 @@ axis	Y Axis	Y 軸
 	Rectangular Grid Tool Options	長方形グリッドツールオプション
 	Polar Grid Tool Options	同心円グリッドツールオプション
 	Fill Line	線を塗りつぶす
+	Symbol Type:	シンボルの種類:
+	Dynamic Symbol	ダイナミックシンボル
+	Static Symbol	スタティックシンボル
+	Symbol Definition	シンボルの定義
+	Override Symbol Instance	シンボルインスタンスを上書き
+	Reset Symbol Instance	シンボルインスタンスをリセット

@@ -5524,3 +5524,9 @@ axis	Y Axis	Y-as
 	Rectangular Grid Tool Options	Opties rechthoekig-rastergereedschap
 	Polar Grid Tool Options	Opties polair-rastergereedschap
 	Fill Line	Lijn vullen
+	Symbol Type:	Symbooltype:
+	Dynamic Symbol	Dynamisch symbool
+	Static Symbol	Statisch symbool
+	Symbol Definition	Symbooldefinitie
+	Override Symbol Instance	Symboolinstantie overschrijven
+	Reset Symbol Instance	Symboolinstantie opnieuw instellen

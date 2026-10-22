@@ -5442,3 +5442,9 @@ axis	Y Axis	Y ღერძი
 	Rectangular Grid Tool Options	მართკუთხა ბადის ხელსაწყოს პარამეტრები
 	Polar Grid Tool Options	პოლარული ბადის ხელსაწყოს პარამეტრები
 	Fill Line	ხაზის შევსება
+	Symbol Type:	სიმბოლოს ტიპი:
+	Dynamic Symbol	დინამიკური სიმბოლო
+	Static Symbol	სტატიკური სიმბოლო
+	Symbol Definition	სიმბოლოს განსაზღვრება
+	Override Symbol Instance	სიმბოლოს ეგზემპლარის გადაფარვა
+	Reset Symbol Instance	სიმბოლოს ეგზემპლარის ჩამოყრა

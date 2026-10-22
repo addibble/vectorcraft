@@ -5106,3 +5106,9 @@ axis	Y Axis	Y축
 	Rectangular Grid Tool Options	사각형 격자 도구 옵션
 	Polar Grid Tool Options	극좌표 격자 도구 옵션
 	Fill Line	선 채우기
+	Symbol Type:	심볼 유형:
+	Dynamic Symbol	동적 심볼
+	Static Symbol	정적 심볼
+	Symbol Definition	심볼 정의
+	Override Symbol Instance	심볼 인스턴스 덮어쓰기
+	Reset Symbol Instance	심볼 인스턴스 재설정

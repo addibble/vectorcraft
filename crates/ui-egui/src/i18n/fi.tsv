@@ -5557,3 +5557,9 @@ axis	Y Axis	Y-akseli
 	Rectangular Grid Tool Options	Suorakulmaisen ruudukon työkalun asetukset
 	Polar Grid Tool Options	Napakoordinaattiruudukon työkalun asetukset
 	Fill Line	Täytä viiva
+	Symbol Type:	Symbolin tyyppi:
+	Dynamic Symbol	Dynaaminen symboli
+	Static Symbol	Staattinen symboli
+	Symbol Definition	Symbolin määritys
+	Override Symbol Instance	Ohita symbolin ilmentymä
+	Reset Symbol Instance	Palauta symbolin ilmentymä

@@ -5512,3 +5512,9 @@ axis	Y Axis	Y tengely
 	Rectangular Grid Tool Options	Téglalaprács beállításai
 	Polar Grid Tool Options	Polárrács beállításai
 	Fill Line	Szakasz kitöltése
+	Symbol Type:	Szimbólum típusa:
+	Dynamic Symbol	Dinamikus szimbólum
+	Static Symbol	Statikus szimbólum
+	Symbol Definition	Szimbólumdefiníció
+	Override Symbol Instance	Szimbólumpéldány felülbírálása
+	Reset Symbol Instance	Szimbólumpéldány visszaállítása
