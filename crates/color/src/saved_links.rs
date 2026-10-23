@@ -85,6 +85,37 @@ impl Serialize for Paint {
     }
 }
 
+/// A solid paint's colour as read: a colour, or one a linked paint held unfilled when it was
+/// written. A build that left a symbol instance's override colours unfilled on load wrote them
+/// back as `{"model": "rgb", "r": null, "g": null, "b": null}` (JSON has no NaN); such a colour
+/// reads as [`Color::UNRESOLVED`], so its swatch fills it in as it fills one left out.
+pub(crate) fn color_or_unfilled<'de, D: Deserializer<'de>>(d: D) -> Result<Color, D::Error> {
+    #[derive(Deserialize)]
+    enum Rgb {
+        #[serde(rename = "rgb")]
+        Rgb,
+    }
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Read {
+        Color(Color),
+        Unfilled {
+            #[allow(dead_code)]
+            model: Rgb,
+            #[allow(dead_code)]
+            r: (),
+            #[allow(dead_code)]
+            g: (),
+            #[allow(dead_code)]
+            b: (),
+        },
+    }
+    Ok(match Read::deserialize(d)? {
+        Read::Color(c) => c,
+        Read::Unfilled { .. } => note_unresolved(),
+    })
+}
+
 impl<'de> Deserialize<'de> for Paint {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         struct V;
@@ -155,6 +186,20 @@ mod tests {
         // A link to a swatch the table lacks is written whole too.
         let other = Paint::Solid { color: accent(), swatch: Some("Other".into()), tint: 1.0 };
         assert!(with(table(), || serde_json::to_value(&other)).unwrap()["color"].is_object());
+    }
+
+    #[test]
+    fn a_linked_colour_written_unfilled_reads_back_unresolved() {
+        let unfilled = json!({"model": "rgb", "r": null, "g": null, "b": null});
+        let before = unresolved_read();
+        let read: Paint = serde_json::from_value(json!({"type": "solid", "color": unfilled, "swatch": "Accent"})).unwrap();
+        assert!(matches!(&read, Paint::Solid { color, swatch: Some(s), .. } if color.is_unresolved() && s == "Accent"));
+        assert_eq!(unresolved_read(), before + 1);
+        // Without the link that would fill it in, it is refused.
+        let err = serde_json::from_value::<Paint>(json!({"type": "solid", "color": unfilled})).unwrap_err().to_string();
+        assert!(err.contains("needs its color"), "{err}");
+        // A colour that is neither is still refused.
+        assert!(serde_json::from_value::<Paint>(json!({"type": "solid", "color": {"model": "rgb", "r": "red"}})).is_err());
     }
 
     #[test]
