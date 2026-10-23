@@ -239,6 +239,8 @@ Text options: {e}
 `{what}` must be text
 a DXF drawing has one origin: pass useArtboards: true for one drawing per artboard
 a brush named `{nn}` exists
+a colour is linked by name to {_1}, which the document has no global swatch colour for
+a colour linked by name is held where it cannot be filled in
 a container of the listed objects is gone
 a content stream can't be read
 a content stream isn't a stream
