@@ -72,27 +72,9 @@ use std::sync::Arc;
 /// the model is serialized as a saved file holds it ([`crate::as_saved`]): files and what is read as one, never a
 /// command's answer, which keeps every field so it can be passed back.
 pub(crate) mod skip {
-    use std::cell::Cell;
-
-    thread_local! {
-        static SAVING: Cell<bool> = const { Cell::new(false) };
-    }
-
     /// Whether the model is being serialized as a saved file holds it, on this thread ([`crate::as_saved`]).
     pub fn saving() -> bool {
-        SAVING.with(Cell::get)
-    }
-
-    /// Restores the previous mode when dropped, so a panic inside [`crate::as_saved`] cannot
-    /// leave it on.
-    pub(crate) struct Restore(pub(crate) bool);
-    impl Drop for Restore {
-        fn drop(&mut self) {
-            SAVING.with(|c| c.set(self.0));
-        }
-    }
-    pub(crate) fn enter() -> Restore {
-        Restore(SAVING.with(|c| c.replace(true)))
+        vectorcraft_geom::saved::saving()
     }
 
     pub fn left_out<T: Default + PartialEq>(v: &T) -> bool {
@@ -139,9 +121,12 @@ pub(crate) mod skip {
 /// fills in when they are missing are left out. The format's writer serializes documents
 /// this way; so may anything that shows a document as its file holds it. (Not the minified layout a
 /// large document is saved in: that is whitespace, and either layout is the saved form.)
+///
+/// Geometry is then written in SVG's notation too ([`vectorcraft_geom::notation`]): paths as path
+/// data, transforms as SVG transforms. The mode itself is kept by [`vectorcraft_geom::saved`], so
+/// that the geometry types below this crate read it.
 pub fn as_saved<R>(f: impl FnOnce() -> R) -> R {
-    let _restore = skip::enter();
-    f()
+    vectorcraft_geom::saved::as_saved(f)
 }
 
 impl Serialize for Document {

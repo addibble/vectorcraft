@@ -123,7 +123,7 @@ fn many_objects_are_saved_compact() {
     assert!(!SaveOptions::for_doc(&d).pretty);
 }
 
-/// Anchors per path that make a document of `paths` paths about `bytes` of compact JSON.
+/// Anchors per path that make a document of `paths` paths about `bytes` of compact JSON, as saved.
 fn anchors_for(paths: usize, bytes: usize) -> usize {
     let per_anchor = saved_compact(&paths_doc(1, 1000)).unwrap().len() / 1000;
     bytes / per_anchor / paths
