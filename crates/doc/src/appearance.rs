@@ -32,10 +32,10 @@ pub enum StrokeAlign {
 pub struct Dash {
     /// Dash, gap, dash, gap… (up to 6 values in the Stroke panel).
     pub pattern: Vec<f64>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub offset: f64,
     /// "Aligns dashes to corners and path ends, adjusting lengths to fit".
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub align_corners: bool,
 }
 
@@ -429,9 +429,9 @@ pub struct SavedProfile {
 pub struct Effect {
     /// Stable id, e.g. `stylize.dropShadow`, `distort.roughen`, `path.offsetPath`, `warp.arc`.
     pub id: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub params: serde_json::Value,
-    #[serde(default = "yes")]
+    #[serde(default = "yes", skip_serializing_if = "crate::skip::true_left_out")]
     pub visible: bool,
 }
 
@@ -735,7 +735,7 @@ impl AppearanceItem {
 /// Appearance panel list).
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Appearance {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub items: Vec<AppearanceItem>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub effects: Vec<Effect>,

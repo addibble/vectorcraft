@@ -443,9 +443,9 @@ pub enum NodeKind {
     /// A top-level layer or sublayer.
     Layer {
         color: LayerColor,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "crate::skip::left_out")]
         template: bool,
-        #[serde(default = "yes")]
+        #[serde(default = "yes", skip_serializing_if = "crate::skip::true_left_out")]
         printable: bool,
         children: Vec<Arc<Node>>,
         /// Layer clipping mask: the first (bottom-most) child clips the others, as in a clip group.
@@ -463,7 +463,7 @@ pub enum NodeKind {
     /// A group. With `clip`, the first (bottom-most) child is the clipping path.
     Group {
         children: Vec<Arc<Node>>,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "crate::skip::left_out")]
         clip: bool,
     },
     Path {
@@ -483,7 +483,7 @@ pub enum NodeKind {
     /// Compound path: children are paths painted as one with the compound's appearance.
     Compound {
         children: Vec<Arc<Node>>,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "crate::skip::left_out")]
         rule: FillRule,
     },
     Text(Box<TextObject>),
@@ -497,7 +497,7 @@ pub enum NodeKind {
     /// steps are evaluated on demand (`live::blend_expand`).
     Blend {
         children: Vec<Arc<Node>>,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "crate::skip::left_out")]
         spec: Box<BlendSpec>,
     },
     /// Live envelope distortion of `content`.
@@ -505,10 +505,10 @@ pub enum NodeKind {
         content: Vec<Arc<Node>>,
         kind: Box<EnvelopeKind>,
         /// Envelope Options → Fidelity (0–100).
-        #[serde(default = "crate::live::default_fidelity")]
+        #[serde(default = "crate::live::default_fidelity", skip_serializing_if = "crate::live::is_default_fidelity")]
         fidelity: f64,
         /// Edit Contents mode (the content, not the envelope, is edited).
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "crate::skip::left_out")]
         editing: bool,
         /// Envelope Options besides Fidelity.
         #[serde(default, skip_serializing_if = "crate::skip::is_default")]
@@ -950,16 +950,16 @@ pub struct OpacityMask {
     /// Mask art in document coordinates.
     pub art: Arc<Node>,
     /// Clip: outside the mask art is hidden. Off: outside the mask art stays visible.
-    #[serde(default = "yes")]
+    #[serde(default = "yes", skip_serializing_if = "crate::skip::true_left_out")]
     pub clip: bool,
     /// Invert the mask's luminance.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub invert: bool,
     /// Disabled masks are kept but not applied.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub disabled: bool,
     /// Linked masks move with the object.
-    #[serde(default = "yes")]
+    #[serde(default = "yes", skip_serializing_if = "crate::skip::true_left_out")]
     pub linked: bool,
 }
 
