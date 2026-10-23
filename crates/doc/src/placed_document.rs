@@ -46,6 +46,8 @@ pub struct PlacedDocument {
     pub width: f64,
     pub height: f64,
     /// Maps the box (0..width, 0..height) into the document.
+    #[serde(with = "vectorcraft_geom::notation::affine")]
+    #[schemars(with = "vectorcraft_geom::notation::Transform")]
     pub xf: Affine,
     /// Links panel → Placement Options: how the file read again takes this object's place.
     #[serde(default, skip_serializing_if = "crate::skip::is_default")]
