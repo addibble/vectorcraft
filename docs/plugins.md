@@ -200,7 +200,9 @@ fill's colour to decide its shape, but it changes only the geometry.
 An **exporter** gets something else: the document as a native `.vectorcraft` file's JSON, as `document.save` writes it
 but without indentation (the format is documented in [`crates/format/src/lib.rs`](../crates/format/src/lib.rs)). That is every layer, object,
 appearance and effect record, artboard, swatch and symbol, so an exporter reads whatever the document holds; it checks
-`version`, since a later host may write a newer one. Images of 8 KiB or more are listed in `images` with their MIME
+`version`, since a later host may write a newer one (version 6 writes a path's anchors as SVG path data,
+`{"d": "M0 0L10 0Z", "kinds"?: …}`, transforms as SVG transforms such as `"translate(10 20)"`, and a live shape
+without its path; the notation is described in [`crates/geom/src/notation.rs`](../crates/geom/src/notation.rs)). Images of 8 KiB or more are listed in `images` with their MIME
 type and `blob` but without their data, which follows the JSON in a saved file; smaller ones keep their base64 `data`.
 
 ```json
