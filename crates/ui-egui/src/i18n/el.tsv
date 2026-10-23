@@ -5505,3 +5505,4 @@ axis	Y Axis	Άξονας Y
 @msg	fonts[{i}].{key} is 1 to {max} characters	το fonts[{i}].{key} έχει 1 έως {max} χαρακτήρες
 @msg	give 1 to {MAX_FONT_SOURCES} fonts	δώστε 1 έως {MAX_FONT_SOURCES} γραμματοσειρές
 @msg	give fonts, a list of fonts each with a family, a url and a sha256	δώστε fonts, μια λίστα γραμματοσειρών, καθεμία με family, url και sha256
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	η γραμματοσειρά {font} δεν φορτώθηκε ({reason}): το κείμενό της εμφανίζεται με άλλη γραμματοσειρά

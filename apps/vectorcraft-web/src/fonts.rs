@@ -28,6 +28,8 @@ thread_local! {
     static BACKGROUND_STARTED: Cell<bool> = const { Cell::new(false) };
     /// Font sources fetched and not yet added: a name for messages, and the file's bytes.
     static FETCHED: std::cell::RefCell<Vec<(String, Vec<u8>)>> = const { std::cell::RefCell::new(Vec::new()) };
+    /// Font sources that failed to fetch, and why, for the status line.
+    static FAILED: std::cell::RefCell<Vec<(String, String)>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
 /// Fetch, each in the background, the font sources type has asked for since the last call; a
@@ -42,7 +44,11 @@ pub fn fetch_requested(ctx: &egui::Context) {
                     FETCHED.with(|f| f.borrow_mut().push((format!("{} {}", src.family, src.style), bytes)));
                     ctx.request_repaint();
                 }
-                Err(e) => log::warn!("font source {} {}: {e}", src.family, src.style),
+                Err(e) => {
+                    log::warn!("font source {} {}: {e}", src.family, src.style);
+                    FAILED.with(|f| f.borrow_mut().push((src.family.clone(), e)));
+                    ctx.request_repaint();
+                }
             }
         });
     }
@@ -51,6 +57,11 @@ pub fn fetch_requested(ctx: &egui::Context) {
 /// The font sources fetched since the last call, for `text.addFont`.
 pub fn take_fetched() -> Vec<(String, Vec<u8>)> {
     FETCHED.with(|f| std::mem::take(&mut *f.borrow_mut()))
+}
+
+/// The font sources that failed to fetch since the last call: the family, and why.
+pub fn take_failed() -> Vec<(String, String)> {
+    FAILED.with(|f| std::mem::take(&mut *f.borrow_mut()))
 }
 
 /// Fetch and register the `startup` faces (one after the other). Returns how many loaded.

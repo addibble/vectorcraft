@@ -5165,3 +5165,4 @@ axis	Y Axis	Ось Y
 @msg	fonts[{i}].{key} is 1 to {max} characters	fonts[{i}].{key} содержит от 1 до {max} символов
 @msg	give 1 to {MAX_FONT_SOURCES} fonts	укажите от 1 до {MAX_FONT_SOURCES} шрифтов
 @msg	give fonts, a list of fonts each with a family, a url and a sha256	укажите fonts — список шрифтов, у каждого family, url и sha256
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	не удалось загрузить шрифт {font} ({reason}); его текст отображается другим шрифтом
