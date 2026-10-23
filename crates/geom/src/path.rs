@@ -486,8 +486,9 @@ impl SubPath {
     }
 }
 
-/// A (possibly multi-subpath) path.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+/// A (possibly multi-subpath) path. Serialized as `{"subpaths": […]}`, or, in a saved file, as SVG
+/// path data (`{"d": …, "kinds"?: …}`, see [`crate::notation`]); either is read.
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct PathData {
     pub subpaths: Vec<SubPath>,
 }
