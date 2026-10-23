@@ -15,7 +15,10 @@
 //! defaults (`vectorcraft_doc::as_saved`): a field equal to the value a reader fills in when it
 //! is missing is left out (a text run at 100% horizontal scale, a paragraph with no indents), so a
 //! document's JSON holds what differs from the defaults. Older versions read such files, since they
-//! fill in the same values; files saved for older apps keep every field. Only the images the
+//! fill in the same values; files saved for older apps keep every field. A colour linked to a global
+//! swatch is saved by the swatch's name (`"paint": "Accent"`, or without its `color` at another
+//! tint) when it is exactly the swatch's colour, and filled in from the swatch on reading
+//! (`vectorcraft_color::saved_links`). Only the images the
 //! document uses are written. `preview` (optional) is a PNG of the first artboard, at most
 //! [`PREVIEW_MAX`] pixels on its longer side, for file browsers. `profiles` (optional, Embed ICC
 //! Profiles) holds the ICC files of colour profiles the document is tagged with, for machines that
@@ -30,7 +33,9 @@
 //! compressed; v4 may keep large data (images, placed documents, the PDF, profiles of at least
 //! [`INLINE_MAX`] bytes) after the JSON instead of in it: the JSON is followed by [`BLOB_MAGIC`] and
 //! the bytes, and such an entry says where they are (`"blob": [offset, length]`) instead of giving
-//! `data`. Every version loads, and [`save_with`] writes any of them for older apps (under the
+//! `data`; v5 may write a colour linked to a global swatch by the swatch's name ([`NAMED_COLORS_SINCE`]).
+//! From v4 on, fields equal to the value a reader fills in for them are left out. Every version
+//! loads, and [`save_with`] writes any of them for older apps (under the
 //! format name `drawcraft`, which every version reads). Readers reject files whose `version` is
 //! newer than they support.
 //!
@@ -62,11 +67,18 @@ use vectorcraft_doc::{Document, ImageBlob};
 pub use atomic::{sync_file, write_atomic, write_atomic_with, write_new_with};
 pub use craft_vectorcraft_format::base64::{decode as base64_decode, decoded_len as base64_decoded_len, encode as base64_encode};
 pub use craft_vectorcraft_format::{
-    BLOB_MAGIC, COMPRESSED_SINCE, EXTENSION, ICC_MIME, INLINE_MAX, LEGACY_EXTENSION, MIN_VERSION, PREVIEW_MAX, VERSION, is_compressed, json_part,
-    sniff,
+    BLOB_MAGIC, COMPRESSED_SINCE, EXTENSION, ICC_MIME, INLINE_MAX, LEGACY_EXTENSION, MIN_VERSION, PREVIEW_MAX, is_compressed, json_part, sniff,
 };
 use stream::{Gz, Indent, KeyScan, Out};
 
+/// v5: colours linked by swatch name (v1 to v4 files still load). The envelope's reader
+/// (craft-vectorcraft-format) takes versions up to its own `VERSION`.
+pub const VERSION: u32 = 5;
+/// The first version whose readers fill in the fields a file leaves out at their defaults, and
+/// know placed documents.
+pub const DEFAULTS_OMITTED_SINCE: u32 = 4;
+/// The first version whose readers take a colour linked by its swatch's name.
+pub const NAMED_COLORS_SINCE: u32 = 5;
 /// Most bytes the JSON of a compressed file may unpack to (a guard against decompression bombs,
 /// as are [`MAX_BLOB`] and [`MAX_BLOBS`]). A compressed save refuses a document past any of them,
 /// so every file VectorCraft writes reads back. On wasm32 the cap is a quarter of the native
@@ -203,9 +215,8 @@ impl SaveOptions {
     /// as [`save_to`] writes the document with them (in their version)?
     pub fn pretty_fits(&self, doc: &Document) -> bool {
         let objects: usize = doc.layers.iter().map(|l| l.count()).sum();
-        // Measured as it is saved: the current version leaves out defaults, as save_to does.
-        let fits = || body(doc, self).is_ok_and(|b| pretty_size_at_most(&b, PRETTY_MAX_BYTES));
-        objects <= PRETTY_MAX_OBJECTS && if self.version >= VERSION { vectorcraft_doc::as_saved(fits) } else { fits() }
+        // Measured as it is saved (defaults left out, colours by name), as save_to writes it.
+        objects <= PRETTY_MAX_OBJECTS && as_written(self.version, || body(doc, self).is_ok_and(|b| pretty_size_at_most(&b, PRETTY_MAX_BYTES)))
     }
 }
 
@@ -247,7 +258,7 @@ fn body(doc: &Document, o: &SaveOptions) -> Result<Body, FormatError> {
     let mut d = doc.without_edit_modes().into_owned();
     // Older apps don't know placed documents: they get the art the objects show, with its
     // resources. Otherwise resources only exporting adds are never saved.
-    if version < VERSION && d.has_placed() {
+    if version < DEFAULTS_OMITTED_SINCE && d.has_placed() {
         d = d.with_placed_art().into_owned();
         d.placed_as_groups();
     } else {
@@ -317,9 +328,20 @@ const JSON_CHUNK: usize = 64 << 10;
 /// file: write to a temporary file ([`write_atomic_with`]).
 pub fn save_to(doc: &Document, o: &SaveOptions, w: impl Write) -> Result<(), FormatError> {
     o.check()?;
-    // The current version leaves out fields equal to what a reader fills in for them; files for
-    // older apps keep every field, as those apps wrote them.
-    if o.version >= VERSION { vectorcraft_doc::as_saved(|| write(doc, o, w)) } else { write(doc, o, w) }
+    as_written(o.version, || write(doc, o, w))
+}
+
+/// `f` run as a document is serialized for `version`: fields equal to what a reader fills in for
+/// them are left out, and linked colours written by name, for the readers that know to fill them
+/// in; files for older apps keep every field.
+fn as_written<R>(version: u32, f: impl FnOnce() -> R) -> R {
+    if version >= NAMED_COLORS_SINCE {
+        vectorcraft_doc::as_saved(f)
+    } else if version >= DEFAULTS_OMITTED_SINCE {
+        vectorcraft_doc::as_saved(|| vectorcraft_doc::color::saved_links::written_whole(f))
+    } else {
+        f()
+    }
 }
 
 fn write(doc: &Document, o: &SaveOptions, w: impl Write) -> Result<(), FormatError> {
@@ -535,6 +557,10 @@ fn load_file_within(bytes: &[u8], max_nodes: usize, max_values: usize) -> Result
         ReadError::Envelope(e) => e.into(),
         e => FormatError::NotVectorcraft(e.to_string()),
     })?;
+    // The envelope's reader takes every version up to its own; this crate reads up to `VERSION`.
+    if f.version > VERSION {
+        return Err(FormatError::TooNew(f.version));
+    }
     let pdf_compatible = pdf_member(file.json()).map_err(|e| FormatError::NotVectorcraft(e.to_string()))?;
     let info = FileInfo { version: f.version, legacy: f.format == LEGACY_EXTENSION, pdf_compatible };
     // A version 1 document saved before VectorCraft 0.21.0, or for an app before it (an older file
@@ -949,7 +975,9 @@ mod tests {
                         file.profiles.insert(name.clone(), tail.image(ICC_MIME, icc, false));
                     }
                     file.pdf = o.pdf.as_deref().map(|p| tail.image("application/pdf", p, false));
-                    let mut expected = if pretty { serde_json::to_vec_pretty(&file) } else { serde_json::to_vec(&file) }.unwrap();
+                    // Serialized as the save serializes for `version` (defaults left out, colours by name).
+                    let mut expected =
+                        as_written(version, || if pretty { serde_json::to_vec_pretty(&file) } else { serde_json::to_vec(&file) }).unwrap();
                     tail.write_to(&mut expected).unwrap();
                     assert_eq!(tail.is_empty(), version < 4, "version {version}");
                     assert!(save_with(&d, &o).unwrap() == expected, "version {version}, pretty {pretty}, {} profiles", o.profiles.len());
@@ -964,7 +992,8 @@ mod tests {
                 }
             }
         }
-        assert_eq!(checked, 20);
+        // Four forms of every version, and two compressed of each version that can be.
+        assert_eq!(checked, 4 * VERSION + 2 * (VERSION + 1 - COMPRESSED_SINCE));
     }
 
     /// Files are read through the crate's `Contents` with the messages VectorCraft gave before,
@@ -984,7 +1013,10 @@ mod tests {
         let doc = v["document"].to_string();
         let file = |format: &str, version: u32| format!(r#"{{"format":"{format}","version":{version},"document":{doc}}}"#);
         assert_eq!(message(&file("svg", 4)).as_deref(), Some("not a VectorCraft file: format is `svg`"));
-        assert_eq!(message(&file("vectorcraft", 9)).as_deref(), Some("file version 9 is newer than this VectorCraft supports (4)"));
+        assert_eq!(
+            message(&file("vectorcraft", 9)).as_deref(),
+            Some(format!("file version 9 is newer than this VectorCraft supports ({VERSION})").as_str())
+        );
         // A document that does not read is reported first, as before.
         assert!(
             message(r#"{"format":"vectorcraft","version":9,"document":7}"#).is_some_and(|m| m.starts_with("not a VectorCraft file: invalid type"))
