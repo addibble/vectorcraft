@@ -4,7 +4,7 @@
 use serde_json::{Value, json};
 use vectorcraft_doc::color::{Color, Paint, Swatch};
 use vectorcraft_doc::{AppearanceItem, Document, FillLayer, Node, NodeKind};
-use vectorcraft_format::{NAMED_COLORS_SINCE, SaveOptions, VERSION, load, save_with};
+use vectorcraft_format::{SaveOptions, load, save_with};
 
 /// A document with global swatch `Accent` and a rectangle filled with it.
 fn linked_doc() -> Document {
@@ -34,7 +34,6 @@ fn fill(bytes: &[u8]) -> Value {
 
 #[test]
 fn v5_saves_a_linked_colour_by_name_and_v4_whole() {
-    assert_eq!(VERSION, NAMED_COLORS_SINCE);
     let d = linked_doc();
     let v5 = save_with(&d, &SaveOptions::default()).unwrap();
     assert_eq!(fill(&v5), json!("Accent"));

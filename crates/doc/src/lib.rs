@@ -77,9 +77,12 @@ pub(crate) mod skip;
 /// fills in when they are missing are left out. The format's writer serializes documents
 /// this way; so may anything that shows a document as its file holds it. (Not the minified layout a
 /// large document is saved in: that is whitespace, and either layout is the saved form.)
+///
+/// Geometry is then written in SVG's notation too ([`vectorcraft_geom::notation`]): paths as path
+/// data, transforms as SVG transforms. The mode itself is kept by [`vectorcraft_geom::saved`], so
+/// that the geometry types below this crate read it.
 pub fn as_saved<R>(f: impl FnOnce() -> R) -> R {
-    let _restore = skip::enter();
-    f()
+    vectorcraft_geom::saved::as_saved(f)
 }
 
 impl Serialize for Document {
