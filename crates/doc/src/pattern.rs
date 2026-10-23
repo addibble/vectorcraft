@@ -26,11 +26,20 @@ use crate::node::{Node, NodeId, NodeKind};
 fn half() -> f64 {
     0.5
 }
+fn is_half(v: &f64) -> bool {
+    crate::skip::saving() && *v == half()
+}
 fn five() -> u32 {
     5
 }
+fn is_five(v: &u32) -> bool {
+    crate::skip::saving() && *v == five()
+}
 fn seventy() -> f32 {
     70.0
+}
+fn is_seventy(v: &f32) -> bool {
+    crate::skip::saving() && *v == seventy()
 }
 fn yes() -> bool {
     true
@@ -38,8 +47,14 @@ fn yes() -> bool {
 fn three() -> u32 {
     3
 }
+fn is_three(v: &u32) -> bool {
+    crate::skip::saving() && *v == three()
+}
 fn full_turn() -> f64 {
     360.0
+}
+fn is_full_turn(v: &f64) -> bool {
+    crate::skip::saving() && *v == full_turn()
 }
 
 // =====================================================================================
@@ -54,12 +69,12 @@ pub enum TileType {
     Grid,
     /// Rows shifted horizontally by `offset` × tile width (0.5 = half brick).
     BrickByRow {
-        #[serde(default = "half")]
+        #[serde(default = "half", skip_serializing_if = "is_half")]
         offset: f64,
     },
     /// Columns shifted vertically by `offset` × tile height.
     BrickByColumn {
-        #[serde(default = "half")]
+        #[serde(default = "half", skip_serializing_if = "is_half")]
         offset: f64,
     },
     /// Hexagonal tiles in columns: columns ¾ tile width apart, odd columns shifted half a tile down.
@@ -151,10 +166,10 @@ pub fn tile_period(tt: TileType, w: f64, h: f64) -> (f64, f64) {
 #[serde(rename_all = "camelCase")]
 pub struct Overlap {
     /// Right in front (default: left in front).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub right_in_front: bool,
     /// Bottom in front (default: top in front).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub bottom_in_front: bool,
 }
 
@@ -165,25 +180,25 @@ pub struct PatternDef {
     pub name: String,
     /// Tile rectangle in the art's coordinates.
     pub tile: Rect,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub tile_type: TileType,
     pub art: Vec<Arc<Node>>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub overlap: Overlap,
     /// Size Tile to Art: the tile is the art bounds grown by the spacing.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub size_tile_to_art: bool,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub h_spacing: f64,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub v_spacing: f64,
     /// Pattern editing preview: copies per side (3, 5, 7, 9).
-    #[serde(default = "five")]
+    #[serde(default = "five", skip_serializing_if = "is_five")]
     pub copies: u32,
     /// Dim Copies to (percent opacity of the preview copies).
-    #[serde(default = "seventy")]
+    #[serde(default = "seventy", skip_serializing_if = "is_seventy")]
     pub dim_copies: f32,
-    #[serde(default = "yes")]
+    #[serde(default = "yes", skip_serializing_if = "crate::skip::true_left_out")]
     pub show_tile_edge: bool,
     /// Show Swatch Bounds: pattern editing mode outlines the part of the tiling the swatch repeats
     /// (the tile, or the period of a brick or hex tiling), dashed.
@@ -463,11 +478,11 @@ pub enum RepeatKind {
         instances: u32,
         radius: f64,
         center: Point,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "crate::skip::left_out")]
         reverse_overlap: bool,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "crate::skip::left_out")]
         start_angle: f64,
-        #[serde(default = "full_turn")]
+        #[serde(default = "full_turn", skip_serializing_if = "is_full_turn")]
         end_angle: f64,
     },
     /// Copies on a grid (tile = source bounds + spacing), optionally brick/hex offset and with
@@ -476,17 +491,17 @@ pub enum RepeatKind {
     Grid {
         h_spacing: f64,
         v_spacing: f64,
-        #[serde(default = "three")]
+        #[serde(default = "three", skip_serializing_if = "is_three")]
         rows: u32,
-        #[serde(default = "three")]
+        #[serde(default = "three", skip_serializing_if = "is_three")]
         cols: u32,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "crate::skip::left_out")]
         grid_type: TileType,
         /// Flip alternate rows vertically.
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "crate::skip::left_out")]
         flip_rows: bool,
         /// Flip alternate columns horizontally.
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "crate::skip::left_out")]
         flip_cols: bool,
     },
     /// The source plus its reflection across the axis through `center` at `angle` degrees
