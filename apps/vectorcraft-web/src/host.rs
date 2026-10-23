@@ -11,11 +11,15 @@
 //!   file VectorCraft would otherwise download (`Services::download`): Save, Save As, Save a
 //!   Copy and exports. The parent stores it and reports failures itself.
 //! - `vectorcraft:dirty` (to the parent): `{ dirty }` whenever unsaved changes appear or go away.
-//! - `vectorcraft:configure` (from the parent): `{ hide, emptyMessage }`. `hide` lists command ids
-//!   (or prefixes ending in `*`) the user isn't offered: they leave the menus, the command palette
-//!   and their buttons, and their shortcuts do nothing; the parent's own control requests still run
-//!   them. `emptyMessage` is what the window says while no document is open, in place of the Home
-//!   screen. Each replaces the last whole; a malformed one is refused with `vectorcraft:failed`.
+//! - `vectorcraft:configure` (from the parent): `{ hide, hideMenus, hideMark, emptyMessage,
+//!   emptyLink }`. `hide` lists command ids (or prefixes ending in `*`) the user isn't offered: they
+//!   leave the menus, the command palette and their buttons, and their shortcuts do nothing; the
+//!   parent's own control requests still run them. `hideMenus` lists menu bar menus (English
+//!   titles) to leave out, their commands still running; `hideMark` hides the brand mark.
+//!   `emptyMessage` is what the window says while no document is open, in place of the Home
+//!   screen, and `emptyLink` a link after it. Each replaces the last whole; a malformed one is
+//!   refused with `vectorcraft:failed`.
+//! - `vectorcraft:emptyLink` (to the parent): `{}`, the user clicked the empty window's link.
 //! - `vectorcraft:failed` (to the parent): `{ error }`. Before `ready`, the app couldn't start;
 //!   after it, the last `vectorcraft:open` or `vectorcraft:configure` was refused (the app keeps
 //!   running).
@@ -82,7 +86,17 @@ impl Bridge {
     pub fn configure(&self, app: &mut VectorcraftApp) {
         if let Some(c) = self.configured.borrow_mut().take() {
             app.ui.host_hidden = c.hide;
+            app.ui.host_hidden_menus = c.hide_menus;
+            app.ui.host_hide_mark = c.hide_mark;
             app.ui.host_empty_message = c.empty_message;
+            app.ui.host_empty_link = c.empty_link;
+        }
+    }
+
+    /// After each frame: tell the parent the user clicked the empty window's link.
+    pub fn report_link(&self, app: &mut VectorcraftApp) {
+        if std::mem::take(&mut app.ui.host_empty_link_clicked) {
+            self.send(&[("type", "vectorcraft:emptyLink".into())]);
         }
     }
 
@@ -115,7 +129,14 @@ impl Bridge {
                 return;
             }
             if string(&data, "type").as_deref() == Some("vectorcraft:configure") {
-                match protocol::configure(strings(&data, "hide"), field(&data, "emptyMessage")) {
+                let fields = protocol::ConfigureFields {
+                    hide: strings(&data, "hide"),
+                    hide_menus: strings(&data, "hideMenus"),
+                    hide_mark: boolean(&data, "hideMark"),
+                    empty_message: field(&data, "emptyMessage"),
+                    empty_link: field(&data, "emptyLink"),
+                };
+                match protocol::configure(fields) {
                     Ok(configure) => {
                         *bridge.configured.borrow_mut() = Some(configure);
                         wake();
@@ -167,6 +188,15 @@ fn field(data: &JsValue, key: &str) -> protocol::Field<String> {
     match js_sys::Reflect::get(data, &JsValue::from_str(key)) {
         Ok(v) if v.is_undefined() || v.is_null() => protocol::Field::Absent,
         Ok(v) => v.as_string().map_or(protocol::Field::Wrong, protocol::Field::Given),
+        Err(_) => protocol::Field::Wrong,
+    }
+}
+
+/// A boolean field: left out (or `null`), a boolean, or something else.
+fn boolean(data: &JsValue, key: &str) -> protocol::Field<bool> {
+    match js_sys::Reflect::get(data, &JsValue::from_str(key)) {
+        Ok(v) if v.is_undefined() || v.is_null() => protocol::Field::Absent,
+        Ok(v) => v.as_bool().map_or(protocol::Field::Wrong, protocol::Field::Given),
         Err(_) => protocol::Field::Wrong,
     }
 }
