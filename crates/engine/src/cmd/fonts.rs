@@ -52,6 +52,15 @@ pub fn specs() -> Vec<CommandSpec> {
             font_list
         ),
         cmd!(
+            query "text.addFont",
+            "Add Font",
+            [],
+            None,
+            "{dataBase64: a font file (TrueType, OpenType or a collection, at most 64 MB), name?: what to call it in an error (default \"the font\")} give this session the file's faces, as installing it would (a page that embeds VectorCraft on the web, where no fonts are installed, supplies its fonts this way); text in a face that became available redraws in it. A face already loaded (the same family, style and version) is not added again. Not an edit: nothing is saved, journaled or undone → {faces: [{family, style}] (the faces added), found (the faces the file holds)}",
+            always,
+            add_font
+        ),
+        cmd!(
             "text.rescanFonts",
             "Refresh Font List",
             [],
@@ -506,8 +515,37 @@ pub(crate) fn rescan(s: &mut Session, _: &Value) -> Result<Value> {
     let faces = db.load_system_fonts();
     #[cfg(target_arch = "wasm32")]
     let faces = 0;
-    // The canvas redraws type in the fonts available now (renderers lay it out again when the
-    // fonts change), and the bounds follow; that isn't an edit to save.
+    relayout_text(s);
+    Ok(json!({ "families": db.menu_family_list().len(), "faces": faces }))
+}
+
+/// The most bytes a font file given to `text.addFont` may have (large CJK collections are tens of
+/// megabytes).
+const MAX_ADDED_FONT: usize = 64 << 20;
+
+fn add_font(s: &mut Session, p: &Value) -> Result<Value> {
+    const C: &str = "text.addFont";
+    let name = str_param(p, "name").unwrap_or("the font");
+    let data = str_param(p, "dataBase64").ok_or_else(|| bad(C, "give the font file as dataBase64"))?;
+    // Base64 is four characters for three bytes: refuse an oversized file before decoding it.
+    if data.len() / 4 * 3 > MAX_ADDED_FONT {
+        return Err(bad(C, format!("{name} is larger than {} MB", MAX_ADDED_FONT >> 20)));
+    }
+    let bytes = vectorcraft_format::base64_decode(data).ok_or_else(|| bad(C, format!("{name}: dataBase64 is not base64")))?;
+    let report = vectorcraft_text::FontDb::global().add_font_reporting(bytes);
+    if report.found == 0 {
+        return Err(bad(C, format!("{name} is not a TrueType, OpenType or collection font")));
+    }
+    if !report.added.is_empty() {
+        relayout_text(s);
+    }
+    let faces: Vec<Value> = report.added.iter().map(|(family, style)| json!({ "family": family, "style": style })).collect();
+    Ok(json!({ "faces": faces, "found": report.found }))
+}
+
+/// The canvas redraws type in the fonts available now (renderers lay it out again when the fonts
+/// change), and the bounds follow; that isn't an edit to save.
+fn relayout_text(s: &mut Session) {
     for d in &mut s.docs {
         let mut texts = vec![];
         d.doc.walk(|n| {
@@ -527,12 +565,33 @@ pub(crate) fn rescan(s: &mut Session, _: &Value) -> Result<Value> {
         }
         d.revision += 1;
     }
-    Ok(json!({ "families": db.menu_family_list().len(), "faces": faces }))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Text › Add Font: a font file's faces join the session, text set in its family is no longer
+    /// missing, a face already loaded is not added again, and bytes that are no font are refused.
+    #[test]
+    fn a_font_given_as_bytes_joins_the_session_once() {
+        let mut s = Session::new();
+        s.execute("file.new", &json!({"width": 200, "height": 100})).unwrap();
+        s.execute("text.create", &json!({"x": 10, "y": 50, "text": "Added", "font": "Added Font 01"})).unwrap();
+        let status = |s: &mut Session| s.execute("text.fonts", &json!({})).unwrap()[0]["status"].clone();
+        assert_eq!(status(&mut s), "missing");
+        let data = vectorcraft_format::base64_encode(&vectorcraft_testkit::fonts::renamed("Added Font 01"));
+        let added = s.execute("text.addFont", &json!({"dataBase64": data})).unwrap();
+        assert_eq!(added["found"], 1, "{added}");
+        assert_eq!(added["faces"], json!([{"family": "Added Font 01", "style": "Regular"}]));
+        assert_eq!(status(&mut s), "exact");
+        let again = s.execute("text.addFont", &json!({"dataBase64": data})).unwrap();
+        assert_eq!(again, json!({"faces": [], "found": 1}));
+        let junk = s.execute("text.addFont", &json!({"dataBase64": vectorcraft_format::base64_encode(b"not a font"), "name": "junk.ttf"}));
+        assert!(junk.unwrap_err().to_string().contains("junk.ttf is not a TrueType"));
+        assert!(s.execute("text.addFont", &json!({"dataBase64": "%%%"})).unwrap_err().to_string().contains("not base64"));
+        assert!(s.execute("text.addFont", &json!({})).unwrap_err().to_string().contains("dataBase64"));
+    }
 
     /// Type › Options › Additional Fonts Folder (#683) adds its folder to the system font scan,
     /// trimmed; clearing it takes the folder out again.
