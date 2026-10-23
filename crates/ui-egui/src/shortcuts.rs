@@ -522,6 +522,8 @@ fn single_key_shortcuts(app: &mut VectorcraftApp, ctx: &egui::Context) {
         match hit.id.strip_prefix("tool:") {
             Some(tool) => app.select_tool(tool),
             None if let Some((id, p)) = menu_target(hit) => crate::menus::invoke(app, &id, p),
+            // A command an embedding page hid does nothing from its key.
+            None if crate::menus::host_hidden(app, &hit.id) => {}
             None if hit.params.is_null() => {
                 let _ = app.run(&hit.id, json!({}));
             }
