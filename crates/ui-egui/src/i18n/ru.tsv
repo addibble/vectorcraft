@@ -2559,6 +2559,7 @@ mark-style	Japanese	Японский
 	Reflect Y	Отразить по Y
 	Reflect…	Отразить…
 	Refresh	Обновить
+	Add Font	Добавить шрифт
 	Refresh Font List	Обновить список шрифтов
 	Missing Fonts	Отсутствующие шрифты
 	Missing Fonts Dialog	Диалоговое окно «Отсутствующие шрифты»
@@ -5083,3 +5084,7 @@ axis	Y Axis	Ось Y
 	Symbol Definition	Определение символа
 	Override Symbol Instance	Переопределить экземпляр символа
 	Reset Symbol Instance	Сбросить экземпляр символа
+@msg	give the font file as dataBase64	укажите файл шрифта как dataBase64
+@msg	{name} is larger than {_1} MB	{name} больше {_1} МБ
+@msg	{name} is not a TrueType, OpenType or collection font	{name} — не шрифт TrueType, OpenType и не коллекция шрифтов
+@msg	{name}: dataBase64 is not base64	{name}: dataBase64 — не base64
