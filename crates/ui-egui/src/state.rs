@@ -562,6 +562,20 @@ pub struct UiState {
     /// (`vectorcraft:configure`): shown in place of the Home screen, already in the user's language.
     #[serde(skip)]
     pub host_empty_message: Option<String>,
+    /// A link after the empty window's message, as an embedding page set it (`vectorcraft:configure`):
+    /// clicking it sets [`UiState::host_empty_link_clicked`] for the page to hear.
+    #[serde(skip)]
+    pub host_empty_link: Option<String>,
+    /// The empty window's link was clicked since the page last heard it (`vectorcraft:emptyLink`).
+    #[serde(skip)]
+    pub host_empty_link_clicked: bool,
+    /// The in-window menu bar's menus an embedding page hid (`vectorcraft:configure`), by their
+    /// English titles (`File`, `Help`): the menus leave the bar, their commands still run.
+    #[serde(skip)]
+    pub host_hidden_menus: Vec<String>,
+    /// An embedding page hid the application bar's brand mark (`vectorcraft:configure`).
+    #[serde(skip)]
+    pub host_hide_mark: bool,
     /// Layers panel › Panel Options… (row size, thumbnails, Show Layers Only, Locate Selected Objects).
     #[serde(default)]
     pub layers_panel: crate::panels::layers::PanelOptions,
@@ -926,6 +940,10 @@ impl Default for UiState {
             trace_hold_source: None,
             host_hidden: Vec::new(),
             host_empty_message: None,
+            host_empty_link: None,
+            host_empty_link_clicked: false,
+            host_hidden_menus: Vec::new(),
+            host_hide_mark: false,
             layers_panel: Default::default(),
             layers_filter: Default::default(),
             image_trace_advanced: true,
