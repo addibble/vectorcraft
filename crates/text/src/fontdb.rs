@@ -1745,6 +1745,16 @@ fn style_distance(face: &FontFace, weight: f32, italic: bool) -> f32 {
 /// [`FontDb::menu_family_list`], with the [`FontDb::family_list`] it was built from.
 type MenuFamilies = (Arc<[String]>, Arc<[String]>);
 
+/// What [`FontDb::add_font_reporting`] did with a font file's bytes.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct FontsAdded {
+    /// The faces the file holds: 0 when it is no TrueType, OpenType or collection font.
+    pub found: usize,
+    /// The faces it added, as (family, style); a face already loaded (the same family, style and
+    /// version) is not added again.
+    pub added: Vec<(String, String)>,
+}
+
 impl FontDb {
     /// A database holding the bundled fonts, whose system font scan reads `font_dirs` (folders,
     /// read with their subfolders, and font files).
@@ -1922,25 +1932,38 @@ impl FontDb {
         self.add_font_from(bytes, None)
     }
 
+    /// [`FontDb::add_font`], telling an unreadable file (no faces found) from one whose faces are
+    /// all loaded already: what the file holds and which faces it added.
+    pub fn add_font_reporting(&self, bytes: Vec<u8>) -> FontsAdded {
+        self.add_font_report(bytes, None)
+    }
+
     /// [`FontDb::add_font`] for the bytes of the file at `path` (when known).
     fn add_font_from(&self, bytes: Vec<u8>, path: Option<&Path>) -> usize {
+        self.add_font_report(bytes, path).added.len()
+    }
+
+    fn add_font_report(&self, bytes: Vec<u8>, path: Option<&Path>) -> FontsAdded {
         self.add_fonts([(bytes, path.map(Path::to_path_buf))])
     }
 
     /// Add the faces of `files` (each file's bytes, and the file when known) all at once: a lookup
     /// on another thread finds all of them or none, never a family with only some of its styles
     /// loaded, whose nearest style it would take instead (Arial Bold Italic, the first of Arial's
-    /// files, for upright Regular text). Returns the number of faces added.
-    fn add_fonts(&self, files: impl IntoIterator<Item = (Vec<u8>, Option<PathBuf>)>) -> usize {
+    /// files, for upright Regular text). Returns what the files held and which faces they added.
+    fn add_fonts(&self, files: impl IntoIterator<Item = (Vec<u8>, Option<PathBuf>)>) -> FontsAdded {
         // Another version of a family and style is kept: a document may name it (the first one
         // loaded stays the one the family and style alone resolve to).
         let same = |f: &FontFace, family: &str, style: &str, version: &str| {
             f.family.eq_ignore_ascii_case(family) && f.style.eq_ignore_ascii_case(style) && f.version == version
         };
+        let mut report = FontsAdded { found: 0, added: vec![] };
         let mut made: Vec<FontFace> = Vec::new();
         for (bytes, path) in files {
             let data = Arc::new(bytes);
-            for (i, spec) in enumerate_faces(&data) {
+            let faces = enumerate_faces(&data);
+            report.found += faces.len();
+            for (i, spec) in faces {
                 let version = skrifa::FontRef::from_index(&data, i).ok().and_then(|f| name(&f, &[StringId::VERSION_STRING])).unwrap_or_default();
                 let present = |f: &FontFace| same(f, &spec.family, &spec.style, &version);
                 if self.read_faces().iter().any(|f| present(f)) || made.iter().any(present) {
@@ -1952,21 +1975,20 @@ impl FontDb {
             }
         }
         let mut faces = self.faces.write().unwrap_or_else(|e| e.into_inner());
-        let before = faces.len();
         for f in made {
             // Another thread may have added the same face meanwhile.
             if !faces.iter().any(|g| same(g, &f.family, &f.style, &f.version)) {
+                report.added.push((f.family.clone(), f.style.clone()));
                 faces.push(Arc::new(f));
             }
         }
-        let added = faces.len() - before;
         drop(faces);
         #[cfg(test)]
         faces_published();
-        if added > 0 {
+        if !report.added.is_empty() {
             self.changed();
         }
-        added
+        report
     }
 
     /// Catalog the installed fonts unless that has been done: the first caller scans the font
@@ -2248,7 +2270,7 @@ impl FontDb {
         paths.sort();
         paths.dedup();
         let files = paths.into_iter().flat_map(|p| font_files(&p).into_iter().map(move |data| (data, Some(p.clone()))));
-        self.add_fonts(files) > 0 || self.is_loaded(family)
+        !self.add_fonts(files).added.is_empty() || self.is_loaded(family)
     }
 
     /// Resolve a family + style to a face, falling back to the closest style of the family, then to
