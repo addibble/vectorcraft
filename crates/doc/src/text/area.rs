@@ -47,8 +47,10 @@ pub enum TextFlow {
 #[serde(default)]
 pub struct TextWrap {
     /// Distance kept between the text and the object, in points (Illustrator's default 6 pt).
+    #[serde(skip_serializing_if = "text_wrap_defaults::offset")]
     pub offset: f64,
     /// Invert Wrap: text flows inside the object instead of around it.
+    #[serde(skip_serializing_if = "text_wrap_defaults::invert")]
     pub invert: bool,
 }
 
@@ -144,22 +146,27 @@ impl PathAlign {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct AreaOptions {
-    #[serde(deserialize_with = "de_rows_or_columns")]
+    #[serde(deserialize_with = "de_rows_or_columns", skip_serializing_if = "area_options_defaults::rows")]
     pub rows: usize,
-    #[serde(deserialize_with = "de_rows_or_columns")]
+    #[serde(deserialize_with = "de_rows_or_columns", skip_serializing_if = "area_options_defaults::columns")]
     pub columns: usize,
     /// Gutter between rows/columns in points.
+    #[serde(skip_serializing_if = "area_options_defaults::gutter")]
     pub gutter: f64,
     /// Gutter between rows in points when it differs from [`Self::gutter`], which is then the
     /// gutter between columns (left out when saved while unset).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub row_gutter: Option<f64>,
     /// Inset from the frame edges in points.
+    #[serde(skip_serializing_if = "area_options_defaults::inset")]
     pub inset: f64,
+    #[serde(skip_serializing_if = "area_options_defaults::first_baseline")]
     pub first_baseline: FirstBaseline,
     /// Minimum first-baseline offset in points.
+    #[serde(skip_serializing_if = "area_options_defaults::first_baseline_min")]
     pub first_baseline_min: f64,
     /// Vertical alignment of the lines in each row/column.
+    #[serde(skip_serializing_if = "area_options_defaults::vertical_align")]
     pub vertical_align: VerticalAlign,
     /// Text Flow: by columns (the default, left out when saved) or by rows.
     #[serde(skip_serializing_if = "crate::skip::is_default")]
@@ -212,7 +219,7 @@ pub enum AreaFit {
     /// Text that overflows is scaled down (size, leading and baseline shift; not paragraph
     /// spacing) by the largest factor down to `min_percent` % that makes it fit, at layout time.
     ShrinkText {
-        #[serde(rename = "minPercent", default = "AreaFit::default_min_percent")]
+        #[serde(rename = "minPercent", default = "AreaFit::default_min_percent", skip_serializing_if = "AreaFit::is_default_min_percent")]
         min_percent: f64,
     },
 }
@@ -224,6 +231,9 @@ impl AreaFit {
     pub const DEFAULT_MIN_PERCENT: f64 = 50.0;
     fn default_min_percent() -> f64 {
         Self::DEFAULT_MIN_PERCENT
+    }
+    fn is_default_min_percent(v: &f64) -> bool {
+        crate::skip::saving() && *v == Self::DEFAULT_MIN_PERCENT
     }
     /// Its id: `none`, `autoHeight` or `shrinkText`.
     pub fn id(self) -> &'static str {
@@ -256,4 +266,24 @@ impl AreaFit {
             _ => None,
         }
     }
+}
+
+/// What a reader fills in for each field of [`TextWrap`] left out (see `crate::skip::container_defaults`).
+mod text_wrap_defaults {
+    use super::*;
+    crate::skip::container_defaults!(TextWrap { offset: f64, invert: bool });
+}
+
+/// What a reader fills in for each field of [`AreaOptions`] left out (see `crate::skip::container_defaults`).
+mod area_options_defaults {
+    use super::*;
+    crate::skip::container_defaults!(AreaOptions {
+        rows: usize,
+        columns: usize,
+        gutter: f64,
+        inset: f64,
+        first_baseline: FirstBaseline,
+        first_baseline_min: f64,
+        vertical_align: VerticalAlign,
+    });
 }

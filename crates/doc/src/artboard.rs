@@ -13,13 +13,12 @@ pub struct Artboard {
     #[serde(default, skip_serializing_if = "skip::is_default")]
     pub locked: bool,
     /// Show Center Mark (Artboard Options): the canvas draws a mark at the artboard's center.
-    /// Exports and print leave it out. Always written, as before it could be set.
-    #[serde(default)]
+    /// Exports and print leave it out.
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub show_center_mark: bool,
     /// Show Cross Hairs (Artboard Options): the canvas draws a line from the middle of each side
-    /// through the center. Exports and print leave them out. Always written, as before it could
-    /// be set.
-    #[serde(default)]
+    /// through the center. Exports and print leave them out.
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub show_cross_hairs: bool,
     /// Show Video Safe Areas (Artboard Options): the canvas draws the artboard's action-safe and
     /// title-safe areas ([`Artboard::video_safe_areas`]). Exports and print leave them out. Written

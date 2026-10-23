@@ -11,13 +11,13 @@ pub enum EnvelopeKind {
     /// distortions in percent (-100..100).
     Warp {
         style: String,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "crate::skip::left_out")]
         bend: f64,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "crate::skip::left_out")]
         h: f64,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "crate::skip::left_out")]
         v: f64,
-        #[serde(default = "yes")]
+        #[serde(default = "yes", skip_serializing_if = "crate::skip::true_left_out")]
         horizontal: bool,
     },
     /// A `(rows+1)×(cols+1)` grid of points (row-major) the content's bounding box maps onto.
@@ -74,15 +74,20 @@ impl PreserveShape {
 #[serde(rename_all = "camelCase", default)]
 pub struct EnvelopeOptions {
     /// Rasters: Anti-Alias.
+    #[serde(skip_serializing_if = "envelope_options_defaults::anti_alias")]
     pub anti_alias: bool,
     /// Rasters: Preserve Shape Using.
+    #[serde(skip_serializing_if = "envelope_options_defaults::preserve_shape")]
     pub preserve_shape: PreserveShape,
     /// Distort Appearance: strokes and live effects are applied before the distortion, so they
     /// bend with the art (off: they apply to the distorted paths).
+    #[serde(skip_serializing_if = "envelope_options_defaults::distort_appearance")]
     pub distort_appearance: bool,
     /// Distort Linear Gradients (with Distort Appearance): placed gradients bend with the art.
+    #[serde(skip_serializing_if = "envelope_options_defaults::distort_linear_gradients")]
     pub distort_linear_gradients: bool,
     /// Distort Pattern Fills (with Distort Appearance): pattern tiles bend with the art.
+    #[serde(skip_serializing_if = "envelope_options_defaults::distort_pattern_fills")]
     pub distort_pattern_fills: bool,
     /// With Distort Appearance, how far the box the content maps from reaches past its geometric
     /// bounds at the top, bottom, left and right, as shares of their height and width. An envelope
@@ -761,4 +766,16 @@ mod tests {
         assert!(kept.content.len() <= TYPE_INK_KEPT && kept.nodes.len() <= TYPE_INK_KEPT, "{} {}", kept.content.len(), kept.nodes.len());
         assert_eq!(measured, TYPE_INK_KEPT + 10);
     }
+}
+
+/// What a reader fills in for each field of [`EnvelopeOptions`] left out (see `crate::skip::container_defaults`).
+mod envelope_options_defaults {
+    use super::*;
+    crate::skip::container_defaults!(EnvelopeOptions {
+        anti_alias: bool,
+        preserve_shape: PreserveShape,
+        distort_appearance: bool,
+        distort_linear_gradients: bool,
+        distort_pattern_fills: bool,
+    });
 }

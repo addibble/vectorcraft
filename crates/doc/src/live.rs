@@ -64,6 +64,7 @@ pub use expand::{
 };
 #[cfg(test)]
 use mesh::grid_eval;
+pub(crate) use mesh::is_default_fidelity;
 pub use mesh::{Coons, GradientMesh, MeshAppearance, MeshPiece, MeshPoint, MeshQuad, default_fidelity, grid_points, nodes_bounds};
 pub use warp::{WarpStyle, fit_piece, map_nonlinear, map_nonlinear_within, pieces, warp_point};
 

@@ -18,18 +18,21 @@ pub enum TabAlign {
 #[serde(rename_all = "camelCase")]
 pub struct TabStop {
     pub position: f64,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub align: TabAlign,
     /// Leader characters repeated across the tab's gap (e.g. ". ").
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub leader: String,
     /// Decimal tabs align on this character.
-    #[serde(default = "default_align_on")]
+    #[serde(default = "default_align_on", skip_serializing_if = "is_default_align_on")]
     pub align_on: char,
 }
 
 fn default_align_on() -> char {
     '.'
+}
+fn is_default_align_on(v: &char) -> bool {
+    crate::skip::saving() && *v == default_align_on()
 }
 
 /// Distance between default tab stops when no explicit stop applies (½ inch).
