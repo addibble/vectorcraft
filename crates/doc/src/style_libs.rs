@@ -22,7 +22,7 @@ use crate::{
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct StyleLibrary {
     pub name: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub styles: Vec<GraphicStyle>,
     /// The pattern swatches the styles' fills and strokes paint with.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
