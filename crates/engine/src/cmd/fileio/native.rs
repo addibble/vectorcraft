@@ -26,8 +26,8 @@ pub const OPTIONS: &[FormatOption] = &[
     FormatOption {
         name: "version",
         ty: "integer",
-        default: "5",
-        description: "the format version to write: 5 (current), or 4, 3, 2 or 1 for older VectorCraft versions (4 writes colours linked to swatches whole; 1 and 2 are never compressed; newer features they don't know are lost there)",
+        default: "6",
+        description: "the format version to write: 6 (current), or 5, 4, 3, 2 or 1 for older VectorCraft versions (5 writes geometry as anchors and matrices; 4 also writes colours linked to swatches whole; 1 and 2 are never compressed; newer features they don't know are lost there)",
     },
     FormatOption {
         name: "preview",
@@ -172,7 +172,7 @@ pub(super) fn encode(cmd: &str, f: &Format, doc: &Document, p: &Value) -> Result
 pub(super) fn encode_to(cmd: &str, f: &Format, doc: &Document, p: &Value, w: impl std::io::Write) -> Result<()> {
     let (mut so, extras) = save_options(cmd, f, doc, p)?;
     // Include Linked Files keeps placed documents' files; older versions get their art.
-    let full = if so.include_linked || so.version < vectorcraft_format::VERSION {
+    let full = if so.include_linked || so.version < vectorcraft_format::PLACED_SINCE {
         crate::cmd::place::document::full_documents(doc).0
     } else {
         std::borrow::Cow::Borrowed(doc)
@@ -185,7 +185,7 @@ pub(super) fn encode_to(cmd: &str, f: &Format, doc: &Document, p: &Value, w: imp
         so.pdf = Some(super::pdf::encode(cmd, &full, &json!({ "range": "all", "preserveEditing": false }))?.0);
     }
     let native = match full {
-        Cow::Owned(full) if so.include_linked && so.version >= vectorcraft_format::VERSION => {
+        Cow::Owned(full) if so.include_linked && so.version >= vectorcraft_format::PLACED_SINCE => {
             // Include available bytes without replacing missing, relinkable placed objects.
             let mut original = doc.clone();
             original.images = full.images;
