@@ -56,6 +56,7 @@ pub struct ObjectsOnPath {
 pub struct Member {
     pub id: NodeId,
     /// The object's frame, mapped to the document: the object's art is drawn in this frame.
+    #[serde(with = "vectorcraft_geom::notation::affine")]
     pub frame: Affine,
     /// The angle the frame is turned by (radians, the document's axes): the path's direction at
     /// the object's attachment point plus the tilt from Rotate when it was placed, or the angle of
@@ -67,6 +68,8 @@ pub struct Member {
 #[derive(Deserialize, schemars::JsonSchema)]
 struct MemberWire {
     id: NodeId,
+    #[serde(with = "vectorcraft_geom::notation::affine")]
+    #[schemars(with = "vectorcraft_geom::notation::Transform")]
     frame: Affine,
     #[serde(default)]
     angle: Option<f64>,

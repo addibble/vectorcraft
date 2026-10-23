@@ -159,7 +159,7 @@ fn selected_only_hands_over_the_selection() {
     install(&mut s, &tpl::echo_exporter(&tpl::exporter("test.selection", r#"["tse"]"#, "{}"), Echo::Input));
     let ellipse = s.execute("shape.ellipse", &json!({"x": 200, "y": 10, "width": 50, "height": 50})).unwrap()["id"].clone();
     s.execute("select.set", &json!({"ids": [ellipse]})).unwrap();
-    let count = |r: &Value| String::from_utf8(exported(r)).unwrap().matches("\"anchors\"").count();
+    let count = |r: &Value| String::from_utf8(exported(r)).unwrap().matches("\"type\":\"path\"").count();
     let all = count(&s.execute("document.export", &json!({"format": "plugin.test.selection"})).unwrap());
     let selected = count(&s.execute("document.export", &json!({"format": "plugin.test.selection", "selectedOnly": true})).unwrap());
     assert!(selected >= 1 && selected < all, "{selected} of {all} paths");
