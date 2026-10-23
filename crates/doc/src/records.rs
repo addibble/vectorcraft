@@ -50,7 +50,7 @@ pub struct SavedView {
     pub name: String,
     pub center: Point,
     pub zoom: f64,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub rotation: f64,
 }
 

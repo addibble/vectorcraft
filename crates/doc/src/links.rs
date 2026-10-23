@@ -210,10 +210,10 @@ impl Document {
 /// the art it replaces.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct PlacementOptions {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub preserve: Preserve,
     /// Where the new art sits in the old bounds (all but [`Preserve::Bounds`]).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub align: Align,
     /// Clip the new art to the old bounds where it is larger.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]

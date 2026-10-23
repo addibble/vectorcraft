@@ -6,7 +6,7 @@ use super::*;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct TextStyleDef {
     pub name: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub attrs: serde_json::Map<String, serde_json::Value>,
 }
 
@@ -51,10 +51,10 @@ pub struct InlineArt {
     /// Name of the document symbol ([`crate::Symbol::name`]).
     pub symbol: String,
     /// Art height as a multiple of the run's font size.
-    #[serde(default = "one")]
+    #[serde(default = "one", skip_serializing_if = "is_one")]
     pub scale: f64,
     /// Extra raise in points (positive = up).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub baseline_shift: f64,
     /// The symbol art's visual bounds at its natural size, resolved from the document's symbols by
     /// [`crate::Document::resolve_inline_art`] (not saved). `None`: not resolved or missing; the
@@ -66,9 +66,15 @@ pub struct InlineArt {
 fn one() -> f64 {
     1.0
 }
+fn is_one(v: &f64) -> bool {
+    crate::skip::saving() && *v == one()
+}
 
 fn fifty() -> f64 {
     50.0
+}
+fn is_fifty(v: &f64) -> bool {
+    crate::skip::saving() && *v == fifty()
 }
 
 impl InlineArt {
@@ -182,16 +188,16 @@ pub struct RubySpan {
     pub end: usize,
     /// The reading, set in the base characters' font (its size comes from `size_percent`).
     pub text: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub position: RubyPosition,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub align: RubyAlign,
     /// Ruby size as a percentage of the base text's size, 1–100 (50 = half, the usual).
-    #[serde(default = "fifty")]
+    #[serde(default = "fifty", skip_serializing_if = "is_fifty")]
     pub size_percent: f64,
     /// Let a reading wider than its base hang over the neighbouring characters instead of being
     /// squeezed to the base's width.
-    #[serde(default = "yes")]
+    #[serde(default = "yes", skip_serializing_if = "crate::skip::true_left_out")]
     pub overhang: bool,
 }
 
