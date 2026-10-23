@@ -69,8 +69,57 @@ pub mod xml_id;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-/// `skip_serializing_if` predicates: fields equal to their serde default are not written.
+/// `skip_serializing_if` predicates: fields equal to their serde default are not written. Those
+/// ending `left_out` (and the predicates [`container_defaults`] makes) leave a field out only while
+/// the model is serialized as a saved file holds it ([`crate::as_saved`]): files and what is read as one, never a
+/// command's answer, which keeps every field so it can be passed back.
 pub(crate) mod skip {
+    use std::cell::Cell;
+
+    thread_local! {
+        static SAVING: Cell<bool> = const { Cell::new(false) };
+    }
+
+    /// Whether the model is being serialized as a saved file holds it, on this thread ([`crate::as_saved`]).
+    pub fn saving() -> bool {
+        SAVING.with(Cell::get)
+    }
+
+    /// Restores the previous mode when dropped, so a panic inside [`crate::as_saved`] cannot
+    /// leave it on.
+    pub(crate) struct Restore(pub(crate) bool);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            SAVING.with(|c| c.set(self.0));
+        }
+    }
+    pub(crate) fn enter() -> Restore {
+        Restore(SAVING.with(|c| c.replace(true)))
+    }
+
+    pub fn left_out<T: Default + PartialEq>(v: &T) -> bool {
+        saving() && is_default(v)
+    }
+    pub fn true_left_out(v: &bool) -> bool {
+        saving() && *v
+    }
+    pub fn one_left_out(v: &f32) -> bool {
+        saving() && is_one(v)
+    }
+    /// The `skip_serializing_if` predicates of a struct read with `#[serde(default)]`, one per field
+    /// and named after it: true, while the model is serialized as saved ([`crate::as_saved`]), when the field holds
+    /// the value the struct's `Default` gives it, which is what a reader fills in when the field is
+    /// missing.
+    macro_rules! container_defaults {
+        ($ty:ty { $($field:ident: $fty:ty),* $(,)? }) => {
+            $(
+                pub(crate) fn $field(v: &$fty) -> bool {
+                    crate::skip::saving() && *v == <$ty as Default>::default().$field
+                }
+            )*
+        };
+    }
+    pub(crate) use container_defaults;
     pub fn is_default<T: Default + PartialEq>(v: &T) -> bool {
         *v == T::default()
     }
@@ -86,6 +135,15 @@ pub(crate) mod skip {
     pub fn is_empty_map(v: &serde_json::Map<String, serde_json::Value>) -> bool {
         v.is_empty()
     }
+}
+
+/// `f` run with the model serializing as a saved file holds it: fields equal to the value a reader
+/// fills in when they are missing are left out. The format's writer serializes documents
+/// this way; so may anything that shows a document as its file holds it. (Not the minified layout a
+/// large document is saved in: that is whitespace, and either layout is the saved form.)
+pub fn as_saved<R>(f: impl FnOnce() -> R) -> R {
+    let _restore = skip::enter();
+    f()
 }
 
 pub use appearance::StrokeGradientMode;
@@ -450,13 +508,12 @@ pub struct Artboard {
     #[serde(default, skip_serializing_if = "skip::is_default")]
     pub locked: bool,
     /// Show Center Mark (Artboard Options): the canvas draws a mark at the artboard's center.
-    /// Exports and print leave it out. Always written, as before it could be set.
-    #[serde(default)]
+    /// Exports and print leave it out.
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub show_center_mark: bool,
     /// Show Cross Hairs (Artboard Options): the canvas draws a line from the middle of each side
-    /// through the center. Exports and print leave them out. Always written, as before it could
-    /// be set.
-    #[serde(default)]
+    /// through the center. Exports and print leave them out.
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub show_cross_hairs: bool,
     /// Show Video Safe Areas (Artboard Options): the canvas draws the artboard's action-safe and
     /// title-safe areas ([`Artboard::video_safe_areas`]). Exports and print leave them out. Written
@@ -617,7 +674,7 @@ pub struct SavedView {
     pub name: String,
     pub center: Point,
     pub zoom: f64,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub rotation: f64,
 }
 
@@ -797,17 +854,20 @@ impl RulerMode {
     pub fn legacy() -> Self {
         Self::Global
     }
+    fn is_legacy(&self) -> bool {
+        *self == Self::legacy()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Document {
     pub version: u32,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub title: String,
     /// Saved with File → Save as Template: opening it starts a new untitled document.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub template: bool,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub units: Unit,
     /// The rulers' zero point in document coordinates. Moving it changes measurements, never art.
     #[serde(default, skip_serializing_if = "skip::is_default")]
@@ -815,13 +875,13 @@ pub struct Document {
     /// View › Rulers › Change to Global / Artboard Rulers: whether the rulers and position fields
     /// measure from [`Self::ruler_origin`] (global) or from the active artboard's own origin.
     /// Documents saved before the choice existed measured globally and open that way.
-    #[serde(default = "RulerMode::legacy")]
+    #[serde(default = "RulerMode::legacy", skip_serializing_if = "RulerMode::is_legacy")]
     pub rulers: RulerMode,
     /// Artboard rulers' zero point of each artboard (by [`Artboard::id`]), as an offset from its
     /// top-left corner; an artboard not listed measures from that corner.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub artboard_ruler_origins: BTreeMap<u32, Vec2>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub color_mode: ColorMode,
     pub artboards: Vec<Artboard>,
     /// Top-level layers, bottom first.
@@ -829,11 +889,11 @@ pub struct Document {
     // The document-wide resources below are [`Shared`]: an edit copies the document (copy-on-write)
     // and the undo history keeps every version, so what an edit doesn't change stays one copy.
     // Reads, writes and the saved form are those of the value itself.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub swatches: Shared<Vec<Swatch>>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub swatch_groups: Shared<Vec<SwatchGroup>>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub graphic_styles: Shared<Vec<GraphicStyle>>,
     /// Character styles (besides the built-in [Normal Character Style], which may be redefined here).
     #[serde(default, skip_serializing_if = "skip::is_empty_vec")]
@@ -844,12 +904,12 @@ pub struct Document {
     /// Threaded text: area-type frames one story flows through, in order.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub text_threads: Vec<Vec<NodeId>>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub symbols: Vec<Symbol>,
     /// Object › Graph › Design…: art graphs can draw as markers.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub graph_designs: Vec<GraphDesign>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub guides: Vec<Guide>,
     /// View → New View… (up to 25, like Illustrator).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -860,11 +920,11 @@ pub struct Document {
     /// Variables (data merge): named values bound to objects, applied per dataset.
     #[serde(default, skip_serializing_if = "crate::skip::is_default")]
     pub variables: Shared<Variables>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub grid: GridPrefs,
-    #[serde(default = "ppi72")]
+    #[serde(default = "ppi72", skip_serializing_if = "is_ppi72")]
     pub raster_effects_ppi: f64,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub images: BTreeMap<String, ImageBlob>,
     /// Pattern swatch definitions (Object → Pattern).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -972,6 +1032,9 @@ pub struct Document {
 
 fn ppi72() -> f64 {
     72.0
+}
+fn is_ppi72(v: &f64) -> bool {
+    crate::skip::saving() && *v == ppi72()
 }
 
 fn yes() -> bool {
@@ -2705,6 +2768,8 @@ mod tests {
     }
 }
 
+#[cfg(test)]
+mod tests_defaults;
 #[cfg(test)]
 mod tests_lookups;
 #[cfg(test)]
