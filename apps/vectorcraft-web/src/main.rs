@@ -14,16 +14,23 @@
 //!   hover, palm rejection, fingers navigate once a pen has been seen).
 //!
 //! URL query flags: `?webgl` forces the WebGL2 backend instead of WebGPU; `?lang=es` (any
-//! language code) stands in for the browser's languages when the interface language is Automatic.
+//! language code) stands in for the browser's languages when the interface language is Automatic;
+//! `?host=parent` (inside an `<iframe>`) talks to a same-origin parent page instead of
+//! downloading: it sends the files to open and stores what VectorCraft saves (`host`; protocol:
+//! `docs/web-embed.md`).
 
 #[cfg(target_arch = "wasm32")]
 mod api;
 #[cfg(target_arch = "wasm32")]
 mod fonts;
 #[cfg(target_arch = "wasm32")]
+mod host;
+#[cfg(target_arch = "wasm32")]
 mod locks;
 #[cfg(any(target_arch = "wasm32", test))]
 mod pencil;
+#[cfg(any(target_arch = "wasm32", test))]
+mod protocol;
 #[cfg(any(target_arch = "wasm32", test))]
 mod saved_files;
 #[cfg(target_arch = "wasm32")]
