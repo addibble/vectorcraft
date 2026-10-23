@@ -482,7 +482,7 @@ fn default_align_on() -> char {
 pub const DEFAULT_TAB_INTERVAL: f64 = 36.0;
 
 /// The bullet of a bulleted list ([`ParaList::bullet`]): the Paragraph panel's Bullets presets.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum Bullet {
     /// A filled dot (•).
@@ -608,7 +608,7 @@ fn roman(mut n: u32) -> String {
 /// it starts at the next tab stop, the left indent counting as a stop. The marker is not a
 /// character of the text, and an empty paragraph has none. A saved list reads the fields it leaves
 /// out as their defaults, and a build ignores the fields it doesn't know.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default)]
 pub struct ParaList {
     /// The bullet each paragraph of a bulleted list starts with. A numbered list keeps it for
