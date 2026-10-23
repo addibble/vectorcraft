@@ -86,6 +86,7 @@ pub fn start() {
             bridge: if query_param("host").as_deref() == Some("parent") { crate::host::Bridge::new() } else { None },
         };
         track_paste(&host.pasted);
+        crate::keys::keep_zoom_keys();
         if let Some(bridge) = &host.bridge {
             let pasted = host.pasted.clone();
             bridge.listen(host.inbox.clone(), move || {
