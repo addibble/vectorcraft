@@ -12,7 +12,8 @@
 //! - dropped files are read asynchronously by `web::WebShell` and delivered through the inbox;
 //! - pen and finger input is read from Pointer Events by `pencil` (Apple Pencil pressure and
 //!   hover, palm rejection, fingers navigate once a pen has been seen);
-//! - the zoom chords (`Cmd+=`, `Cmd+-`, `Cmd+0`) zoom the canvas, not the page (`keys`).
+//! - the zoom, undo and redo chords (`Cmd+=`, `Cmd+-`, `Cmd+0`, `Cmd+Z`, `Cmd+Shift+Z`) act on the
+//!   canvas and document, not the page (`keys`).
 //!
 //! URL query flags: `?webgl` forces the WebGL2 backend instead of WebGPU; `?lang=es` (any
 //! language code) stands in for the browser's languages when the interface language is Automatic;
