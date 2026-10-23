@@ -108,6 +108,17 @@ pub(super) fn hidden_when_disabled(id: &str) -> bool {
         || id.starts_with(crate::dialogs::perspective_presets::SLOT)
 }
 
+/// Whether an embedding page hid command `id` from the user (`vectorcraft:configure`,
+/// docs/web-embed.md): it leaves the menus, the command palette and the buttons that run it, and
+/// its shortcut does nothing. The page's own control requests still run it (they don't come
+/// through [`invoke`]).
+pub fn host_hidden(app: &VectorcraftApp, id: &str) -> bool {
+    app.ui.host_hidden.iter().any(|hidden| match hidden.strip_suffix('*') {
+        Some(prefix) => id.starts_with(prefix),
+        None => hidden == id,
+    })
+}
+
 /// Menu items another item stands in for right now: Envelope Distort's Reset with Warp and Reset
 /// with Mesh take the place of Make with Warp and Make with Mesh while an envelope is selected.
 fn swapped_out(app: &VectorcraftApp, id: &str) -> bool {
@@ -123,6 +134,9 @@ fn swapped_out(app: &VectorcraftApp, id: &str) -> bool {
 /// or off), or `None` while they leave it out: an empty slot ([`hidden_when_disabled`]) or an item
 /// another stands in for ([`swapped_out`]).
 pub fn shown_state(app: &VectorcraftApp, id: &str, p: &Value) -> Option<(bool, Option<bool>)> {
+    if host_hidden(app, id) {
+        return None;
+    }
     let en = enabled(app, id);
     if (!en && hidden_when_disabled(id)) || swapped_out(app, id) {
         return None;

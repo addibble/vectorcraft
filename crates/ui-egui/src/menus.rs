@@ -75,7 +75,7 @@ pub use run::{check_params, run_ui_command};
 pub(crate) use run::{normalize_panel, opt_bool};
 #[cfg(test)]
 use slots::RECENT_FONT_IDS;
-pub use state::{checked, enabled, plugin_revision, shortcut_of, shown_state};
+pub use state::{checked, enabled, host_hidden, plugin_revision, shortcut_of, shown_state};
 pub(crate) use submenus::PATH_EFFECTS;
 pub use tree::{menu_tree, menu_tree_named};
 pub use ui_commands::UI_COMMANDS;
