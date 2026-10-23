@@ -83,6 +83,27 @@ pub fn as_saved<R>(f: impl FnOnce() -> R) -> R {
     f()
 }
 
+impl Serialize for Document {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        if skip::saving() {
+            vectorcraft_color::saved_links::with(self.saved_links(), || Document::serialize(self, s))
+        } else {
+            Document::serialize(self, s)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Document {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let before = vectorcraft_color::saved_links::unresolved_read();
+        let mut doc = Document::deserialize(d)?;
+        if vectorcraft_color::saved_links::unresolved_read() != before {
+            doc.resolve_saved_links().map_err(serde::de::Error::custom)?;
+        }
+        Ok(doc)
+    }
+}
+
 pub use appearance::StrokeGradientMode;
 pub use appearance::{
     Appearance, AppearanceItem, ArrowAlign, Arrowhead, Dash, Effect, FillLayer, LineCap, LineJoin, PressureProfile, ProfilePreset, SavedProfile,
@@ -153,7 +174,11 @@ pub use limits::{DocError, FORMAT_VERSION, MAX_COORD};
 pub use records::{ImageBlob, MaskEdit, NewArtIds, SavedSelection, SavedView, Symbol};
 pub use units::{ColorMode, Unit, parse_number};
 
+/// Its serde lends the paints its swatches while it is written as saved ([`as_saved`]), so a colour
+/// linked to a global swatch is written by the swatch's name, and fills such colours in when it is
+/// read ([`vectorcraft_color::saved_links`]).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(remote = "Self")]
 pub struct Document {
     pub version: u32,
     #[serde(default, skip_serializing_if = "crate::skip::left_out")]

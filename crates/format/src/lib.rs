@@ -15,7 +15,10 @@
 //! defaults (`vectorcraft_doc::as_saved`): a field equal to the value a reader fills in when it
 //! is missing is left out (a text run at 100% horizontal scale, a paragraph with no indents), so a
 //! document's JSON holds what differs from the defaults. Older versions read such files, since they
-//! fill in the same values; files saved for older apps keep every field. Only the images the
+//! fill in the same values; files saved for older apps keep every field. A colour linked to a global
+//! swatch is saved by the swatch's name (`"paint": "Accent"`, or without its `color` at another
+//! tint) when it is exactly the swatch's colour, and filled in from the swatch on reading
+//! (`vectorcraft_color::saved_links`). Only the images the
 //! document uses are written. `preview` (optional) is a PNG of the first artboard, at most
 //! [`PREVIEW_MAX`] pixels on its longer side, for file browsers. `profiles` (optional, Embed ICC
 //! Profiles) holds the ICC files of colour profiles the document is tagged with, for machines that
@@ -30,7 +33,9 @@
 //! compressed; v4 may keep large data (images, placed documents, the PDF, profiles of at least
 //! [`INLINE_MAX`] bytes) after the JSON instead of in it: the JSON is followed by [`BLOB_MAGIC`] and
 //! the bytes, and such an entry says where they are (`"blob": [offset, length]`) instead of giving
-//! `data`. Every version loads, and [`save_with`] writes any of them for older apps (under the
+//! `data`; v5 may write a colour linked to a global swatch by the swatch's name ([`NAMED_COLORS_SINCE`]).
+//! From v4 on, fields equal to the value a reader fills in for them are left out. Every version
+//! loads, and [`save_with`] writes any of them for older apps (under the
 //! format name `drawcraft`, which every version reads). Readers reject files whose `version` is
 //! newer than they support.
 #![forbid(unsafe_code)]
@@ -53,8 +58,13 @@ use vectorcraft_doc::{Document, ImageBlob};
 pub use atomic::{sync_file, write_atomic, write_atomic_with, write_new_with};
 use stream::{Gz, Indent, KeyScan, Out};
 
-/// v4: large data after the JSON (v1 to v3 files still load).
-pub const VERSION: u32 = 4;
+/// v5: colours linked by swatch name (v1 to v4 files still load).
+pub const VERSION: u32 = 5;
+/// The first version whose readers fill in the fields a file leaves out at their defaults, and
+/// know placed documents.
+pub const DEFAULTS_OMITTED_SINCE: u32 = 4;
+/// The first version whose readers take a colour linked by its swatch's name.
+pub const NAMED_COLORS_SINCE: u32 = 5;
 /// Data this large or larger goes after the JSON (v4), not into it as base64.
 pub const INLINE_MAX: usize = 8 << 10;
 /// What separates the JSON from the data after it (v4).
@@ -270,9 +280,8 @@ impl SaveOptions {
     /// as [`save_to`] writes the document with them (in their version)?
     pub fn pretty_fits(&self, doc: &Document) -> bool {
         let objects: usize = doc.layers.iter().map(|l| l.count()).sum();
-        // Measured as it is saved: the current version leaves out defaults, as save_to does.
-        let fits = || body(doc, self).is_ok_and(|b| pretty_size_at_most(&b, PRETTY_MAX_BYTES));
-        objects <= PRETTY_MAX_OBJECTS && if self.version >= VERSION { vectorcraft_doc::as_saved(fits) } else { fits() }
+        // Measured as it is saved (defaults left out, colours by name), as save_to writes it.
+        objects <= PRETTY_MAX_OBJECTS && as_written(self.version, || body(doc, self).is_ok_and(|b| pretty_size_at_most(&b, PRETTY_MAX_BYTES)))
     }
 }
 
@@ -313,7 +322,7 @@ fn body(doc: &Document, o: &SaveOptions) -> Result<Body, FormatError> {
     let mut d = doc.without_edit_modes().into_owned();
     // Older apps don't know placed documents: they get the art the objects show, with its
     // resources. Otherwise resources only exporting adds are never saved.
-    if version < VERSION && d.has_placed() {
+    if version < DEFAULTS_OMITTED_SINCE && d.has_placed() {
         d = d.with_placed_art().into_owned();
         d.placed_as_groups();
     } else {
@@ -372,9 +381,20 @@ const JSON_CHUNK: usize = 64 << 10;
 /// file: write to a temporary file ([`write_atomic_with`]).
 pub fn save_to(doc: &Document, o: &SaveOptions, w: impl Write) -> Result<(), FormatError> {
     o.check()?;
-    // The current version leaves out fields equal to what a reader fills in for them; files for
-    // older apps keep every field, as those apps wrote them.
-    if o.version >= VERSION { vectorcraft_doc::as_saved(|| write(doc, o, w)) } else { write(doc, o, w) }
+    as_written(o.version, || write(doc, o, w))
+}
+
+/// `f` run as a document is serialized for `version`: fields equal to what a reader fills in for
+/// them are left out, and linked colours written by name, for the readers that know to fill them
+/// in; files for older apps keep every field.
+fn as_written<R>(version: u32, f: impl FnOnce() -> R) -> R {
+    if version >= NAMED_COLORS_SINCE {
+        vectorcraft_doc::as_saved(f)
+    } else if version >= DEFAULTS_OMITTED_SINCE {
+        vectorcraft_doc::as_saved(|| vectorcraft_doc::color::saved_links::written_whole(f))
+    } else {
+        f()
+    }
 }
 
 fn write(doc: &Document, o: &SaveOptions, w: impl Write) -> Result<(), FormatError> {
