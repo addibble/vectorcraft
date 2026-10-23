@@ -25,7 +25,7 @@ pub enum Justify {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct CharStyle {
     pub font_family: String,
-    #[serde(default = "regular")]
+    #[serde(default = "regular", skip_serializing_if = "is_regular")]
     pub font_style: String,
     /// Which installed version of the font (its version string) when several versions of the
     /// family and style are installed and the text was set in one the family and style alone
@@ -43,29 +43,29 @@ pub struct CharStyle {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub leading: Option<f64>,
     /// Tracking in 1/1000 em.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub tracking: f64,
     /// Kerning: None = Auto (metrics), Some(v) = manual in 1/1000 em.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kerning: Option<f64>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub baseline_shift: f64,
-    #[serde(default = "hundred")]
+    #[serde(default = "hundred", skip_serializing_if = "is_hundred")]
     pub h_scale: f64,
-    #[serde(default = "hundred")]
+    #[serde(default = "hundred", skip_serializing_if = "is_hundred")]
     pub v_scale: f64,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub rotation: f64,
     pub fill: Paint,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub stroke: Paint,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub stroke_width: f64,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub underline: bool,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub strikethrough: bool,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub all_caps: bool,
     /// OpenType features that differ from the defaults (OpenType panel), as tags: `"dlig"` turns
     /// a feature on, `"-liga"` off.
@@ -264,8 +264,14 @@ fn is_ten(v: &f64) -> bool {
 fn regular() -> String {
     "Regular".into()
 }
+fn is_regular(v: &str) -> bool {
+    crate::skip::saving() && *v == regular()
+}
 fn hundred() -> f64 {
     100.0
+}
+fn is_hundred(v: &f64) -> bool {
+    crate::skip::saving() && *v == hundred()
 }
 fn yes() -> bool {
     true
@@ -464,18 +470,21 @@ pub enum TabAlign {
 #[serde(rename_all = "camelCase")]
 pub struct TabStop {
     pub position: f64,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub align: TabAlign,
     /// Leader characters repeated across the tab's gap (e.g. ". ").
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub leader: String,
     /// Decimal tabs align on this character.
-    #[serde(default = "default_align_on")]
+    #[serde(default = "default_align_on", skip_serializing_if = "is_default_align_on")]
     pub align_on: char,
 }
 
 fn default_align_on() -> char {
     '.'
+}
+fn is_default_align_on(v: &char) -> bool {
+    crate::skip::saving() && *v == default_align_on()
 }
 
 /// Distance between default tab stops when no explicit stop applies (½ inch).
@@ -707,20 +716,26 @@ impl Composer {
 #[serde(default)]
 pub struct HyphenationOptions {
     /// Words Longer Than: only words with more letters than this are hyphenated.
+    #[serde(skip_serializing_if = "hyphenation_options_defaults::words_longer_than")]
     pub words_longer_than: u32,
     /// After First: the fewest letters a word keeps before the hyphen.
+    #[serde(skip_serializing_if = "hyphenation_options_defaults::after_first")]
     pub after_first: u32,
     /// Before Last: the fewest letters a word keeps after the hyphen.
+    #[serde(skip_serializing_if = "hyphenation_options_defaults::before_last")]
     pub before_last: u32,
     /// Hyphen Limit: the most consecutive lines that automatic hyphenation may end with a hyphen;
     /// 0 sets no limit.
+    #[serde(skip_serializing_if = "hyphenation_options_defaults::hyphen_limit")]
     pub hyphen_limit: u32,
     /// Hyphenation Zone (pt): with the Single-line Composer, a line whose text before the next
     /// word already ends within this distance of its right edge breaks before that word instead
     /// of hyphenating it. 0 allows every hyphenation.
+    #[serde(skip_serializing_if = "hyphenation_options_defaults::zone")]
     pub zone: f64,
     /// Hyphenate Capitalized Words: when it is off, words that start with a capital letter are not
     /// hyphenated. Words in capitals only are never hyphenated.
+    #[serde(skip_serializing_if = "hyphenation_options_defaults::capitalized")]
     pub capitalized: bool,
 }
 
@@ -754,15 +769,20 @@ pub enum SingleWordJustify {
 #[serde(default)]
 pub struct JustificationOptions {
     /// Word Spacing, percent of the font's word space (0..1000).
+    #[serde(skip_serializing_if = "justification_options_defaults::word_spacing")]
     pub word_spacing: [f64; 3],
     /// Letter Spacing, percent of the font's word space added after each letter (-100..500).
+    #[serde(skip_serializing_if = "justification_options_defaults::letter_spacing")]
     pub letter_spacing: [f64; 3],
     /// Glyph Scaling, percent of the glyphs' width (50..200).
+    #[serde(skip_serializing_if = "justification_options_defaults::glyph_scaling")]
     pub glyph_scaling: [f64; 3],
     /// Auto Leading: the leading of characters whose leading is Auto, in percent of their size
     /// (0..500).
+    #[serde(skip_serializing_if = "justification_options_defaults::auto_leading")]
     pub auto_leading: f64,
     /// Single Word Justification: how a justified line holding one word is set.
+    #[serde(skip_serializing_if = "justification_options_defaults::single_word")]
     pub single_word: SingleWordJustify,
 }
 
@@ -940,21 +960,23 @@ impl ParaStyle {
 /// read the alignment and ignore the flag, and builds with it read Auto back.
 #[derive(Serialize, Deserialize, schemars::JsonSchema)]
 struct ParaStyleFile {
+    // Written even when Left: builds from before Auto alignment existed require it (see
+    // `auto_alignment_saves_readable_by_older_builds`).
     #[serde(default)]
     justify: Justify,
     #[serde(default, skip_serializing_if = "crate::skip::is_default")]
     justify_auto: bool,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     left_indent: f64,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     right_indent: f64,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     first_line_indent: f64,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     space_before: f64,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     space_after: f64,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     hyphenate: bool,
     #[serde(default, skip_serializing_if = "crate::skip::is_default")]
     hyphenation: HyphenationOptions,
@@ -1227,8 +1249,10 @@ impl VerticalAlign {
 #[serde(default)]
 pub struct TextWrap {
     /// Distance kept between the text and the object, in points (Illustrator's default 6 pt).
+    #[serde(skip_serializing_if = "text_wrap_defaults::offset")]
     pub offset: f64,
     /// Invert Wrap: text flows inside the object instead of around it.
+    #[serde(skip_serializing_if = "text_wrap_defaults::invert")]
     pub invert: bool,
 }
 
@@ -1315,18 +1339,23 @@ impl PathAlign {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct AreaOptions {
-    #[serde(deserialize_with = "de_rows_or_columns")]
+    #[serde(deserialize_with = "de_rows_or_columns", skip_serializing_if = "area_options_defaults::rows")]
     pub rows: usize,
-    #[serde(deserialize_with = "de_rows_or_columns")]
+    #[serde(deserialize_with = "de_rows_or_columns", skip_serializing_if = "area_options_defaults::columns")]
     pub columns: usize,
     /// Gutter between rows/columns in points.
+    #[serde(skip_serializing_if = "area_options_defaults::gutter")]
     pub gutter: f64,
     /// Inset from the frame edges in points.
+    #[serde(skip_serializing_if = "area_options_defaults::inset")]
     pub inset: f64,
+    #[serde(skip_serializing_if = "area_options_defaults::first_baseline")]
     pub first_baseline: FirstBaseline,
     /// Minimum first-baseline offset in points.
+    #[serde(skip_serializing_if = "area_options_defaults::first_baseline_min")]
     pub first_baseline_min: f64,
     /// Vertical alignment of the lines in each row/column.
+    #[serde(skip_serializing_if = "area_options_defaults::vertical_align")]
     pub vertical_align: VerticalAlign,
     /// How the frame and its text fit each other (Auto Size, Shrink Text to Fit).
     #[serde(skip_serializing_if = "crate::skip::is_default")]
@@ -1374,7 +1403,7 @@ pub enum AreaFit {
     /// Text that overflows is scaled down (size, leading and baseline shift; not paragraph
     /// spacing) by the largest factor down to `min_percent` % that makes it fit, at layout time.
     ShrinkText {
-        #[serde(rename = "minPercent", default = "AreaFit::default_min_percent")]
+        #[serde(rename = "minPercent", default = "AreaFit::default_min_percent", skip_serializing_if = "AreaFit::is_default_min_percent")]
         min_percent: f64,
     },
 }
@@ -1386,6 +1415,9 @@ impl AreaFit {
     pub const DEFAULT_MIN_PERCENT: f64 = 50.0;
     fn default_min_percent() -> f64 {
         Self::DEFAULT_MIN_PERCENT
+    }
+    fn is_default_min_percent(v: &f64) -> bool {
+        crate::skip::saving() && *v == Self::DEFAULT_MIN_PERCENT
     }
     /// Its id: `none`, `autoHeight` or `shrinkText`.
     pub fn id(self) -> &'static str {
@@ -1425,7 +1457,7 @@ impl AreaFit {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct TextStyleDef {
     pub name: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub attrs: serde_json::Map<String, serde_json::Value>,
 }
 
@@ -1470,10 +1502,10 @@ pub struct InlineArt {
     /// Name of the document symbol ([`crate::Symbol::name`]).
     pub symbol: String,
     /// Art height as a multiple of the run's font size.
-    #[serde(default = "one")]
+    #[serde(default = "one", skip_serializing_if = "is_one")]
     pub scale: f64,
     /// Extra raise in points (positive = up).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub baseline_shift: f64,
     /// The symbol art's visual bounds at its natural size, resolved from the document's symbols by
     /// [`crate::Document::resolve_inline_art`] (not saved). `None`: not resolved or missing; the
@@ -1485,9 +1517,15 @@ pub struct InlineArt {
 fn one() -> f64 {
     1.0
 }
+fn is_one(v: &f64) -> bool {
+    crate::skip::saving() && *v == one()
+}
 
 fn fifty() -> f64 {
     50.0
+}
+fn is_fifty(v: &f64) -> bool {
+    crate::skip::saving() && *v == fifty()
 }
 
 impl InlineArt {
@@ -1593,16 +1631,16 @@ pub struct RubySpan {
     pub end: usize,
     /// The reading, set in the base characters' font (its size comes from `size_percent`).
     pub text: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub position: RubyPosition,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub align: RubyAlign,
     /// Ruby size as a percentage of the base text's size, 1–100 (50 = half, the usual).
-    #[serde(default = "fifty")]
+    #[serde(default = "fifty", skip_serializing_if = "is_fifty")]
     pub size_percent: f64,
     /// Let a reading wider than its base hang over the neighbouring characters instead of being
     /// squeezed to the base's width.
-    #[serde(default = "yes")]
+    #[serde(default = "yes", skip_serializing_if = "crate::skip::true_left_out")]
     pub overhang: bool,
 }
 
@@ -1636,7 +1674,7 @@ pub struct TextObject {
     /// the object, so the runs (and their styles) stay the text itself.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub ruby: Vec<RubySpan>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub para: ParaStyle,
     /// Per-paragraph attributes (see the type's docs); empty = every paragraph uses `para`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -2173,6 +2211,51 @@ impl crate::Document {
             crate::placed_document::each_mut(std::sync::Arc::make_mut(root), &mut fix);
         }
     }
+}
+
+/// What a reader fills in for each field of [`HyphenationOptions`] left out (see `crate::skip::container_defaults`).
+mod hyphenation_options_defaults {
+    use super::*;
+    crate::skip::container_defaults!(HyphenationOptions {
+        words_longer_than: u32,
+        after_first: u32,
+        before_last: u32,
+        hyphen_limit: u32,
+        zone: f64,
+        capitalized: bool,
+    });
+}
+
+/// What a reader fills in for each field of [`JustificationOptions`] left out (see `crate::skip::container_defaults`).
+mod justification_options_defaults {
+    use super::*;
+    crate::skip::container_defaults!(JustificationOptions {
+        word_spacing: [f64; 3],
+        letter_spacing: [f64; 3],
+        glyph_scaling: [f64; 3],
+        auto_leading: f64,
+        single_word: SingleWordJustify,
+    });
+}
+
+/// What a reader fills in for each field of [`TextWrap`] left out (see `crate::skip::container_defaults`).
+mod text_wrap_defaults {
+    use super::*;
+    crate::skip::container_defaults!(TextWrap { offset: f64, invert: bool });
+}
+
+/// What a reader fills in for each field of [`AreaOptions`] left out (see `crate::skip::container_defaults`).
+mod area_options_defaults {
+    use super::*;
+    crate::skip::container_defaults!(AreaOptions {
+        rows: usize,
+        columns: usize,
+        gutter: f64,
+        inset: f64,
+        first_baseline: FirstBaseline,
+        first_baseline_min: f64,
+        vertical_align: VerticalAlign,
+    });
 }
 
 #[cfg(test)]
