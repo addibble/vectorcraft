@@ -2730,6 +2730,37 @@ fn document_patch_edits_the_model_at_query_pointers_as_one_undo_step() {
     assert!(s.execute("document.patch", &json!({"patch": [{"op": "frobnicate", "path": "/x"}]})).is_err());
 }
 
+/// `document.query`, `document.patch` and `document.schema` read the document as a saved file
+/// holds it: a pointer a query answers resolves in the file's JSON, a field left out at its
+/// default is absent from both and set with `add`, and `document.json` still gives every field a reader would fill in.
+#[test]
+fn query_pointers_resolve_in_the_saved_file() {
+    let mut s = session();
+    let t =
+        s.execute("text.create", &json!({"x": 10, "y": 10, "text": "Ace", "area": {"width": 100, "height": 40}})).unwrap()["id"].as_u64().unwrap();
+    let v = s.execute("document.query", &json!({"path": format!("$..[?@.id == {t}].kind")})).unwrap();
+    let pointer = v["matches"][0]["pointer"].as_str().unwrap().to_string();
+    let saved: Value = serde_json::from_slice(&vectorcraft_format::save(&s.doc().unwrap().doc, false)).unwrap();
+    let in_file = saved["document"].pointer(&pointer).expect("the query's pointer is in the file");
+    assert_eq!(in_file, &v["matches"][0]["value"], "the query reads what the file holds");
+    // A run's scale at its default is left out of both; document.json keeps it.
+    assert_eq!(in_file.pointer("/runs/0/style/h_scale"), None, "{in_file}");
+    let full = s.execute("document.json", &json!({})).unwrap();
+    assert_eq!(full.pointer(&format!("{pointer}/runs/0/style/h_scale")), Some(&json!(100.0)));
+    // Area options at their defaults are left out too, and set with add.
+    assert!(in_file.get("area").is_none(), "{in_file}");
+    // A field left out is set with add; replace finds nothing to replace.
+    let err = s.execute("document.patch", &json!({"patch": [{"op": "replace", "path": format!("{pointer}/area/gutter"), "value": 12}]})).unwrap_err();
+    assert!(err.to_string().contains("area"), "{err}");
+    s.execute("document.patch", &json!({"patch": [{"op": "add", "path": format!("{pointer}/area"), "value": {"gutter": 12}}]})).unwrap();
+    let NodeKind::Text(text) = &s.doc().unwrap().doc.node(NodeId(t)).unwrap().kind else { panic!("text") };
+    assert_eq!(text.area.gutter, 12.0);
+    // The schema says why a key may be missing: the field is optional, with its default.
+    let schema = s.execute("document.schema", &json!({"type": "AreaOptions"})).unwrap();
+    let gutter = schema["properties"].as_array().unwrap().iter().find(|p| p["name"] == "gutter").unwrap().clone();
+    assert_eq!((gutter.get("required").and_then(Value::as_bool).unwrap_or(false), &gutter["default"]), (false, &json!(18.0)), "{gutter}");
+}
+
 #[test]
 fn document_find_searches_names_kinds_and_text() {
     let mut s = session();
