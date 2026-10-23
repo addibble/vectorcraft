@@ -4659,13 +4659,19 @@ for as long as the session runs: the web build has no installed fonts, so a page
 fonts its documents use this way (`window.vectorcraft.execute("text.addFont", {dataBase64})`). Type set in a face it
 adds redraws in it; a face already loaded (the same family, style and version) is not added again, and bytes that are
 no font are refused. It answers `{faces: [{family, style}], found}` (the faces added, and the faces the file holds) and
-is not an edit: nothing is saved, journaled or undone.
+is not an edit: nothing is saved, journaled or undone. `text.addFontSources {fonts: [{family, style?, url, sha256}]}`
+registers fonts the host can supply, as a font provider's fonts are activated on demand: they are listed in the font
+menus and `text.fontList` from then on (a menu shows a source not loaded yet by name, without a sample), and type set in
+one asks for it. The web build fetches what type asks for from `url` (relative to the page), checks it against its
+SHA-256, and adds it as `text.addFont` does; until then the type draws in the fallback face. `text.replaceFont` takes a
+source's family. A family and style already a source is kept; the answer is `{added, sources}`; not an edit either.
 
 ```json
 {"name":"run_command","arguments":{"command":"text.fontList","params":{}}}
 {"name":"run_command","arguments":{"command":"text.fontList","params":{"family":"Source Serif 4"}}}
 {"name":"run_command","arguments":{"command":"text.rescanFonts","params":{}}}
 {"name":"run_command","arguments":{"command":"text.addFont","params":{"dataBase64":"AAEAAAAS…"}}}
+{"name":"run_command","arguments":{"command":"text.addFontSources","params":{"fonts":[{"family":"Roboto Slab","url":"fonts/RobotoSlab.ttf","sha256":"d2985f67…"}]}}}
 ```
 
 `text.missingFonts` lists the fonts that the active document's type uses, in its layers and its symbols, and that aren't

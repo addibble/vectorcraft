@@ -514,6 +514,10 @@ pub struct FontDb {
     family_cache: Mutex<Option<Arc<[String]>>>,
     menu_cache: Mutex<Option<MenuFamilies>>,
     generation: AtomicU64,
+    /// Fonts a host can supply on request ([`FontDb::add_sources`]), and those requested and not
+    /// yet taken ([`FontDb::take_source_requests`]).
+    sources: RwLock<Vec<FontSource>>,
+    source_requests: Mutex<SourceRequests>,
     /// System fallback state: characters no system font covers.
     #[cfg(not(target_arch = "wasm32"))]
     sys: Mutex<SysFallback>,
@@ -1711,6 +1715,27 @@ fn style_distance(face: &FontFace, weight: f32, italic: bool) -> f32 {
 /// [`FontDb::menu_family_list`], with the [`FontDb::family_list`] it was built from.
 type MenuFamilies = (Arc<[String]>, Arc<[String]>);
 
+/// A font a host can supply when type needs it, as a font provider's fonts are activated on
+/// demand: listed in the font menus before it is loaded, and fetched by the host from `url` when
+/// type names it (the web build does so, checking the bytes against `integrity`); until then the
+/// type draws in the fallback face.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FontSource {
+    pub family: String,
+    pub style: String,
+    /// Where the host gets the file: for the web build, a URL relative to the page.
+    pub url: String,
+    /// The file's Subresource Integrity value, `sha256-<base64>`.
+    pub integrity: String,
+}
+
+/// The sources requested ([`FontDb::face`] met their family missing): each requested once.
+#[derive(Debug, Default)]
+struct SourceRequests {
+    asked: std::collections::HashSet<(String, String)>,
+    queue: Vec<FontSource>,
+}
+
 /// What [`FontDb::add_font_reporting`] did with a font file's bytes.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FontsAdded {
@@ -1763,6 +1788,8 @@ impl FontDb {
             version_scanned: RwLock::new(std::collections::HashSet::new()),
             family_cache: Mutex::new(None),
             menu_cache: Mutex::new(None),
+            sources: RwLock::new(Vec::new()),
+            source_requests: Mutex::new(SourceRequests::default()),
             generation: AtomicU64::new(0),
             #[cfg(not(target_arch = "wasm32"))]
             sys: Mutex::new(SysFallback { enabled: true, ..Default::default() }),
@@ -1828,6 +1855,7 @@ impl FontDb {
         }
         let mut v: Vec<String> = self.read_faces().iter().map(|f| f.family.clone()).collect();
         v.extend(catalog.values().map(|c| c.name.clone()));
+        v.extend(self.sources.read().unwrap_or_else(|e| e.into_inner()).iter().map(|s| s.family.clone()));
         v.sort_by_key(|a| a.to_lowercase());
         v.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
         let list: Arc<[String]> = v.into();
@@ -1887,9 +1915,58 @@ impl FontDb {
                 }
             }
         }
+        for src in self.sources.read().unwrap_or_else(|e| e.into_inner()).iter().filter(|s| s.family.eq_ignore_ascii_case(family)) {
+            if !v.iter().any(|(_, _, s)| s.eq_ignore_ascii_case(&src.style)) {
+                v.push((false, style_weight(&src.style), src.style.clone()));
+            }
+        }
         v.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.total_cmp(&b.1)).then(a.2.cmp(&b.2)));
         v.dedup_by(|a, b| a.2 == b.2);
         v.into_iter().map(|t| t.2).collect()
+    }
+
+    /// Fonts a host can supply ([`FontSource`]): listed in the font menus from now on and
+    /// requested when type names their family. A family and style already a source is kept as it
+    /// was. Returns how many were added.
+    pub fn add_sources(&self, list: Vec<FontSource>) -> usize {
+        let mut sources = self.sources.write().unwrap_or_else(|e| e.into_inner());
+        let mut added = 0;
+        for src in list {
+            if sources.iter().any(|s| s.family.eq_ignore_ascii_case(&src.family) && s.style.eq_ignore_ascii_case(&src.style)) {
+                continue;
+            }
+            sources.push(src);
+            added += 1;
+        }
+        drop(sources);
+        if added > 0 {
+            self.changed();
+        }
+        added
+    }
+
+    /// The fonts a host can supply ([`FontDb::add_sources`]).
+    pub fn sources(&self) -> Vec<FontSource> {
+        self.sources.read().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    /// The sources type has asked for since the last call, for the host to fetch and add
+    /// ([`FontDb::add_font`]); each is asked for once.
+    pub fn take_source_requests(&self) -> Vec<FontSource> {
+        std::mem::take(&mut self.source_requests.lock().unwrap_or_else(|e| e.into_inner()).queue)
+    }
+
+    /// Ask for the source of `family` (its `style`, else its first style) when one supplies it and
+    /// the family has no face of that style loaded.
+    fn request_source(&self, family: &str, style: &str) {
+        let sources = self.sources.read().unwrap_or_else(|e| e.into_inner());
+        let of_family = || sources.iter().filter(|s| s.family.eq_ignore_ascii_case(family));
+        let Some(src) = of_family().find(|s| norm(&s.style) == norm(style)).or_else(|| of_family().next()) else { return };
+        let key = (src.family.to_ascii_lowercase(), src.style.to_ascii_lowercase());
+        let mut requests = self.source_requests.lock().unwrap_or_else(|e| e.into_inner());
+        if requests.asked.insert(key) {
+            requests.queue.push(src.clone());
+        }
     }
 
     /// Add a user font (TTF/OTF/TTC bytes). Returns the number of faces added (0 if unparseable or
@@ -2242,6 +2319,10 @@ impl FontDb {
                 return Some(f);
             }
         }
+        // A host can supply it: asked for once, drawn in the fallback until the host adds it.
+        if found.as_ref().is_none_or(|f| norm(&f.style) != norm(style)) {
+            self.request_source(family, style);
+        }
         found
             .or_else(|| self.find(FALLBACK_FAMILY, style))
             .or_else(|| self.find(FALLBACK_FAMILY, "Regular"))
@@ -2389,7 +2470,18 @@ impl FontDb {
     /// Is `family` available (loaded, or installed on the system)?
     pub fn has_family(&self, family: &str) -> bool {
         let (family, _) = self.canonical(family, "");
-        self.is_loaded(&family) || self.read_catalog().contains_key(&family.to_ascii_lowercase())
+        self.is_loaded(&family) || self.read_catalog().contains_key(&family.to_ascii_lowercase()) || self.is_source(&family)
+    }
+
+    /// Whether `family` is a font source not loaded yet: what draws it would request it
+    /// ([`FontDb::face`]), so a font menu's sample leaves it out and only type set in it asks.
+    pub fn is_pending_source(&self, family: &str) -> bool {
+        self.is_source(family) && !self.is_loaded(family)
+    }
+
+    /// Whether a host can supply `family` ([`FontDb::add_sources`]).
+    pub fn is_source(&self, family: &str) -> bool {
+        self.sources.read().unwrap_or_else(|e| e.into_inner()).iter().any(|s| s.family.eq_ignore_ascii_case(family))
     }
 
     pub(crate) fn is_loaded(&self, family: &str) -> bool {
