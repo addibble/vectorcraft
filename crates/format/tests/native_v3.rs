@@ -139,7 +139,8 @@ fn unused_images_are_pruned() {
     assert_eq!(keys, ["in brush", "in mask", "in symbol", "used"]);
     assert_eq!(back.images["used"].bytes.as_slice(), &[1, 2]);
     let v = json_of(&save(&d, false));
-    assert!(v["images"].get("unused").is_none() && v["document"]["images"].as_object().is_some_and(|m| m.is_empty()));
+    // The document's own map is empty, so the saved file leaves it out.
+    assert!(v["images"].get("unused").is_none() && v["document"].get("images").is_none_or(|m| m.as_object().is_some_and(|m| m.is_empty())));
 }
 
 #[test]

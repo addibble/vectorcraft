@@ -29,13 +29,13 @@ pub fn specs() -> Vec<CommandSpec> {
         cmd!(query "document.node", "Inspect Object", [], None, "{id, summary?: compact summary, depth?: child levels in the summary (default all), childLimit?: children shown per node (default all; a level that shows fewer reports childCount)} → one object", has_doc, doc_node),
         cmd!(query "document.find", "Find Objects", [], None, "{name?: substring of the Layers panel name, kind?: panel label such as Group; Path; Type or Image (exact), text?: substring of type content, limit?: max matches (default 100, 0 counts only)} → {matches: [{id, name, kind, path}], total}", has_doc, doc_find),
         cmd!(query "document.json", "Document JSON", [], None, "{} → complete document model", has_doc, |s, _| Ok(serde_json::to_value(&*s.doc()?.doc).unwrap_or(Value::Null))),
-        cmd!(query "document.query", "Query Document", [], None, "{path: a JSONPath (RFC 9535) over the document model as document.json gives it; such as `$.artboards[*].name`; `$.layers[0].kind.children[?@.kind.type == 'path'].id`; `$..[?@.name == 'logo']` (document.schema describes the model), limit?: at most this many matches (default 100; 0 counts only), offset?: matches skipped first, depth?: levels of each match's value shown; containers below summarized as `{…n keys}` or `[…n items]` (default all)} → {matches: [{path: the match's normalized path, value}], total}; an answer past 1 MiB is an error asking for a narrower query", has_doc, doc_query),
+        cmd!(query "document.query", "Query Document", [], None, "{path: a JSONPath (RFC 9535) over the document model as a saved file holds it (a field at the value a reader fills in for it is left out: document.schema gives each default, document.json every field); such as `$.artboards[*].name`; `$.layers[0].kind.children[?@.kind.type == 'path'].id`; `$..[?@.name == 'logo']` (document.schema describes the model), limit?: at most this many matches (default 100; 0 counts only), offset?: matches skipped first, depth?: levels of each match's value shown; containers below summarized as `{…n keys}` or `[…n items]` (default all)} → {matches: [{path: the match's normalized path, value}], total}; an answer past 1 MiB is an error asking for a narrower query", has_doc, doc_query),
         cmd!(
             "document.patch",
             "Patch Document",
             [],
             None,
-            "{patch: a JSON Patch (RFC 6902); an array of operations (add; remove; replace; move; copy; test) with JSON Pointer paths (RFC 6901) into the document model as document.json gives it and document.query points at it (each match's `pointer`); applied in order; all or none; an object added without an `id` (or a copy whose id another object has) gets a fresh one, label?: the undo step's name (default Patch)} → {applied: operations, freshIds: objects given an id}; one undo step and one journal entry, so the patch is undone and replayed like any edit",
+            "{patch: a JSON Patch (RFC 6902); an array of operations (add; remove; replace; move; copy; test) with JSON Pointer paths (RFC 6901) into the document model as a saved file holds it and document.query points at it (each match's `pointer`; a field left out at its default is set with add, not replace); applied in order; all or none; an object added without an `id` (or a copy whose id another object has) gets a fresh one, label?: the undo step's name (default Patch)} → {applied: operations, freshIds: objects given an id}; one undo step and one journal entry, so the patch is undone and replayed like any edit",
             has_doc,
             doc_patch
         ),
@@ -269,12 +269,19 @@ fn doc_find(s: &mut Session, p: &Value) -> Result<Value> {
     Ok(json!({"matches": matches, "total": total}))
 }
 
+/// The document as a saved file holds it (`vectorcraft_doc::as_saved`): what document.query,
+/// document.patch and document.schema's `at` read, so their pointers point into the file. A
+/// patched value reads back through the model, which fills in what was left out.
+fn saved_form(d: &Document) -> serde_json::Result<Value> {
+    vectorcraft_doc::as_saved(|| serde_json::to_value(d))
+}
+
 fn doc_query(s: &mut Session, p: &Value) -> Result<Value> {
     const C: &str = "document.query";
     let path = str_param(p, "path").ok_or_else(|| bad(C, "`path` must be a JSONPath string, such as $.artboards[*].name"))?;
     let opts =
         crate::query::QueryOpts { limit: opt_u64(p, C, "limit")?, offset: opt_u64(p, C, "offset")?.unwrap_or(0), depth: opt_u64(p, C, "depth")? };
-    let value = serde_json::to_value(&*s.doc()?.doc).map_err(|e| bad(C, e.to_string()))?;
+    let value = saved_form(&s.doc()?.doc).map_err(|e| bad(C, e.to_string()))?;
     crate::query::run(&value, path, opts).map_err(|e| bad(C, e))
 }
 
@@ -292,7 +299,7 @@ fn doc_patch(s: &mut Session, p: &Value) -> Result<Value> {
         }
     };
     let label = str_param(p, "label").filter(|l| !l.is_empty()).unwrap_or("Patch");
-    let mut value = serde_json::to_value(&*s.doc()?.doc).map_err(|e| bad(C, e.to_string()))?;
+    let mut value = saved_form(&s.doc()?.doc).map_err(|e| bad(C, e.to_string()))?;
     let applied = crate::patch::apply(&mut value, &ops).map_err(|e| bad(C, e))?;
     let fresh_ids = crate::patch::assign_ids(&mut value);
     let mut doc: Document = serde_json::from_value(value).map_err(|e| bad(C, format!("the patched document does not load: {e}")))?;
@@ -324,7 +331,7 @@ fn doc_schema(s: &mut Session, p: &Value) -> Result<Value> {
     match (type_name, at) {
         (Some(_), Some(_)) => Err(bad(C, "give `type` or `at`, not both")),
         (_, Some(at)) => {
-            let value = serde_json::to_value(&*s.doc()?.doc).map_err(|e| bad(C, e.to_string()))?;
+            let value = saved_form(&s.doc()?.doc).map_err(|e| bad(C, e.to_string()))?;
             crate::schema::at(&value, at).map_err(|e| bad(C, e))
         }
         (type_name, None) => crate::schema::describe(type_name.unwrap_or(crate::schema::ROOT)).map_err(|e| bad(C, e)),

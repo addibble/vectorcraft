@@ -11,7 +11,11 @@
 //!   "images": { "<key>": { "mime": "image/png", "data": "<base64>" } } }
 //! ```
 //! It is lossless for everything in the document model; foreign data lives in `document.unknown`
-//! and document keys a newer version added are kept (`Document::extra`). Only the images the
+//! and document keys a newer version added are kept (`Document::extra`). The current version omits
+//! defaults (`vectorcraft_doc::as_saved`): a field equal to the value a reader fills in when it
+//! is missing is left out (a text run at 100% horizontal scale, a paragraph with no indents), so a
+//! document's JSON holds what differs from the defaults. Older versions read such files, since they
+//! fill in the same values; files saved for older apps keep every field. Only the images the
 //! document uses are written. `preview` (optional) is a PNG of the first artboard, at most
 //! [`PREVIEW_MAX`] pixels on its longer side, for file browsers. `profiles` (optional, Embed ICC
 //! Profiles) holds the ICC files of colour profiles the document is tagged with, for machines that
@@ -254,7 +258,9 @@ impl SaveOptions {
     /// [`PRETTY_MAX_BYTES`]).
     pub fn for_doc(doc: &Document) -> Self {
         let objects: usize = doc.layers.iter().map(|l| l.count()).sum();
-        Self { pretty: objects <= PRETTY_MAX_OBJECTS && compact_size_at_most(doc, PRETTY_MAX_BYTES), ..Self::default() }
+        // Measured as it is saved (defaults omitted), so fewer bytes keep more documents pretty.
+        let small = vectorcraft_doc::as_saved(|| compact_size_at_most(doc, PRETTY_MAX_BYTES));
+        Self { pretty: objects <= PRETTY_MAX_OBJECTS && small, ..Self::default() }
     }
 }
 
@@ -313,6 +319,12 @@ const JSON_CHUNK: usize = 64 << 10;
 /// file: write to a temporary file ([`write_atomic_with`]).
 pub fn save_to(doc: &Document, o: &SaveOptions, w: impl Write) -> Result<(), FormatError> {
     o.check()?;
+    // The current version leaves out fields equal to what a reader fills in for them; files for
+    // older apps keep every field, as those apps wrote them.
+    if o.version >= VERSION { vectorcraft_doc::as_saved(|| write(doc, o, w)) } else { write(doc, o, w) }
+}
+
+fn write(doc: &Document, o: &SaveOptions, w: impl Write) -> Result<(), FormatError> {
     let pretty = o.pretty && !o.compress;
     let mut d = doc.without_edit_modes().into_owned();
     // Older apps don't know placed documents: they get the art the objects show, with its
