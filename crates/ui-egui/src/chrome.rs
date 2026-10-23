@@ -46,7 +46,7 @@ pub fn app_bar(app: &mut VectorcraftApp, ui: &mut Ui) {
                 ui.add_space(6.0);
             }
             let on_home = menus::home_showing(app);
-            if widgets::icon_button(ui, "house", tl!("Home"), on_home, 20.0).clicked() {
+            if !menus::host_hidden(app, "app.home") && widgets::icon_button(ui, "house", tl!("Home"), on_home, 20.0).clicked() {
                 app.run("app.home", json!({})).ok();
             }
             ui.add_space(2.0);
