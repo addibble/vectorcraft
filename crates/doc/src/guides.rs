@@ -55,4 +55,7 @@ impl RulerMode {
     pub fn legacy() -> Self {
         Self::Global
     }
+    pub(crate) fn is_legacy(&self) -> bool {
+        *self == Self::legacy()
+    }
 }
