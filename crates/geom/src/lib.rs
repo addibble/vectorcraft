@@ -11,9 +11,11 @@ pub mod arc;
 pub mod bez;
 pub mod corners;
 pub mod hit;
+pub mod notation;
 pub mod path;
 pub mod projective;
 pub mod recognize;
+pub mod saved;
 pub mod shapes;
 pub mod snap;
 

@@ -10,6 +10,8 @@ pub struct ImageObject {
     pub width: u32,
     pub height: u32,
     /// Maps pixel space (0..w, 0..h) into the document.
+    #[serde(with = "vectorcraft_geom::notation::affine")]
+    #[schemars(with = "vectorcraft_geom::notation::Transform")]
     pub xf: Affine,
     /// The file a linked image shows (File → Place with Link); `None`: embedded. Files saved
     /// before links had details hold just the path.
@@ -57,6 +59,9 @@ pub enum NodeKind {
         clip: bool,
     },
     Path {
+        /// Left out of a saved file when `live` rebuilds it exactly ([`LiveShape::to_path`]); a
+        /// live shape read without it is rebuilt from its parameters.
+        #[serde(default)]
         path: PathData,
         #[serde(default, skip_serializing_if = "crate::skip::is_default")]
         rule: FillRule,
@@ -81,6 +86,8 @@ pub enum NodeKind {
     Image(Box<ImageObject>),
     SymbolInstance {
         symbol: String,
+        #[serde(with = "vectorcraft_geom::notation::affine")]
+        #[schemars(with = "vectorcraft_geom::notation::Transform")]
         xf: Affine,
     },
     /// Live blend: the key objects (paint order) plus spacing/orientation/spine; the intermediate
@@ -106,7 +113,8 @@ pub enum NodeKind {
         /// The envelope's own axes (→ the document): the transforms it took since it was made that
         /// the page axes can't stand for (rotation, shear, reflection). The content maps from its
         /// bounds in this frame, and a warp bends along it.
-        #[serde(default, skip_serializing_if = "crate::skip::is_default")]
+        #[serde(with = "vectorcraft_geom::notation::affine", default, skip_serializing_if = "crate::skip::is_default")]
+        #[schemars(with = "vectorcraft_geom::notation::Transform")]
         frame: Box<Affine>,
     },
     /// Gradient mesh.
@@ -171,6 +179,7 @@ mod kind_de {
             clip: bool,
         },
         Path {
+            #[serde(default)]
             path: PathData,
             #[serde(default)]
             rule: FillRule,
@@ -190,6 +199,8 @@ mod kind_de {
         Image(Box<super::ImageObject>),
         SymbolInstance {
             symbol: String,
+            #[serde(with = "vectorcraft_geom::notation::affine")]
+            #[schemars(with = "vectorcraft_geom::notation::Transform")]
             xf: Affine,
         },
         Blend {
@@ -206,7 +217,8 @@ mod kind_de {
             editing: bool,
             #[serde(default)]
             options: crate::live::EnvelopeOptions,
-            #[serde(default)]
+            #[serde(with = "vectorcraft_geom::notation::affine", default)]
+            #[schemars(with = "vectorcraft_geom::notation::Transform")]
             frame: Box<Affine>,
         },
         Mesh(GradientMesh),
@@ -237,7 +249,14 @@ mod kind_de {
             while let Some(key) = map.next_key::<String>()? {
                 if key == "type" {
                     let tag: String = map.next_value()?;
-                    return KindDef::deserialize(Tagged { tag, map: Buffered { before: before.into_iter(), value: None, map } });
+                    let mut kind = KindDef::deserialize(Tagged { tag, map: Buffered { before: before.into_iter(), value: None, map } })?;
+                    // A live shape saved without its path: rebuilt from the shape's parameters.
+                    if let NodeKind::Path { path, live: Some(live), .. } = &mut kind
+                        && path.subpaths.is_empty()
+                    {
+                        *path = live.to_path();
+                    }
+                    return Ok(kind);
                 }
                 before.push((key, map.next_value::<Counted>()?.0));
             }
