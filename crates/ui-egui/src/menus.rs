@@ -2253,6 +2253,17 @@ fn hidden_when_disabled(id: &str) -> bool {
         || id.starts_with(crate::dialogs::perspective_presets::SLOT)
 }
 
+/// Whether an embedding page hid command `id` from the user (`vectorcraft:configure`,
+/// docs/web-embed.md): it leaves the menus, the command palette and the buttons that run it, and
+/// its shortcut does nothing. The page's own control requests still run it (they don't come
+/// through [`invoke`]).
+pub fn host_hidden(app: &VectorcraftApp, id: &str) -> bool {
+    app.ui.host_hidden.iter().any(|hidden| match hidden.strip_suffix('*') {
+        Some(prefix) => id.starts_with(prefix),
+        None => hidden == id,
+    })
+}
+
 /// Menu items another item stands in for right now: Envelope Distort's Reset with Warp and Reset
 /// with Mesh take the place of Make with Warp and Make with Mesh while an envelope is selected.
 fn swapped_out(app: &VectorcraftApp, id: &str) -> bool {
@@ -2314,6 +2325,9 @@ fn recent_slot<'a>(app: &'a VectorcraftApp, id: &str) -> Option<&'a String> {
 /// or off), or `None` while they leave it out: an empty slot ([`hidden_when_disabled`]) or an item
 /// another stands in for ([`swapped_out`]).
 pub fn shown_state(app: &VectorcraftApp, id: &str, p: &Value) -> Option<(bool, Option<bool>)> {
+    if host_hidden(app, id) {
+        return None;
+    }
     let en = enabled(app, id);
     if (!en && hidden_when_disabled(id)) || swapped_out(app, id) {
         return None;
@@ -3605,9 +3619,10 @@ pub(crate) fn home_key(app: &VectorcraftApp) -> (Option<u64>, usize) {
 
 /// Whether the Home screen is up: chosen with the Home button (`app.home`), or no document is open
 /// and Preferences › General › Show The Home Screen When No Documents Are Open is on (#394). Off,
-/// an app with no document shows an empty window, and the Home button still opens the screen.
+/// an app with no document shows an empty window, and the Home button still opens the screen. An
+/// embedding page's message for the empty window (`vectorcraft:configure`) stands in for it.
 pub(crate) fn home_showing(app: &VectorcraftApp) -> bool {
-    app.ui.home.is_some() || (app.session.active().is_none() && app.session.prefs.show_home_screen)
+    app.ui.home.is_some() || (app.session.active().is_none() && app.session.prefs.show_home_screen && app.ui.host_empty_message.is_none())
 }
 
 /// What a menu click runs: items whose label ends with "…" and that carry default params open a
@@ -3714,7 +3729,7 @@ pub(crate) fn graph_dialog(app: &mut VectorcraftApp, id: &str) -> Result<Value, 
 }
 
 pub fn invoke(app: &mut VectorcraftApp, id: &str, p: Value) {
-    if waits_for_ime(app, id) {
+    if waits_for_ime(app, id) || host_hidden(app, id) {
         return;
     }
     // Params first: some dialogs' fields take a look through the session (Move's last move).
