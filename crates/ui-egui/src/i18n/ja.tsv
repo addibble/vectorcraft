@@ -2531,6 +2531,7 @@ mark-style	Japanese	日本式
 	Reflect X	X 軸でリフレクト
 	Reflect Y	Y 軸でリフレクト
 	Refresh	更新
+	Add Font	フォントを追加
 	Refresh Font List	フォントリストを更新
 	Missing Fonts	見つからないフォント
 	Missing Fonts Dialog	見つからないフォントダイアログ
@@ -5149,3 +5150,7 @@ axis	Y Axis	Y 軸
 	Symbol Definition	シンボルの定義
 	Override Symbol Instance	シンボルインスタンスを上書き
 	Reset Symbol Instance	シンボルインスタンスをリセット
+@msg	give the font file as dataBase64	フォントファイルを dataBase64 で指定してください
+@msg	{name} is larger than {_1} MB	{name} は {_1} MB を超えています
+@msg	{name} is not a TrueType, OpenType or collection font	{name} は TrueType、OpenType、コレクションのいずれのフォントでもありません
+@msg	{name}: dataBase64 is not base64	{name}: dataBase64 が base64 ではありません
