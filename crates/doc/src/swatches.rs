@@ -175,6 +175,64 @@ impl Document {
     }
 }
 
+impl Document {
+    /// Each global swatch's name and the colour a paint linked to it at 100% holds, for writing
+    /// such paints by name ([`vectorcraft_color::saved_links`]). Only swatches whose colour is their
+    /// own: a Lab spot colour shown through the colour settings may show otherwise elsewhere.
+    pub(crate) fn saved_links(&self) -> std::collections::BTreeMap<String, Color> {
+        // The first swatch of a name, as [`Document::swatch`] finds it, whatever it is.
+        let mut first: std::collections::BTreeMap<String, Option<Color>> = std::collections::BTreeMap::new();
+        for w in self.swatches_iter() {
+            if first.contains_key(&w.name) {
+                continue;
+            }
+            let own = match &w.paint {
+                Paint::Solid { color, swatch: None, .. } if w.global && self.linked_color(*color, w.spot) == *color => Some(*color),
+                _ => None,
+            };
+            first.insert(w.name.clone(), own);
+        }
+        first.into_iter().filter_map(|(name, color)| Some((name, color?))).collect()
+    }
+
+    /// Fill in every linked colour read without its value ([`Color::UNRESOLVED`]) from its
+    /// swatch, wherever the document holds paints. A link to a swatch the document has no global
+    /// colour for, or such a colour where no walk reaches, refuses the document.
+    pub(crate) fn resolve_saved_links(&mut self) -> Result<(), String> {
+        let table = self.saved_links();
+        let mut missing = std::collections::BTreeSet::new();
+        let mut f = |c: &mut Color, link: &mut Option<String>, tint: &mut f32| -> bool {
+            if !c.is_unresolved() {
+                return false;
+            }
+            match link.as_deref().and_then(|n| table.get(n)) {
+                Some(base) => {
+                    *c = base.tinted(*tint);
+                    true
+                }
+                None => {
+                    missing.insert(link.clone().unwrap_or_default());
+                    false
+                }
+            }
+        };
+        self.map_solid_paints(&mut f);
+        for g in &mut self.graph_designs {
+            map_tree(&mut g.art, &mut f);
+        }
+        if !missing.is_empty() {
+            let names: Vec<String> = missing.into_iter().map(|n| format!("{n:?}")).collect();
+            return Err(format!("a colour is linked by name to {}, which the document has no global swatch colour for", names.join(", ")));
+        }
+        let mut left = false;
+        self.visit_paints(&mut |p| left |= p.color().is_some_and(|c| c.is_unresolved()));
+        if left {
+            return Err("a colour linked by name is held where it cannot be filled in".into());
+        }
+        Ok(())
+    }
+}
+
 /// The default name of a solid swatch: its values in its own colour model ("C=10 M=20 Y=30 K=0",
 /// "R=255 G=128 B=0", "Gray K=40", "L=52 a=70 b=-30").
 pub fn color_name(c: Color) -> String {
