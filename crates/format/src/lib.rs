@@ -3,7 +3,7 @@
 //! A `.vectorcraft` file is UTF-8 JSON, gzip-compressed when saved with Use Compression (told apart
 //! by its magic bytes on open, whatever the version):
 //! ```json
-//! { "format": "vectorcraft", "version": 3, "generator": "VectorCraft 0.1.0",
+//! { "format": "vectorcraft", "version": 6, "generator": "VectorCraft 0.1.0",
 //!   "preview": { "mime": "image/png", "data": "<base64>" },
 //!   "profiles": { "<profile name>": { "mime": "application/vnd.iccprofile", "data": "<base64>" } },
 //!   "pdf": { "mime": "application/pdf", "data": "<base64>" },
@@ -18,7 +18,10 @@
 //! fill in the same values; files saved for older apps keep every field. A colour linked to a global
 //! swatch is saved by the swatch's name (`"paint": "Accent"`, or without its `color` at another
 //! tint) when it is exactly the swatch's colour, and filled in from the swatch on reading
-//! (`vectorcraft_color::saved_links`). Only the images the
+//! (`vectorcraft_color::saved_links`). Geometry is written in SVG's notation
+//! (`vectorcraft_geom::notation`): a path's anchors as path data (`{"d": "M0 0L10 0…"}`), a transform
+//! as an SVG transform (`"translate(10 20)"`), and a live shape without the path its parameters
+//! rebuild. Only the images the
 //! document uses are written. `preview` (optional) is a PNG of the first artboard, at most
 //! [`PREVIEW_MAX`] pixels on its longer side, for file browsers. `profiles` (optional, Embed ICC
 //! Profiles) holds the ICC files of colour profiles the document is tagged with, for machines that
@@ -33,9 +36,11 @@
 //! compressed; v4 may keep large data (images, placed documents, the PDF, profiles of at least
 //! [`INLINE_MAX`] bytes) after the JSON instead of in it: the JSON is followed by [`BLOB_MAGIC`] and
 //! the bytes, and such an entry says where they are (`"blob": [offset, length]`) instead of giving
-//! `data`; v5 may write a colour linked to a global swatch by the swatch's name ([`NAMED_COLORS_SINCE`]).
-//! From v4 on, fields equal to the value a reader fills in for them are left out. Every version
-//! loads, and [`save_with`] writes any of them for older apps (under the
+//! `data`; v5 may write a colour linked to a global swatch by the swatch's name ([`NAMED_COLORS_SINCE`]);
+//! v6 writes geometry in SVG's notation ([`SVG_GEOMETRY_SINCE`]; readers take either form, the
+//! structured one where the notation cannot say a path exactly). From v4 on, fields equal to the
+//! value a reader fills in for them are left out. Every version loads, and [`save_with`] writes any
+//! of them for older apps (under the
 //! format name `drawcraft`, which every version reads). Readers reject files whose `version` is
 //! newer than they support.
 #![forbid(unsafe_code)]
@@ -58,10 +63,9 @@ use vectorcraft_doc::{Document, ImageBlob};
 pub use atomic::{sync_file, write_atomic, write_atomic_with, write_new_with};
 use stream::{Gz, Indent, KeyScan, Out};
 
-/// v5: colours linked by swatch name (v1 to v4 files still load).
-pub const VERSION: u32 = 5;
-/// The first version whose readers fill in the fields a file leaves out at their defaults, and
-/// know placed documents.
+/// v6: geometry in SVG's notation (v1 to v5 files still load).
+pub const VERSION: u32 = 6;
+/// The first version whose readers fill in the fields a file leaves out at their defaults.
 pub const DEFAULTS_OMITTED_SINCE: u32 = 4;
 /// The first version whose readers take a colour linked by its swatch's name.
 pub const NAMED_COLORS_SINCE: u32 = 5;
@@ -73,6 +77,11 @@ pub const BLOB_MAGIC: &[u8] = b"\n\0VCBLOBS\0";
 pub const MIN_VERSION: u32 = 1;
 /// The first version whose readers open compressed files.
 pub const COMPRESSED_SINCE: u32 = 3;
+/// The first version whose readers know placed documents: older ones get the art they show.
+pub const PLACED_SINCE: u32 = 4;
+/// The first version whose readers know geometry in SVG's notation (`vectorcraft_geom::notation`):
+/// older ones get the structured form.
+pub const SVG_GEOMETRY_SINCE: u32 = 6;
 /// Most pixels on the longer side of an embedded preview.
 pub const PREVIEW_MAX: u32 = 256;
 pub const EXTENSION: &str = "vectorcraft";
@@ -322,7 +331,7 @@ fn body(doc: &Document, o: &SaveOptions) -> Result<Body, FormatError> {
     let mut d = doc.without_edit_modes().into_owned();
     // Older apps don't know placed documents: they get the art the objects show, with its
     // resources. Otherwise resources only exporting adds are never saved.
-    if version < DEFAULTS_OMITTED_SINCE && d.has_placed() {
+    if version < PLACED_SINCE && d.has_placed() {
         d = d.with_placed_art().into_owned();
         d.placed_as_groups();
     } else {
@@ -385,13 +394,15 @@ pub fn save_to(doc: &Document, o: &SaveOptions, w: impl Write) -> Result<(), For
 }
 
 /// `f` run as a document is serialized for `version`: fields equal to what a reader fills in for
-/// them are left out, and linked colours written by name, for the readers that know to fill them
-/// in; files for older apps keep every field.
+/// them are left out, linked colours written by name and geometry in SVG's notation, for the
+/// readers that know each; files for older apps keep every field.
 fn as_written<R>(version: u32, f: impl FnOnce() -> R) -> R {
-    if version >= NAMED_COLORS_SINCE {
+    if version >= SVG_GEOMETRY_SINCE {
         vectorcraft_doc::as_saved(f)
+    } else if version >= NAMED_COLORS_SINCE {
+        vectorcraft_doc::as_saved(|| vectorcraft_doc::geom::saved::structured_geometry(f))
     } else if version >= DEFAULTS_OMITTED_SINCE {
-        vectorcraft_doc::as_saved(|| vectorcraft_doc::color::saved_links::written_whole(f))
+        vectorcraft_doc::as_saved(|| vectorcraft_doc::geom::saved::structured_geometry(|| vectorcraft_doc::color::saved_links::written_whole(f)))
     } else {
         f()
     }

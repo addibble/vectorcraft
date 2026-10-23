@@ -70,7 +70,10 @@ impl Serialize for Node {
         field!("series_index", &e.series_index);
         field!("type_outlines", &e.type_outlines);
         field!("shaper", &e.shaper);
-        field!("kind", &self.kind);
+        match LiveKind::saved(&self.kind) {
+            Some(live) => field!("kind", &live),
+            None => field!("kind", &self.kind),
+        }
         field!("graphic_style", &e.graphic_style);
         field!("attrs", &e.attrs);
         field!("slice", &e.slice);
@@ -81,6 +84,34 @@ impl Serialize for Node {
         field!("live_paint_gaps", &e.live_paint_gaps);
         field!("objects_on_path", &e.objects_on_path);
         st.end()
+    }
+}
+
+/// A live shape's [`NodeKind::Path`] as a saved file holds it: without the path, which the shape's
+/// parameters rebuild exactly ([`LiveShape::to_path`]). The fields and their order are the
+/// variant's, `path` left out.
+#[derive(Serialize)]
+#[serde(tag = "type", rename = "path")]
+struct LiveKind<'a> {
+    #[serde(skip_serializing_if = "LiveKind::default_rule")]
+    rule: FillRule,
+    live: &'a LiveShape,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    clipping: bool,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    guide: bool,
+}
+
+impl<'a> LiveKind<'a> {
+    /// `kind` as saved without its path, while geometry is saved in SVG's notation
+    /// ([`vectorcraft_geom::saved::svg_geometry`]: readers of older versions require the path) and
+    /// `kind` is a live shape whose path its parameters rebuild exactly.
+    fn saved(kind: &'a NodeKind) -> Option<Self> {
+        let NodeKind::Path { path, rule, live: Some(live), clipping, guide } = kind else { return None };
+        (vectorcraft_geom::saved::svg_geometry() && live.to_path() == *path).then_some(Self { rule: *rule, live, clipping: *clipping, guide: *guide })
+    }
+    fn default_rule(rule: &FillRule) -> bool {
+        *rule == FillRule::default()
     }
 }
 

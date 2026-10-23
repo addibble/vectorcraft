@@ -251,8 +251,12 @@ are given) with its ancestor `path`, and `limit` / `offset` page the list. A sco
 top layers (`layers` and `total`). Without these options the reply is the whole layer tree as before.
 When a summary is not enough, read the model itself a part at a time: `run_command document.query
 {path, limit?, offset?, depth?}` (or the `query_document` tool) answers a JSONPath
-([RFC 9535](https://www.rfc-editor.org/rfc/rfc9535)) over the model as `document.json` gives it
-(`$.artboards[*].name`, `$.layers[0].kind.children[?@.kind.type == 'path'].id`,
+([RFC 9535](https://www.rfc-editor.org/rfc/rfc9535)) over the model as a saved `.vectorcraft` file holds it
+(fields at the value a reader fills in are left out; a path's anchors are SVG path data, `{"d": "M0 0L10 0C…Z",
+"kinds"?: "cs…"}`, with `kinds` giving each anchor's kind, c corner or s smooth, a space between subpaths, when
+some anchor is smooth; a transform is an SVG transform such as `"translate(10 20)"`; a live shape leaves out the
+path its parameters rebuild; `document.schema` says each form, and both the saved and the structured form
+(`{"subpaths": [{"anchors": […]}]}`, `[a, b, c, d, e, f]`) are read back) (`$.artboards[*].name`, `$.layers[0].kind.children[?@.kind.type == 'path'].id`,
 `$..[?@.name == 'logo']`) with `{matches: [{path, value}], total}`, where `path` is the match's
 normalized path (`$['layers'][0]['kind']`), so a later query or `document.schema {at}` names it
 exactly; `limit` (default 100; `0` counts only) and `offset` page the matches, `depth` cuts each
