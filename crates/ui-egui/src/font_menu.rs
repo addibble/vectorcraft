@@ -840,6 +840,8 @@ mod tests {
 
     /// The script filter: Thai lists families with Thai; Latin, those with neither Thai nor
     /// Japanese.
+    // Reads catalogs other than English.
+    #[cfg(feature = "translations")]
     #[test]
     fn the_thai_filter_lists_fonts_with_thai() {
         use vectorcraft_text::FontTraits;
