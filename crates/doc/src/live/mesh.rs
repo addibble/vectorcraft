@@ -9,10 +9,10 @@ use super::{
 pub struct MeshPoint {
     pub p: Point,
     pub color: Color,
-    #[serde(default = "one")]
+    #[serde(default = "one", skip_serializing_if = "crate::skip::one_left_out")]
     pub opacity: f32,
     /// Tangent handles as offsets from `p` (see [`H_RIGHT`] …).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub handles: [Vec2; 4],
 }
 
@@ -58,6 +58,9 @@ impl MeshAppearance {
 /// Default envelope fidelity.
 pub fn default_fidelity() -> f64 {
     fifty()
+}
+pub(crate) fn is_default_fidelity(v: &f64) -> bool {
+    crate::skip::saving() && *v == default_fidelity()
 }
 
 const SIDE: usize = 65;

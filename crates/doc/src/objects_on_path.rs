@@ -28,6 +28,9 @@ pub const CENTER: u8 = 4;
 fn center() -> u8 {
     CENTER
 }
+fn is_center(v: &u8) -> bool {
+    crate::skip::saving() && *v == center()
+}
 
 /// What makes a group an Objects on Path group (see the module docs).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -35,11 +38,11 @@ pub struct ObjectsOnPath {
     /// The child of the group that is the path.
     pub path: NodeId,
     /// The attached objects, in their order along the path.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub members: Vec<Member>,
     /// Pivot: the reference point of each object that attaches to the path, 0 to 8, row by row
     /// from the top left of the object's bounds in its frame (4: the center).
-    #[serde(default = "center")]
+    #[serde(default = "center", skip_serializing_if = "is_center")]
     pub pivot: u8,
     /// Rotate: the counter-clockwise degrees each object is turned from upright on the path. An
     /// upright object has its frame's x axis along the path's direction at its attachment point.

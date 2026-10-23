@@ -43,20 +43,26 @@ impl Composer {
 #[serde(default)]
 pub struct HyphenationOptions {
     /// Words Longer Than: only words with more letters than this are hyphenated.
+    #[serde(skip_serializing_if = "hyphenation_options_defaults::words_longer_than")]
     pub words_longer_than: u32,
     /// After First: the fewest letters a word keeps before the hyphen.
+    #[serde(skip_serializing_if = "hyphenation_options_defaults::after_first")]
     pub after_first: u32,
     /// Before Last: the fewest letters a word keeps after the hyphen.
+    #[serde(skip_serializing_if = "hyphenation_options_defaults::before_last")]
     pub before_last: u32,
     /// Hyphen Limit: the most consecutive lines that automatic hyphenation may end with a hyphen;
     /// 0 sets no limit.
+    #[serde(skip_serializing_if = "hyphenation_options_defaults::hyphen_limit")]
     pub hyphen_limit: u32,
     /// Hyphenation Zone (pt): with the Single-line Composer, a line whose text before the next
     /// word already ends within this distance of its right edge breaks before that word instead
     /// of hyphenating it. 0 allows every hyphenation.
+    #[serde(skip_serializing_if = "hyphenation_options_defaults::zone")]
     pub zone: f64,
     /// Hyphenate Capitalized Words: when it is off, words that start with a capital letter are not
     /// hyphenated. Words in capitals only are never hyphenated.
+    #[serde(skip_serializing_if = "hyphenation_options_defaults::capitalized")]
     pub capitalized: bool,
 }
 
@@ -90,15 +96,20 @@ pub enum SingleWordJustify {
 #[serde(default)]
 pub struct JustificationOptions {
     /// Word Spacing, percent of the font's word space (0..1000).
+    #[serde(skip_serializing_if = "justification_options_defaults::word_spacing")]
     pub word_spacing: [f64; 3],
     /// Letter Spacing, percent of the font's word space added after each letter (-100..500).
+    #[serde(skip_serializing_if = "justification_options_defaults::letter_spacing")]
     pub letter_spacing: [f64; 3],
     /// Glyph Scaling, percent of the glyphs' width (50..200).
+    #[serde(skip_serializing_if = "justification_options_defaults::glyph_scaling")]
     pub glyph_scaling: [f64; 3],
     /// Auto Leading: the leading of characters whose leading is Auto, in percent of their size
     /// (0..500).
+    #[serde(skip_serializing_if = "justification_options_defaults::auto_leading")]
     pub auto_leading: f64,
     /// Single Word Justification: how a justified line holding one word is set.
+    #[serde(skip_serializing_if = "justification_options_defaults::single_word")]
     pub single_word: SingleWordJustify,
 }
 
@@ -276,21 +287,23 @@ impl ParaStyle {
 /// read the alignment and ignore the flag, and builds with it read Auto back.
 #[derive(Serialize, Deserialize, schemars::JsonSchema)]
 struct ParaStyleFile {
+    // Written even when Left: builds from before Auto alignment existed require it (see
+    // `auto_alignment_saves_readable_by_older_builds`).
     #[serde(default)]
     justify: Justify,
     #[serde(default, skip_serializing_if = "crate::skip::is_default")]
     justify_auto: bool,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     left_indent: f64,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     right_indent: f64,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     first_line_indent: f64,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     space_before: f64,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     space_after: f64,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     hyphenate: bool,
     #[serde(default, skip_serializing_if = "crate::skip::is_default")]
     hyphenation: HyphenationOptions,
@@ -528,4 +541,29 @@ pub enum FirstBaseline {
     Leading,
     /// Exactly `first_baseline_min` below the top.
     Fixed,
+}
+
+/// What a reader fills in for each field of [`HyphenationOptions`] left out (see `crate::skip::container_defaults`).
+mod hyphenation_options_defaults {
+    use super::*;
+    crate::skip::container_defaults!(HyphenationOptions {
+        words_longer_than: u32,
+        after_first: u32,
+        before_last: u32,
+        hyphen_limit: u32,
+        zone: f64,
+        capitalized: bool,
+    });
+}
+
+/// What a reader fills in for each field of [`JustificationOptions`] left out (see `crate::skip::container_defaults`).
+mod justification_options_defaults {
+    use super::*;
+    crate::skip::container_defaults!(JustificationOptions {
+        word_spacing: [f64; 3],
+        letter_spacing: [f64; 3],
+        glyph_scaling: [f64; 3],
+        auto_leading: f64,
+        single_word: SingleWordJustify,
+    });
 }

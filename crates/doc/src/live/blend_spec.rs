@@ -51,9 +51,9 @@ impl BlendEaseType {
 /// Blend panel Type and Ramp. Ramp is a fraction from 0 (even) to 1.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct BlendEase {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub kind: BlendEaseType,
-    #[serde(default, deserialize_with = "blend_ramp")]
+    #[serde(default, deserialize_with = "blend_ramp", skip_serializing_if = "crate::skip::left_out")]
     pub ramp: f64,
 }
 
@@ -85,9 +85,9 @@ impl BlendEase {
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct BlendSpec {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub spacing: BlendSpacing,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub orientation: BlendOrientation,
     /// Acceleration of the steps' shapes and positions along the spine between two keys.
     #[serde(default, skip_serializing_if = "BlendEase::is_default")]
@@ -119,9 +119,9 @@ impl BlendSpec {
 /// Blend Options set with no blend selected: what new blends start with.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct BlendDefaults {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub spacing: BlendSpacing,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub orientation: BlendOrientation,
 }
 

@@ -7,16 +7,16 @@ pub struct OpacityMask {
     /// Mask art in document coordinates.
     pub art: Arc<Node>,
     /// Clip: outside the mask art is hidden. Off: outside the mask art stays visible.
-    #[serde(default = "yes")]
+    #[serde(default = "yes", skip_serializing_if = "crate::skip::true_left_out")]
     pub clip: bool,
     /// Invert the mask's luminance.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub invert: bool,
     /// Disabled masks are kept but not applied.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub disabled: bool,
     /// Linked masks move with the object.
-    #[serde(default = "yes")]
+    #[serde(default = "yes", skip_serializing_if = "crate::skip::true_left_out")]
     pub linked: bool,
 }
 
