@@ -1668,6 +1668,8 @@ pub struct TextObject {
     pub vertical: bool,
     pub kind: TextKind,
     /// Maps text space (origin = first baseline start for point type) to the document.
+    #[serde(with = "vectorcraft_geom::notation::affine")]
+    #[schemars(with = "vectorcraft_geom::notation::Transform")]
     pub xf: Affine,
     pub runs: Vec<TextRun>,
     /// Ruby (furigana / phonetic guide) over byte ranges of the plain text; empty = none. Kept on
