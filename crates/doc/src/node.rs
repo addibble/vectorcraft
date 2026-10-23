@@ -1850,7 +1850,7 @@ pub struct ObjectAttributes {
 /// An attribute in another application's XML namespace: `plotter:pen="2"` with `xmlns:plotter=
 /// "https://example.org/plotter"` is `{ns: "https://example.org/plotter", prefix: "plotter", name:
 /// "pen", value: "2"}`.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ForeignAttribute {
     /// The namespace's URI, which names it.
     pub ns: String,

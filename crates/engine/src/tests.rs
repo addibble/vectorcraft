@@ -2609,6 +2609,9 @@ fn document_query_and_schema_read_the_model_a_part_at_a_time() {
     assert!(s.execute("document.schema", &json!({"type": "Node", "at": "$"})).is_err());
     assert!(s.execute("document.schema", &json!({"type": 5})).is_err());
     assert_eq!(s.execute("document.schema", &json!({"index": true})).unwrap()["start"], "Document");
+    // Another application's attributes on a node have a schema too (`Node.foreign`).
+    let foreign = s.execute("document.schema", &json!({"type": "ForeignAttribute"})).unwrap();
+    assert!(foreign["properties"].as_array().unwrap().iter().any(|p| p["name"] == "ns"), "{foreign}");
 }
 
 /// `document.patch` edits the model by JSON Patch at the pointers `document.query` answers: one
