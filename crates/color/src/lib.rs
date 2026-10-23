@@ -354,7 +354,7 @@ pub enum Paint {
     Solid {
         /// The colour shown: with a link, the swatch's colour at `tint` ([`Color::tinted`]). Left
         /// out in a saved file when it is exactly that ([`saved_links`]).
-        #[serde(default = "Color::unresolved")]
+        #[serde(default = "Color::unresolved", deserialize_with = "saved_links::color_or_unfilled")]
         color: Color,
         /// Name of the global swatch this colour is linked to (edits to the swatch update it).
         #[serde(default, skip_serializing_if = "Option::is_none")]
