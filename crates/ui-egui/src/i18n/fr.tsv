@@ -2542,6 +2542,7 @@ font-technology	Variable	Variables
 	Reflect…	Miroir…
 	Refresh	Actualiser
 	Add Font	Ajouter une police
+	Add Font Sources	Ajouter des sources de polices
 	Refresh Font List	Actualiser la liste des polices
 	Missing Fonts	Polices manquantes
 	Missing Fonts Dialog	Boîte de dialogue Polices manquantes
@@ -5547,3 +5548,7 @@ axis	Y Axis	Axe Y
 @msg	{name} is larger than {_1} MB	{name} dépasse {_1} Mo
 @msg	{name} is not a TrueType, OpenType or collection font	{name} n’est pas une police TrueType, OpenType ni une collection de polices
 @msg	{name}: dataBase64 is not base64	{name} : dataBase64 n’est pas du base64
+@msg	fonts[{i}].sha256 is 64 hexadecimal digits	fonts[{i}].sha256 compte 64 chiffres hexadécimaux
+@msg	fonts[{i}].{key} is 1 to {max} characters	fonts[{i}].{key} compte de 1 à {max} caractères
+@msg	give 1 to {MAX_FONT_SOURCES} fonts	indiquez de 1 à {MAX_FONT_SOURCES} polices
+@msg	give fonts, a list of fonts each with a family, a url and a sha256	indiquez fonts, une liste de polices ayant chacune family, url et sha256
