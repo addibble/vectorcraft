@@ -5225,3 +5225,4 @@ axis	Y Axis	Y 軸
 @msg	fonts[{i}].{key} is 1 to {max} characters	fonts[{i}].{key} は 1～{max} 文字です
 @msg	give 1 to {MAX_FONT_SOURCES} fonts	フォントを 1～{MAX_FONT_SOURCES} 個指定してください
 @msg	give fonts, a list of fonts each with a family, a url and a sha256	fonts に、family、url、sha256 を持つフォントのリストを指定してください
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	{font} を読み込めませんでした ({reason}): テキストは別のフォントで表示されます

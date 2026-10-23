@@ -5126,3 +5126,4 @@ axis	Y Axis	Y축
 @msg	fonts[{i}].{key} is 1 to {max} characters	fonts[{i}].{key}은(는) 1~{max}자입니다
 @msg	give 1 to {MAX_FONT_SOURCES} fonts	글꼴을 1~{MAX_FONT_SOURCES}개 지정하세요
 @msg	give fonts, a list of fonts each with a family, a url and a sha256	fonts에 family, url, sha256이 있는 글꼴 목록을 지정하세요
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	{font}을(를) 불러올 수 없습니다({reason}): 해당 텍스트는 다른 글꼴로 표시됩니다

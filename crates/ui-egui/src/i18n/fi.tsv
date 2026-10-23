@@ -5577,3 +5577,4 @@ axis	Y Axis	Y-akseli
 @msg	fonts[{i}].{key} is 1 to {max} characters	fonts[{i}].{key} on 1–{max} merkkiä
 @msg	give 1 to {MAX_FONT_SOURCES} fonts	anna 1–{MAX_FONT_SOURCES} fonttia
 @msg	give fonts, a list of fonts each with a family, a url and a sha256	anna fonts, luettelo fonteista, joista jokaisella on family, url ja sha256
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	fonttia {font} ei voitu ladata ({reason}): sen teksti näytetään toisella fontilla

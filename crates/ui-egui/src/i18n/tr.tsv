@@ -5509,3 +5509,4 @@ axis	Y Axis	Y ekseni
 @msg	fonts[{i}].{key} is 1 to {max} characters	fonts[{i}].{key} 1 ile {max} karakter arasıdır
 @msg	give 1 to {MAX_FONT_SOURCES} fonts	1 ile {MAX_FONT_SOURCES} arası yazı tipi verin
 @msg	give fonts, a list of fonts each with a family, a url and a sha256	fonts verin: her birinde family, url ve sha256 olan bir yazı tipi listesi
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	{font} yüklenemedi ({reason}): metni başka bir yazı tipinde gösteriliyor

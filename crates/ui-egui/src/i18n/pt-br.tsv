@@ -5463,3 +5463,4 @@ axis	Y Axis	Eixo Y
 @msg	fonts[{i}].{key} is 1 to {max} characters	fonts[{i}].{key} tem de 1 a {max} caracteres
 @msg	give 1 to {MAX_FONT_SOURCES} fonts	informe de 1 a {MAX_FONT_SOURCES} fontes
 @msg	give fonts, a list of fonts each with a family, a url and a sha256	informe fonts, uma lista de fontes, cada uma com family, url e sha256
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	não foi possível carregar {font} ({reason}): o texto dela aparece em outra fonte

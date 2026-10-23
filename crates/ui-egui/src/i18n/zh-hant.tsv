@@ -5182,3 +5182,4 @@ axis	Y Axis	Y 軸
 @msg	fonts[{i}].{key} is 1 to {max} characters	fonts[{i}].{key} 為 1 到 {max} 個字元
 @msg	give 1 to {MAX_FONT_SOURCES} fonts	請提供 1 到 {MAX_FONT_SOURCES} 個字體
 @msg	give fonts, a list of fonts each with a family, a url and a sha256	請提供 fonts：字體清單，每項含 family、url 和 sha256
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	無法載入 {font}（{reason}）：使用此字體的文字會以其他字體顯示
