@@ -11,7 +11,11 @@
 //!   "images": { "<key>": { "mime": "image/png", "data": "<base64>" } } }
 //! ```
 //! It is lossless for everything in the document model; foreign data lives in `document.unknown`
-//! and document keys a newer version added are kept (`Document::extra`). Only the images the
+//! and document keys a newer version added are kept (`Document::extra`). The current version omits
+//! defaults (`vectorcraft_doc::as_saved`): a field equal to the value a reader fills in when it
+//! is missing is left out (a text run at 100% horizontal scale, a paragraph with no indents), so a
+//! document's JSON holds what differs from the defaults. Older versions read such files, since they
+//! fill in the same values; files saved for older apps keep every field. Only the images the
 //! document uses are written. `preview` (optional) is a PNG of the first artboard, at most
 //! [`PREVIEW_MAX`] pixels on its longer side, for file browsers. `profiles` (optional, Embed ICC
 //! Profiles) holds the ICC files of colour profiles the document is tagged with, for machines that
@@ -264,7 +268,9 @@ impl SaveOptions {
     /// as [`save_to`] writes the document with them (in their version)?
     pub fn pretty_fits(&self, doc: &Document) -> bool {
         let objects: usize = doc.layers.iter().map(|l| l.count()).sum();
-        objects <= PRETTY_MAX_OBJECTS && body(doc, self).is_ok_and(|b| pretty_size_at_most(&b, PRETTY_MAX_BYTES))
+        // Measured as it is saved: the current version leaves out defaults, as save_to does.
+        let fits = || body(doc, self).is_ok_and(|b| pretty_size_at_most(&b, PRETTY_MAX_BYTES));
+        objects <= PRETTY_MAX_OBJECTS && if self.version >= VERSION { vectorcraft_doc::as_saved(fits) } else { fits() }
     }
 }
 
@@ -364,6 +370,12 @@ const JSON_CHUNK: usize = 64 << 10;
 /// file: write to a temporary file ([`write_atomic_with`]).
 pub fn save_to(doc: &Document, o: &SaveOptions, w: impl Write) -> Result<(), FormatError> {
     o.check()?;
+    // The current version leaves out fields equal to what a reader fills in for them; files for
+    // older apps keep every field, as those apps wrote them.
+    if o.version >= VERSION { vectorcraft_doc::as_saved(|| write(doc, o, w)) } else { write(doc, o, w) }
+}
+
+fn write(doc: &Document, o: &SaveOptions, w: impl Write) -> Result<(), FormatError> {
     let pretty = o.pretty && !o.compress;
     let Body { d, v1, blobs, linked } = body(doc, o)?;
     let entries = Entries { blobs: &blobs, linked: &linked, include_linked: o.include_linked };

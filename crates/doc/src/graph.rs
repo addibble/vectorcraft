@@ -227,10 +227,12 @@ ids!(Fractions { Chop => "chop", Scale => "scale" });
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct ColumnDesign {
+    #[serde(skip_serializing_if = "column_design_defaults::design")]
     pub design: String,
     #[serde(skip_serializing_if = "ColumnType::is_default")]
     pub column_type: ColumnType,
     /// Repeating: the value one copy of the design stands for (Each Design Represents).
+    #[serde(skip_serializing_if = "column_design_defaults::each")]
     pub each: f64,
     #[serde(skip_serializing_if = "Fractions::is_default")]
     pub fractions: Fractions,
@@ -324,30 +326,42 @@ pub struct SeriesPaint {
 pub struct GraphSpec {
     /// Paint taken from the series' marks (Group Selection). One entry per series index; missing
     /// entries keep the generator's own fill and stroke.
+    #[serde(skip_serializing_if = "graph_spec_defaults::series_paints")]
     pub series_paints: Vec<SeriesPaint>,
+    #[serde(skip_serializing_if = "graph_spec_defaults::kind")]
     pub kind: GraphKind,
     /// Graph types chosen for single series (Combine different graph types), by series index; `None` and missing
     /// entries draw as [`Self::kind`].
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub series_kinds: Vec<Option<GraphKind>>,
     /// The plot rectangle (the area the graph tool dragged), document points.
+    #[serde(skip_serializing_if = "graph_spec_defaults::rect")]
     pub rect: Rect,
+    #[serde(skip_serializing_if = "graph_spec_defaults::series")]
     pub series: Vec<String>,
+    #[serde(skip_serializing_if = "graph_spec_defaults::categories")]
     pub categories: Vec<String>,
+    #[serde(skip_serializing_if = "graph_spec_defaults::rows")]
     pub rows: Vec<Vec<f64>>,
     /// Blank cells as `[category, series]`: their `rows` entry is a 0 placeholder, so a file still reads (as zeros)
     /// in a version that doesn't know blanks. Cells past the end of a short row are blank too.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub blanks: Vec<[usize; 2]>,
     /// Column/bar width as a % of the available category width (90); past 100 the columns overlap.
+    #[serde(skip_serializing_if = "graph_spec_defaults::column_width")]
     pub column_width: f64,
     /// Cluster width as a % (80); past 100 the clusters overlap.
+    #[serde(skip_serializing_if = "graph_spec_defaults::cluster_width")]
     pub cluster_width: f64,
     /// Legend on the right (Graph Type options: Add Legend Across Top = false).
+    #[serde(skip_serializing_if = "graph_spec_defaults::legend")]
     pub legend: bool,
     /// Value axis: tick count override (0 = automatic), min/max override.
+    #[serde(skip_serializing_if = "graph_spec_defaults::ticks")]
     pub ticks: usize,
+    #[serde(skip_serializing_if = "graph_spec_defaults::axis_min")]
     pub axis_min: Option<f64>,
+    #[serde(skip_serializing_if = "graph_spec_defaults::axis_max")]
     pub axis_max: Option<f64>,
     /// Graph Type › Value Axis side. Column, stacked column, line, area and scatter graphs (the bar graphs' value axis
     /// runs along the bottom and stays there).
@@ -428,12 +442,14 @@ pub struct GraphSpec {
     #[serde(skip_serializing_if = "String::is_empty")]
     pub right_suffix: String,
     /// Line, scatter and radar graphs: mark data points, connect them.
+    #[serde(skip_serializing_if = "graph_spec_defaults::mark_points")]
     pub mark_points: bool,
+    #[serde(skip_serializing_if = "graph_spec_defaults::connect_points")]
     pub connect_points: bool,
     /// Line graphs: run the lines from edge to edge of the plot; off (the default for new graphs), the points sit
     /// at the centres of their categories, like the columns of a column graph. Graphs saved before the option
     /// existed were drawn edge to edge and keep it.
-    #[serde(default = "edge_to_edge_before_the_option")]
+    #[serde(default = "edge_to_edge_before_the_option", skip_serializing_if = "is_edge_to_edge_before_the_option")]
     pub edge_to_edge: bool,
     /// Bounds of the art when it was last generated (detects moves/scales of the graph group).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -451,6 +467,9 @@ fn is_zero(n: &usize) -> bool {
 /// Edge-to-Edge Lines for a graph saved before the option existed: on, as it was drawn then.
 fn edge_to_edge_before_the_option() -> bool {
     true
+}
+fn is_edge_to_edge_before_the_option(v: &bool) -> bool {
+    crate::skip::saving() && *v == edge_to_edge_before_the_option()
 }
 
 impl GraphSpec {
@@ -562,4 +581,31 @@ impl Default for GraphSpec {
             placed: None,
         }
     }
+}
+
+/// What a reader fills in for each field of [`ColumnDesign`] left out (see `crate::skip::container_defaults`).
+mod column_design_defaults {
+    use super::*;
+    crate::skip::container_defaults!(ColumnDesign { design: String, each: f64 });
+}
+
+/// What a reader fills in for each field of [`GraphSpec`] left out (see `crate::skip::container_defaults`).
+mod graph_spec_defaults {
+    use super::*;
+    crate::skip::container_defaults!(GraphSpec {
+        series_paints: Vec<SeriesPaint>,
+        kind: GraphKind,
+        rect: Rect,
+        series: Vec<String>,
+        categories: Vec<String>,
+        rows: Vec<Vec<f64>>,
+        column_width: f64,
+        cluster_width: f64,
+        legend: bool,
+        ticks: usize,
+        axis_min: Option<f64>,
+        axis_max: Option<f64>,
+        mark_points: bool,
+        connect_points: bool,
+    });
 }
