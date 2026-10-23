@@ -1,6 +1,7 @@
 use super::*;
 use vectorcraft_geom::shapes;
 
+mod defaults;
 mod lookups;
 mod slices;
 mod units;

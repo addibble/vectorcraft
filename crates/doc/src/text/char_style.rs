@@ -5,7 +5,7 @@ use super::*;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct CharStyle {
     pub font_family: String,
-    #[serde(default = "regular")]
+    #[serde(default = "regular", skip_serializing_if = "is_regular")]
     pub font_style: String,
     /// Which installed version of the font (its version string) when several versions of the
     /// family and style are installed and the text was set in one the family and style alone
@@ -23,29 +23,29 @@ pub struct CharStyle {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub leading: Option<f64>,
     /// Tracking in 1/1000 em.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub tracking: f64,
     /// Kerning: None = Auto (metrics), Some(v) = manual in 1/1000 em.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kerning: Option<f64>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub baseline_shift: f64,
-    #[serde(default = "hundred")]
+    #[serde(default = "hundred", skip_serializing_if = "is_hundred")]
     pub h_scale: f64,
-    #[serde(default = "hundred")]
+    #[serde(default = "hundred", skip_serializing_if = "is_hundred")]
     pub v_scale: f64,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub rotation: f64,
     pub fill: Paint,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub stroke: Paint,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub stroke_width: f64,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub underline: bool,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub strikethrough: bool,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub all_caps: bool,
     /// OpenType features that differ from the defaults (OpenType panel), as tags: `"dlig"` turns
     /// a feature on, `"-liga"` off.
@@ -246,9 +246,15 @@ fn is_ten(v: &f64) -> bool {
 fn regular() -> String {
     "Regular".into()
 }
+fn is_regular(v: &str) -> bool {
+    crate::skip::saving() && *v == regular()
+}
 
 fn hundred() -> f64 {
     100.0
+}
+fn is_hundred(v: &f64) -> bool {
+    crate::skip::saving() && *v == hundred()
 }
 
 pub(super) fn yes() -> bool {

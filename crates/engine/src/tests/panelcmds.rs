@@ -172,7 +172,7 @@ fn artboard_color_round_trips_through_the_native_format() {
     let bytes = vectorcraft_format::save(&s.doc().unwrap().doc, false);
     let saved: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     let keys = |i: usize| saved["document"]["artboards"][i].as_object().unwrap().keys().cloned().collect::<Vec<_>>();
-    assert_eq!(keys(0), ["id", "name", "rect", "show_center_mark", "show_cross_hairs"]);
+    assert_eq!(keys(0), ["id", "name", "rect"], "options at their defaults are left out");
     assert!(keys(1).contains(&"color".to_string()), "{:?}", keys(1));
     let back = vectorcraft_format::load(&bytes).unwrap();
     assert_eq!(back.artboards[0].color, None);
@@ -819,7 +819,7 @@ fn artboard_lock_round_trips_through_the_native_format() {
     let bytes = save(&s);
     let saved: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     let keys = saved["document"]["artboards"][0].as_object().unwrap().keys().cloned().collect::<Vec<_>>();
-    assert_eq!(keys, ["id", "name", "rect", "show_center_mark", "show_cross_hairs"]);
+    assert_eq!(keys, ["id", "name", "rect"], "options at their defaults are left out");
     assert_eq!(saved["document"]["artboards"][1]["locked"], true);
     let back = vectorcraft_format::load(&bytes).unwrap();
     assert!(back.artboards[1].locked && !back.artboards[0].locked);
@@ -899,8 +899,9 @@ fn artboard_display_marks_round_trip_through_the_native_format() {
     let bytes = save(&s);
     let saved: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     let ab = |i: usize| saved["document"]["artboards"][i].clone();
-    assert_eq!((ab(0)["show_center_mark"].clone(), ab(0)["show_cross_hairs"].clone()), (json!(true), json!(false)));
-    assert_eq!((ab(1)["show_center_mark"].clone(), ab(1)["show_cross_hairs"].clone()), (json!(false), json!(true)));
+    // A mark that is off is left out (its default), one that is on is written.
+    assert_eq!((ab(0)["show_center_mark"].clone(), ab(0)["show_cross_hairs"].clone()), (json!(true), Value::Null));
+    assert_eq!((ab(1)["show_center_mark"].clone(), ab(1)["show_cross_hairs"].clone()), (Value::Null, json!(true)));
     let back = vectorcraft_format::load(&bytes).unwrap();
     assert_eq!(back.artboards, s.doc().unwrap().doc.artboards);
     s.execute("artboard.setProps", &json!({"artboards": [{"index": 0, "showCenterMark": false}, {"index": 1, "showCrossHairs": false}]})).unwrap();
