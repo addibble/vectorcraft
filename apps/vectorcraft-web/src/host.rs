@@ -67,10 +67,9 @@ impl Bridge {
     /// made, also after a graphics restart).
     pub fn connect(&self, services: &mut Services) {
         let bridge = self.clone();
+        // A download now answers whether it happened; a failed hand-over is reported like one.
         services.download = Some(Box::new(move |name: &str, bytes: &[u8]| {
-            if let Err(e) = bridge.post_save(name, bytes) {
-                log::error!("couldn't hand {name} to the page: {e}");
-            }
+            bridge.post_save(name, bytes).map_err(|e| format!("couldn't hand {name} to the page: {e}"))
         }));
     }
 
