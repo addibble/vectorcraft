@@ -563,6 +563,14 @@ pub struct UiState {
     /// panel's eye button is held down ([`vectorcraft_render::RenderOptions::trace_source`]).
     #[serde(skip)]
     pub trace_hold_source: Option<std::sync::Arc<Vec<vectorcraft_doc::NodeId>>>,
+    /// Commands an embedding page hid from the user (`vectorcraft:configure`, docs/web-embed.md):
+    /// command ids, or id prefixes ending in `*`. See [`crate::menus::host_hidden`].
+    #[serde(skip)]
+    pub host_hidden: Vec<String>,
+    /// What the window says while no document is open, as an embedding page set it
+    /// (`vectorcraft:configure`): shown in place of the Home screen, already in the user's language.
+    #[serde(skip)]
+    pub host_empty_message: Option<String>,
     /// Layers panel › Panel Options… (row size, thumbnails, Show Layers Only, Locate Selected Objects).
     #[serde(default)]
     pub layers_panel: crate::panels::layers::PanelOptions,
@@ -875,6 +883,8 @@ impl Default for UiState {
             dxf_import: Value::Null,
             home: None,
             trace_hold_source: None,
+            host_hidden: Vec::new(),
+            host_empty_message: None,
             layers_panel: Default::default(),
             layers_filter: Default::default(),
             image_trace_advanced: true,

@@ -396,6 +396,10 @@ impl eframe::App for WebShell {
         }
         let Some(app) = &mut self.app else { return };
         app.tick(ctx);
+        // The embedding page's hidden commands and empty-window message (`host`).
+        if let Some(bridge) = &self.host.bridge {
+            bridge.configure(app);
+        }
         // Font sources: those type asked for are fetched; those fetched join the session, as
         // `text.addFont` adds a file, and the type set in them redraws.
         // The host is told how each one ended, so it is no longer pending.
