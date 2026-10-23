@@ -395,8 +395,7 @@ impl eframe::App for WebShell {
             self.restart(&why);
         }
         let Some(app) = &mut self.app else { return };
-        app.tick(ctx);
-        // The embedding page's hidden commands and empty-window message (`host`).
+        // The embedding page's hidden commands, menus and mark, and empty-window message and link (`host`).
         if let Some(bridge) = &self.host.bridge {
             bridge.configure(app);
         }
@@ -423,6 +422,7 @@ impl eframe::App for WebShell {
             db.source_settled(&src, false);
             app.font_source_failed(&src.family, &reason);
         }
+        app.tick(ctx);
         crate::api::poll_replies();
         app.finish_ime_logic(ctx);
     }
@@ -475,6 +475,7 @@ impl eframe::App for WebShell {
             app.ui(ui);
             if let Some(bridge) = &self.host.bridge {
                 bridge.report_dirty(app);
+                bridge.report_link(app);
             }
         }
         // Type laid out in this frame may have asked for font sources: the next frame's logic

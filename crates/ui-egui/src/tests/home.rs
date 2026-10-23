@@ -381,3 +381,74 @@ fn an_embedding_page_hides_commands_and_says_what_the_empty_window_shows() {
     crate::menus::invoke(&mut app, "file.newDialog", json!({}));
     assert_eq!(app.ui.dialog.as_ref().map(|d| d.kind.as_str()), Some("newDocument"));
 }
+
+/// An embedding page (`vectorcraft:configure`) leaves menus out of the bar while their commands
+/// still run, hides the brand mark and, with `help.discord` hidden, the Discord button; the empty
+/// window's link only notes a click for the page to hear (`vectorcraft:emptyLink`).
+#[test]
+fn an_embedding_page_hides_menus_and_the_mark_and_hears_the_empty_windows_link() {
+    fn bar(app: &mut VectorcraftApp) -> (Vec<String>, bool) {
+        fn walk(s: &egui::Shape, texts: &mut Vec<String>, meshes: &mut Vec<egui::TextureId>) {
+            match s {
+                egui::Shape::Text(t) => texts.push(t.galley.text().to_string()),
+                egui::Shape::Mesh(m) => meshes.push(m.texture_id),
+                egui::Shape::Vec(v) => v.iter().for_each(|s| walk(s, texts, meshes)),
+                _ => {}
+            }
+        }
+        let ctx = egui::Context::default();
+        crate::theme::install_fonts(&ctx);
+        let raw = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1440.0, 600.0))), ..Default::default() };
+        let mut out = ctx.run_ui(raw, |ui| crate::chrome::app_bar(app, ui));
+        out.textures_delta.clear();
+        let (mut texts, mut meshes) = (vec![], vec![]);
+        out.shapes.iter().for_each(|c| walk(&c.shape, &mut texts, &mut meshes));
+        (texts, meshes.contains(&crate::brand::texture_id(&ctx)))
+    }
+    let mut app = VectorcraftApp::new(vectorcraft_engine::Session::new(), crate::Services::default());
+    let (texts, mark) = bar(&mut app);
+    assert!(mark && ["File", "Edit", "Help", "Discord"].iter().all(|t| texts.iter().any(|s| s == t)), "{texts:?}");
+
+    app.ui.host_hidden_menus = vec!["File".into(), "Help".into()];
+    app.ui.host_hide_mark = true;
+    app.ui.host_hidden = vec!["help.discord".into()];
+    let (texts, mark) = bar(&mut app);
+    assert!(!mark, "no brand mark");
+    assert!(!["File", "Help", "Discord"].iter().any(|t| texts.iter().any(|s| s == t)), "{texts:?}");
+    assert!(texts.iter().any(|s| s == "Edit"), "the other menus stay: {texts:?}");
+    // A hidden menu's commands still run from the UI: File › New's dialog opens.
+    crate::menus::invoke(&mut app, "file.newDialog", json!({}));
+    assert_eq!(app.ui.dialog.as_ref().map(|d| d.kind.as_str()), Some("newDocument"));
+    app.ui.dialog = None;
+
+    // The empty window's link: drawn after the message, a click only noted for the page.
+    app.ui.host_empty_message = Some("No project open.".into());
+    app.ui.host_empty_link = Some("Open one from the Projects tab".into());
+    let ctx = egui::Context::default();
+    crate::theme::install_fonts(&ctx);
+    fn find(s: &egui::Shape, text: &str) -> Option<egui::Pos2> {
+        match s {
+            egui::Shape::Text(t) if t.galley.text() == text => Some(t.pos + t.galley.size() / 2.0),
+            egui::Shape::Vec(v) => v.iter().find_map(|s| find(s, text)),
+            _ => None,
+        }
+    }
+    let frame = |app: &mut VectorcraftApp, events: Vec<egui::Event>| {
+        let raw =
+            egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 600.0))), events, ..Default::default() };
+        let mut out = ctx.run_ui(raw, |ui| canvas::show(app, ui));
+        out.textures_delta.clear();
+        let message = out.shapes.iter().find_map(|c| find(&c.shape, "No project open."));
+        let link = out.shapes.iter().find_map(|c| find(&c.shape, "Open one from the Projects tab"));
+        assert!(message.zip(link).is_some_and(|(m, l)| m.x < l.x), "the link follows the message: {message:?} {link:?}");
+        link.unwrap()
+    };
+    let at = frame(&mut app, vec![]);
+    let button = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+    frame(&mut app, vec![egui::Event::PointerMoved(at)]);
+    assert!(!app.ui.host_empty_link_clicked, "hovering is no click");
+    frame(&mut app, vec![button(true)]);
+    frame(&mut app, vec![button(false)]);
+    assert!(app.ui.host_empty_link_clicked, "the click is noted for the page");
+    assert!(app.session.active().is_none() && app.ui.dialog.is_none(), "and does nothing else");
+}
