@@ -669,7 +669,9 @@ pub fn handle(app: &mut VectorcraftApp, ctx: &egui::Context) {
         let lookup = |find: fn(&str) -> Option<&'static str>| find(&key).or_else(|| find(&text)).or_else(|| shifted.as_deref().and_then(find));
         // Single-key command shortcuts (X, Shift+X, D, /, Shift+D, F, Shift+F by default).
         if let Some(id) = lookup(crate::shortcut_editor::command_for_key) {
-            let _ = app.run(id, json!({}));
+            if !crate::menus::host_hidden(app, id) {
+                let _ = app.run(id, json!({}));
+            }
             continue;
         }
         if let Some(t) = lookup(crate::shortcut_editor::tool_for_key) {
