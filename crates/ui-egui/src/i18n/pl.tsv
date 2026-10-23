@@ -5332,3 +5332,4 @@ axis	Y Axis	Oś Y
 @msg	fonts[{i}].{key} is 1 to {max} characters	fonts[{i}].{key} ma od 1 do {max} znaków
 @msg	give 1 to {MAX_FONT_SOURCES} fonts	podaj od 1 do {MAX_FONT_SOURCES} czcionek
 @msg	give fonts, a list of fonts each with a family, a url and a sha256	podaj fonts, listę czcionek, każdą z family, url i sha256
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	nie udało się wczytać czcionki {font} ({reason}) — jej tekst jest wyświetlany inną czcionką
