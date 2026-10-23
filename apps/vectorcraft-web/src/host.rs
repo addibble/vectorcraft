@@ -11,13 +11,19 @@
 //!   file VectorCraft would otherwise download (`Services::download`): Save, Save As, Save a
 //!   Copy and exports. The parent stores it and reports failures itself.
 //! - `vectorcraft:dirty` (to the parent): `{ dirty }` whenever unsaved changes appear or go away.
+//! - `vectorcraft:configure` (from the parent): `{ hide, emptyMessage }`. `hide` lists command ids
+//!   (or prefixes ending in `*`) the user isn't offered: they leave the menus, the command palette
+//!   and their buttons, and their shortcuts do nothing; the parent's own control requests still run
+//!   them. `emptyMessage` is what the window says while no document is open, in place of the Home
+//!   screen. Each replaces the last whole; a malformed one is refused with `vectorcraft:failed`.
 //! - `vectorcraft:failed` (to the parent): `{ error }`. Before `ready`, the app couldn't start;
-//!   after it, the last `vectorcraft:open` was refused (the app keeps running).
+//!   after it, the last `vectorcraft:open` or `vectorcraft:configure` was refused (the app keeps
+//!   running).
 //!
 //! Only the parent window on the page's own origin is heard or answered, and a page with an opaque
 //! origin (`null`) has no bridge. The parent guards leaving the page with unsaved changes.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
@@ -37,6 +43,8 @@ pub struct Bridge {
     origin: String,
     /// The unsaved-changes state last reported to the parent.
     reported: Rc<Cell<Option<bool>>>,
+    /// The last `vectorcraft:configure` heard, until the next frame applies it ([`Bridge::configure`]).
+    configured: Rc<RefCell<Option<protocol::Configure>>>,
 }
 
 impl Bridge {
@@ -48,7 +56,7 @@ impl Bridge {
             return None;
         }
         let origin = window.location().origin().ok().filter(|o| !protocol::is_opaque(o))?;
-        Some(Self { window, parent, origin, reported: Rc::default() })
+        Some(Self { window, parent, origin, reported: Rc::default(), configured: Rc::default() })
     }
 
     /// Send what VectorCraft would download to the parent instead (each time the services are
@@ -68,6 +76,14 @@ impl Bridge {
 
     pub fn post_failed(&self, error: &str) {
         self.send(&[("type", "vectorcraft:failed".into()), ("error", error.into())]);
+    }
+
+    /// Before each frame: what the parent last configured, if it said anything since.
+    pub fn configure(&self, app: &mut VectorcraftApp) {
+        if let Some(c) = self.configured.borrow_mut().take() {
+            app.ui.host_hidden = c.hide;
+            app.ui.host_empty_message = c.empty_message;
+        }
     }
 
     /// After each frame: tell the parent when unsaved changes appear or go away.
@@ -96,6 +112,19 @@ impl Bridge {
             let from_parent = event.source().is_some_and(|s| js_sys::Object::is(&s, &bridge.parent));
             let data = event.data();
             if !protocol::accepts(&bridge.origin, &event.origin(), from_parent, string(&data, "type").as_deref()) {
+                return;
+            }
+            if string(&data, "type").as_deref() == Some("vectorcraft:configure") {
+                match protocol::configure(strings(&data, "hide"), field(&data, "emptyMessage")) {
+                    Ok(configure) => {
+                        *bridge.configured.borrow_mut() = Some(configure);
+                        wake();
+                    }
+                    Err(error) => {
+                        log::warn!("refused the page's configuration: {error}");
+                        bridge.post_failed(&error);
+                    }
+                }
                 return;
             }
             match protocol::open(string(&data, "name"), bytes(&data)) {
@@ -131,6 +160,34 @@ fn message(fields: &[(&str, JsValue)]) -> Option<js_sys::Object> {
 
 fn string(data: &JsValue, key: &str) -> Option<String> {
     js_sys::Reflect::get(data, &JsValue::from_str(key)).ok()?.as_string()
+}
+
+/// A string field: left out (or `null`), a string, or something else.
+fn field(data: &JsValue, key: &str) -> protocol::Field<String> {
+    match js_sys::Reflect::get(data, &JsValue::from_str(key)) {
+        Ok(v) if v.is_undefined() || v.is_null() => protocol::Field::Absent,
+        Ok(v) => v.as_string().map_or(protocol::Field::Wrong, protocol::Field::Given),
+        Err(_) => protocol::Field::Wrong,
+    }
+}
+
+/// An array-of-strings field: left out (or `null`), such an array (of at most
+/// `protocol::MAX_HIDDEN` + 1 read, so a huge one is refused without copying it), or something else.
+fn strings(data: &JsValue, key: &str) -> protocol::Field<Vec<String>> {
+    let Ok(v) = js_sys::Reflect::get(data, &JsValue::from_str(key)) else { return protocol::Field::Wrong };
+    if v.is_undefined() || v.is_null() {
+        return protocol::Field::Absent;
+    }
+    if !js_sys::Array::is_array(&v) {
+        return protocol::Field::Wrong;
+    }
+    let array = js_sys::Array::from(&v);
+    let mut out = Vec::new();
+    for item in array.iter().take(protocol::MAX_HIDDEN + 1) {
+        let Some(s) = item.as_string() else { return protocol::Field::Wrong };
+        out.push(s);
+    }
+    protocol::Field::Given(out)
 }
 
 /// `bytes` as an `ArrayBuffer` or `Uint8Array`.
