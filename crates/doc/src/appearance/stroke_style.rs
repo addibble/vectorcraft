@@ -28,10 +28,10 @@ pub enum StrokeAlign {
 pub struct Dash {
     /// Dash, gap, dash, gap… (up to 6 values in the Stroke panel).
     pub pattern: Vec<f64>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub offset: f64,
     /// "Aligns dashes to corners and path ends, adjusting lengths to fit".
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub align_corners: bool,
 }
 
