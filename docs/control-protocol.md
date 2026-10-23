@@ -908,6 +908,10 @@ app:
 Errors reject with an `Error` carrying the method's message. Requests run on the UI's next frame, so a
 hidden tab (whose frames the browser pauses) answers when it is shown again.
 
+The browser has no installed fonts, so a host page supplies the fonts its documents use:
+`vectorcraft.execute("text.addFont", {dataBase64})` gives the session a font file's faces, and type set in them redraws
+(`docs/mcp.md`, fonts).
+
 ## Revision history
 
 | Date | Change | Summary |
@@ -915,3 +919,4 @@ hidden tab (whose frames the browser pauses) answers when it is shown again.
 | 2026-10-13 | minor | Documented count, pending-event and per-frame request budgets (#1709). |
 | 2026-10-13 | minor | Documented transport deadlines and connection-slot recovery (#1726). |
 | 2026-10-18 | minor | Documented `window.vectorcraft`, the web build's control channel. |
+| 2026-10-22 | minor | A host page supplies fonts with `text.addFont`. |
