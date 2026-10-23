@@ -6,7 +6,7 @@ use proptest::prelude::*;
 use serde_json::{Value, json};
 use vectorcraft_doc::{Document, ImageBlob, ImageObject, Node, NodeId, NodeKind};
 use vectorcraft_format::{SaveOptions, base64_decode, base64_encode, load, load_file, pdf_content, preview, save, save_with, sniff};
-use vectorcraft_geom::Affine;
+use vectorcraft_geom::{Affine, Anchor, AnchorKind, PathData, Point, SubPath};
 use vectorcraft_testkit::fixtures;
 use vectorcraft_testkit::invariants::{check_document, check_native_roundtrip, check_native_roundtrip_exact, doc_json, json_approx_eq};
 use vectorcraft_testkit::strategies::arb_ops;
@@ -157,6 +157,106 @@ proptest! {
         if let Ok(f) = load_file(&bytes) {
             check_document(&f.doc).map_err(TestCaseError::fail)?;
         }
+    }
+}
+
+/// A coordinate: small integers, zeros of both signs, decimals and any finite f64.
+fn arb_coord() -> impl Strategy<Value = f64> {
+    prop_oneof![(-50i32..50).prop_map(f64::from), Just(0.0), Just(-0.0), -1e4f64..1e4, any::<f64>().prop_filter("finite", |x| x.is_finite()),]
+}
+
+fn arb_point() -> impl Strategy<Value = Point> {
+    (arb_coord(), arb_coord()).prop_map(|(x, y)| Point::new(x, y))
+}
+
+/// An anchor whose handles are each at the point (no handle) or anywhere, of either kind.
+fn arb_anchor() -> impl Strategy<Value = Anchor> {
+    (arb_point(), prop::option::of(arb_point()), prop::option::of(arb_point()), any::<bool>()).prop_map(|(p, h_in, h_out, smooth)| Anchor {
+        p,
+        h_in: h_in.unwrap_or(p),
+        h_out: h_out.unwrap_or(p),
+        kind: if smooth { AnchorKind::Smooth } else { AnchorKind::Corner },
+    })
+}
+
+/// Subpaths open or closed, empty or not, some ending with an anchor on their first point.
+fn arb_path() -> impl Strategy<Value = PathData> {
+    let sub = (prop::collection::vec(arb_anchor(), 0..6), any::<bool>(), any::<bool>(), any::<bool>()).prop_map(
+        |(mut anchors, closed, back, bare_ends)| {
+            if back && let Some(first) = anchors.first().copied() {
+                anchors.push(Anchor { p: first.p, ..first });
+            }
+            if bare_ends && !closed {
+                if let Some(a) = anchors.first_mut() {
+                    a.h_in = a.p;
+                }
+                if let Some(a) = anchors.last_mut() {
+                    a.h_out = a.p;
+                }
+            }
+            SubPath::new(anchors, closed)
+        },
+    );
+    prop::collection::vec(sub, 0..4).prop_map(PathData::new)
+}
+
+fn arb_affine() -> impl Strategy<Value = Affine> {
+    let entry = prop_oneof![Just(0.0), Just(-0.0), Just(1.0), Just(-1.0), arb_coord()];
+    prop::array::uniform6(entry).prop_map(Affine::new)
+}
+
+/// Every coordinate's bits, every kind and closed flag: equal only when exactly the same.
+fn path_bits(p: &PathData) -> Vec<(Vec<[u64; 6]>, Vec<AnchorKind>, bool)> {
+    p.subpaths
+        .iter()
+        .map(|s| {
+            let pts = s.anchors.iter().map(|a| [a.p.x, a.p.y, a.h_in.x, a.h_in.y, a.h_out.x, a.h_out.y].map(f64::to_bits)).collect();
+            (pts, s.anchors.iter().map(|a| a.kind).collect(), s.closed)
+        })
+        .collect()
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Geometry {
+    path: PathData,
+    #[serde(with = "vectorcraft_geom::notation::affine")]
+    xf: Affine,
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig { cases: 512, failure_persistence: None, ..ProptestConfig::default() })]
+
+    /// Saved as SVG notation (or, where it can't say a path exactly, structured) and as a command
+    /// answer, a path and a transform read back bit for bit.
+    #[test]
+    fn svg_geometry_reads_back_exactly(path in arb_path(), xf in arb_affine()) {
+        let g = Geometry { path, xf };
+        let saved = vectorcraft_doc::as_saved(|| serde_json::to_string(&g).unwrap());
+        let answer = serde_json::to_string(&g).unwrap();
+        prop_assert!(!answer.contains("\"d\"") && !answer.contains('('), "answers stay structured: {}", answer);
+        let notation = vectorcraft_geom::notation::path_data(&g.path);
+        if let Some((d, _)) = &notation {
+            // Only what the grammar writes: absolute M, L, C, Z, numbers without `+`, one space.
+            prop_assert!(d.chars().all(|c| "MLCZ0123456789.-e ".contains(c)) && !d.contains("  "), "{}", d);
+            prop_assert!(saved.contains("\"d\""));
+            // Path data reads back bit for bit (-0 stays -0, also in a handle).
+            let back: Geometry = serde_json::from_str(&saved).unwrap();
+            prop_assert_eq!(path_bits(&back.path), path_bits(&g.path), "{}", saved);
+        }
+        for text in [&saved, &answer] {
+            let back: Geometry = serde_json::from_str(text).unwrap();
+            // The structured anchors leave out a handle equal (==) to its point, as they always have.
+            prop_assert_eq!(&back.path, &g.path, "{}", text);
+            prop_assert_eq!(back.xf.as_coeffs().map(f64::to_bits), g.xf.as_coeffs().map(f64::to_bits), "{}", text);
+        }
+    }
+
+    /// Arbitrary text is refused or read, never a panic.
+    #[test]
+    fn svg_geometry_parsers_never_panic(d in "[MmLlHhVvCcZzQA0-9 ,.eE+-]{0,48}", kinds in "[cs x]{0,8}", t in "[a-zA-Z(),. 0-9eE+-]{0,40}") {
+        let _ = vectorcraft_geom::notation::parse_path_data(&d, None);
+        let _ = vectorcraft_geom::notation::parse_path_data(&d, Some(&kinds));
+        let _ = vectorcraft_geom::notation::parse_transform(&t);
     }
 }
 
