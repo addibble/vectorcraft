@@ -391,7 +391,7 @@ pub struct SymbolOverride {
     /// The object in the symbol's art, by its id there.
     pub target: NodeId,
     /// The fills and strokes the instance draws the object with.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub items: Vec<AppearanceItem>,
     #[serde(default = "one", skip_serializing_if = "crate::skip::is_one")]
     pub opacity: f32,

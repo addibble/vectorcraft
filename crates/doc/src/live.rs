@@ -85,9 +85,9 @@ impl BlendEaseType {
 /// Blend panel Type and Ramp. Ramp is a fraction from 0 (even) to 1.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct BlendEase {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub kind: BlendEaseType,
-    #[serde(default, deserialize_with = "blend_ramp")]
+    #[serde(default, deserialize_with = "blend_ramp", skip_serializing_if = "crate::skip::left_out")]
     pub ramp: f64,
 }
 
@@ -119,9 +119,9 @@ impl BlendEase {
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct BlendSpec {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub spacing: BlendSpacing,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub orientation: BlendOrientation,
     /// Acceleration of the steps' shapes and positions along the spine between two keys.
     #[serde(default, skip_serializing_if = "BlendEase::is_default")]
@@ -153,9 +153,9 @@ impl BlendSpec {
 /// Blend Options set with no blend selected: what new blends start with.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct BlendDefaults {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub spacing: BlendSpacing,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub orientation: BlendOrientation,
 }
 
@@ -167,13 +167,13 @@ pub enum EnvelopeKind {
     /// distortions in percent (-100..100).
     Warp {
         style: String,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "crate::skip::left_out")]
         bend: f64,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "crate::skip::left_out")]
         h: f64,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "crate::skip::left_out")]
         v: f64,
-        #[serde(default = "yes")]
+        #[serde(default = "yes", skip_serializing_if = "crate::skip::true_left_out")]
         horizontal: bool,
     },
     /// A `(rows+1)×(cols+1)` grid of points (row-major) the content's bounding box maps onto.
@@ -223,15 +223,20 @@ impl PreserveShape {
 #[serde(rename_all = "camelCase", default)]
 pub struct EnvelopeOptions {
     /// Rasters: Anti-Alias.
+    #[serde(skip_serializing_if = "envelope_options_defaults::anti_alias")]
     pub anti_alias: bool,
     /// Rasters: Preserve Shape Using.
+    #[serde(skip_serializing_if = "envelope_options_defaults::preserve_shape")]
     pub preserve_shape: PreserveShape,
     /// Distort Appearance: strokes and live effects are applied before the distortion, so they
     /// bend with the art (off: they apply to the distorted paths).
+    #[serde(skip_serializing_if = "envelope_options_defaults::distort_appearance")]
     pub distort_appearance: bool,
     /// Distort Linear Gradients (with Distort Appearance): placed gradients bend with the art.
+    #[serde(skip_serializing_if = "envelope_options_defaults::distort_linear_gradients")]
     pub distort_linear_gradients: bool,
     /// Distort Pattern Fills (with Distort Appearance): pattern tiles bend with the art.
+    #[serde(skip_serializing_if = "envelope_options_defaults::distort_pattern_fills")]
     pub distort_pattern_fills: bool,
 }
 
@@ -276,10 +281,10 @@ pub const H_UP: usize = 3;
 pub struct MeshPoint {
     pub p: Point,
     pub color: Color,
-    #[serde(default = "one")]
+    #[serde(default = "one", skip_serializing_if = "crate::skip::one_left_out")]
     pub opacity: f32,
     /// Tangent handles as offsets from `p` (see [`H_RIGHT`] …).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub handles: [Vec2; 4],
 }
 
@@ -325,6 +330,9 @@ impl MeshAppearance {
 /// Default envelope fidelity.
 pub fn default_fidelity() -> f64 {
     fifty()
+}
+pub(crate) fn is_default_fidelity(v: &f64) -> bool {
+    crate::skip::saving() && *v == default_fidelity()
 }
 
 // =====================================================================================
@@ -1899,6 +1907,18 @@ impl BlendSpec {
         let shift = if self.color_shift.is_finite() { self.color_shift.clamp(-100.0, 100.0) } else { 0.0 };
         if shift == 0.0 { u } else { u.powf(2.0f64.powf(shift / 50.0)) }
     }
+}
+
+/// What a reader fills in for each field of [`EnvelopeOptions`] left out (see `crate::skip::container_defaults`).
+mod envelope_options_defaults {
+    use super::*;
+    crate::skip::container_defaults!(EnvelopeOptions {
+        anti_alias: bool,
+        preserve_shape: PreserveShape,
+        distort_appearance: bool,
+        distort_linear_gradients: bool,
+        distort_pattern_fills: bool,
+    });
 }
 
 #[cfg(test)]
