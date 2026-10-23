@@ -27,7 +27,8 @@ Every message is a plain object with a string `type`. VectorCraft posts only to 
 | `vectorcraft:open` | from the parent | `name` (string), `bytes` (`ArrayBuffer` or `Uint8Array`) | Open this file, as if it were picked with File › Open. |
 | `vectorcraft:save` | to the parent | `name` (string), `bytes` (`ArrayBuffer`, transferred) | Store this file. |
 | `vectorcraft:dirty` | to the parent | `dirty` (boolean) | Unsaved changes appeared (`true`) or went away (`false`). |
-| `vectorcraft:failed` | to the parent | `error` (string) | Before `ready`: the app couldn't start. After `ready`: the last `vectorcraft:open` was refused; the app keeps running. |
+| `vectorcraft:configure` | from the parent | `hide` (array of strings), `emptyMessage` (string) | Hide commands the host does for itself, and say what the window shows with no document open. |
+| `vectorcraft:failed` | to the parent | `error` (string) | Before `ready`: the app couldn't start. After `ready`: the last `vectorcraft:open` or `vectorcraft:configure` was refused; the app keeps running. |
 
 **`vectorcraft:ready`** comes once, when the app has started. `version` is the app's version (`CARGO_PKG_VERSION`). A host that has heard neither `ready` nor `failed` after a reasonable time should assume the app couldn't start. The commonest reason is a browser without WebGPU or WebGL2.
 
@@ -40,6 +41,13 @@ Every message is a plain object with a string `type`. VectorCraft posts only to 
 
 **`vectorcraft:save`**: `name` is a bare file name with no folders, the name a download would have had. The parent stores the file and reports any failure to the user itself; nothing is sent back. VectorCraft treats the save as done, as it does a download: after Save or Save As the document counts as saved, and `dirty: false` follows.
 
+**`vectorcraft:configure`** fits the app to a host that manages files itself. Both fields are optional, and each message replaces the last one whole, so a field left out (or `null`) is cleared:
+
+- `hide` lists command ids the user isn't offered, such as `file.new`, `file.open` or `file.print`. A string ending in `*` hides every id it starts (`file.openRecent*`). A hidden command leaves the menus (and `ui.menu.list`), the command palette and the buttons that run it, such as the Home button for `app.home`, and its shortcut does nothing. The host's own control requests (`window.vectorcraft.execute`) still run it. Ids are the commands' own (`engine.commands` lists them); an id no command has is ignored. At most 1,000 ids of up to 200 characters each.
+- `emptyMessage` is what the window says while no document is open, such as "Open a file from the Files app", in place of the Home screen. It is shown as given, so the host sends it in the user's language. Up to 1,000 characters; blank means none.
+
+A message of any other shape (`hide` not an array of non-empty strings, `emptyMessage` not a string, or either too long) is refused with `vectorcraft:failed`, and nothing changes. Send it after `ready`, and again whenever the host's needs change.
+
 **`vectorcraft:dirty`** is sent after the first frame and then whenever the answer changes, so the first one is usually `dirty: false`. `true` means at least one open document has unsaved changes.
 
 ## Who is heard
@@ -48,7 +56,7 @@ The bridge reads a message only when all of these hold:
 
 1. it comes from `window.parent` (`event.source`), not from another window or frame on the site;
 2. its origin (`event.origin`) is exactly the page's own: same scheme, host and port;
-3. its `type` is `vectorcraft:open`.
+3. its `type` is `vectorcraft:open` or `vectorcraft:configure`.
 
 Anything else is ignored without a reply, so a page on another origin can neither open files in VectorCraft nor learn that it is there. Saves and other replies go only to `window.parent`, with the page's own origin as the target, so the browser delivers them to no other site. A same-origin parent can already script the frame directly, so the bridge gives it nothing it couldn't otherwise do; it only spares it reaching into the app's internals.
 
@@ -68,6 +76,7 @@ window.addEventListener('message', async (event) => {
   switch (message.type) {
     case 'vectorcraft:ready': {
       const bytes = await (await fetch('/files/Logo.svg')).arrayBuffer()
+      frame.contentWindow.postMessage({ type: 'vectorcraft:configure', hide: ['file.new', 'file.newDialog', 'file.open', 'file.openRecent*', 'app.home'], emptyMessage: 'Open a file from the Files app' }, window.location.origin)
       frame.contentWindow.postMessage({ type: 'vectorcraft:open', name: 'Logo.svg', bytes }, window.location.origin, [bytes])
       break
     }

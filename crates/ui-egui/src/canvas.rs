@@ -197,8 +197,12 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
         return;
     }
     if app.session.active().is_none() {
-        // No document and Show The Home Screen When No Documents Are Open off: an empty window.
+        // No document and Show The Home Screen When No Documents Are Open off: an empty window,
+        // with the embedding page's message when it gave one (already in the user's language).
         ui.painter().rect_filled(full, 0.0, t.panel_darker);
+        if let Some(message) = &app.ui.host_empty_message {
+            ui.painter().text(full.center(), egui::Align2::CENTER_CENTER, message, egui::FontId::proportional(16.0), t.text_dim);
+        }
         return;
     }
     // Normal Screen Mode and Full Screen Mode with Menu Bar keep the scroll bars along the right
