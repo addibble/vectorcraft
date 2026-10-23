@@ -391,6 +391,8 @@ fn single_key_shortcuts(app: &mut VectorcraftApp, ctx: &egui::Context) {
         let Some(hit) = hits.iter().find(|c| !c.id.starts_with("tool:")).or(hits.first()) else { continue };
         match hit.id.strip_prefix("tool:") {
             Some(tool) => app.select_tool(tool),
+            // A command an embedding page hid does nothing from its key.
+            None if crate::menus::host_hidden(app, &hit.id) => {}
             None if hit.params.is_null() => {
                 let _ = app.run(&hit.id, json!({}));
             }

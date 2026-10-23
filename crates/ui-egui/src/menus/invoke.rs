@@ -1,4 +1,4 @@
-use super::state::{SUBJECT_COMMANDS, has_subject, waits_for_ime};
+use super::state::{SUBJECT_COMMANDS, has_subject, host_hidden, waits_for_ime};
 use super::{Value, VectorcraftApp, json};
 
 /// What a menu click runs: items whose label ends with "…" and that carry default params open a
@@ -120,7 +120,7 @@ pub(crate) fn graph_dialog(app: &mut VectorcraftApp, id: &str) -> Result<Value, 
 }
 
 pub fn invoke(app: &mut VectorcraftApp, id: &str, p: Value) {
-    if waits_for_ime(app, id) {
+    if waits_for_ime(app, id) || host_hidden(app, id) {
         return;
     }
     if SUBJECT_COMMANDS.contains(&id)
