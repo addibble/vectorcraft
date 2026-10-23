@@ -2676,6 +2676,9 @@ fn document_query_and_schema_read_the_model_a_part_at_a_time() {
     // Another application's attributes on a node have a schema too (`Node.foreign`).
     let foreign = s.execute("document.schema", &json!({"type": "ForeignAttribute"})).unwrap();
     assert!(foreign["properties"].as_array().unwrap().iter().any(|p| p["name"] == "ns"), "{foreign}");
+    // A paragraph's list (Paragraph panel › Bullets) has a schema too (`ParaStyle.list`).
+    let list = s.execute("document.schema", &json!({"type": "ParaList"})).unwrap();
+    assert!(list["properties"].as_array().unwrap().iter().any(|p| p["name"] == "bullet"), "{list}");
 }
 
 /// `document.patch` edits the model by JSON Patch at the pointers `document.query` answers: one
