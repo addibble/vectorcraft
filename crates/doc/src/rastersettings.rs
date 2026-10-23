@@ -37,17 +37,23 @@ pub const MAX_ADD_AROUND: f64 = 1000.0;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct RasterEffectsSettings {
+    #[serde(skip_serializing_if = "raster_effects_settings_defaults::color_model")]
     pub color_model: RasterColorModel,
     /// White: images are opaque, on white. Transparent: they keep their transparency.
+    #[serde(skip_serializing_if = "raster_effects_settings_defaults::background")]
     pub background: Background,
     /// Off: the art's edges are hard (raster effects stay smooth).
+    #[serde(skip_serializing_if = "raster_effects_settings_defaults::anti_alias")]
     pub anti_alias: bool,
     /// With a white background, the white stays only under the art (outside it the image is
     /// transparent); Rasterize clips its image to the art's outline.
+    #[serde(skip_serializing_if = "raster_effects_settings_defaults::clipping_mask")]
     pub clipping_mask: bool,
     /// Extra room around the art, in points (0–[`MAX_ADD_AROUND`]).
+    #[serde(skip_serializing_if = "raster_effects_settings_defaults::add_around")]
     pub add_around: f64,
     /// Keep spot colours in raster effects (stored; effect images are made in process colour).
+    #[serde(skip_serializing_if = "raster_effects_settings_defaults::preserve_spot_colors")]
     pub preserve_spot_colors: bool,
 }
 
@@ -99,6 +105,19 @@ impl RasterEffectsSettings {
             }
         }
     }
+}
+
+/// What a reader fills in for each field of [`RasterEffectsSettings`] left out (see `crate::skip::container_defaults`).
+mod raster_effects_settings_defaults {
+    use super::*;
+    crate::skip::container_defaults!(RasterEffectsSettings {
+        color_model: RasterColorModel,
+        background: Background,
+        anti_alias: bool,
+        clipping_mask: bool,
+        add_around: f64,
+        preserve_spot_colors: bool,
+    });
 }
 
 #[cfg(test)]
