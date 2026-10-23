@@ -12,6 +12,7 @@ pub mod harmony;
 pub mod libraries;
 pub mod palette_io;
 pub mod recolor;
+pub mod saved_links;
 pub mod swatch;
 
 pub use blend::BlendMode;
@@ -56,6 +57,16 @@ impl Default for Color {
 }
 
 impl Color {
+    /// A linked colour read without its value ([`saved_links`]), until the document fills it in
+    /// from its swatch; never drawn. No file can hold it: JSON has no NaN.
+    pub const UNRESOLVED: Color = Color::Rgb { r: f32::NAN, g: f32::NAN, b: f32::NAN };
+    pub(crate) fn unresolved() -> Color {
+        saved_links::note_unresolved()
+    }
+    /// Is this [`Color::UNRESOLVED`]?
+    pub fn is_unresolved(&self) -> bool {
+        matches!(self, Color::Rgb { r, .. } if r.is_nan())
+    }
     pub const BLACK: Color = Color::Rgb { r: 0.0, g: 0.0, b: 0.0 };
     pub const WHITE: Color = Color::Rgb { r: 1.0, g: 1.0, b: 1.0 };
 
@@ -333,14 +344,17 @@ pub fn keep_model(orig: Color, new: Color) -> Color {
     new.in_model(orig.model())
 }
 
-/// What fills or strokes an object.
+/// What fills or strokes an object. Its serde (see [`saved_links`]) also writes and reads a solid
+/// colour linked to a global swatch by the swatch's name.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(tag = "type", rename_all = "lowercase")]
+#[serde(remote = "Self", tag = "type", rename_all = "lowercase")]
 pub enum Paint {
     #[default]
     None,
     Solid {
-        /// The colour shown: with a link, the swatch's colour at `tint` ([`Color::tinted`]).
+        /// The colour shown: with a link, the swatch's colour at `tint` ([`Color::tinted`]). Left
+        /// out in a saved file when it is exactly that ([`saved_links`]).
+        #[serde(default = "Color::unresolved")]
         color: Color,
         /// Name of the global swatch this colour is linked to (edits to the swatch update it).
         #[serde(default, skip_serializing_if = "Option::is_none")]
