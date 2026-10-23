@@ -238,6 +238,8 @@ fn form_dialog_axes_are_dropdowns() {
 
 /// The axis choices are translated in the "axis" context: in Japanese the plain Horizontal and
 /// Vertical are the type orientations (horizontal and vertical writing).
+// Reads catalogs other than English.
+#[cfg(feature = "translations")]
 #[test]
 fn axis_choices_read_as_axes_in_every_complete_language() {
     use crate::i18n::{LANGUAGES, Lang, tr, tr_ctx};
@@ -626,6 +628,8 @@ fn simplify_dialog_show_original_path_outlines_the_paths_before_the_preview() {
     assert!(super::path_ops::original_paths(&app).is_empty());
 }
 
+// Reads catalogs other than English.
+#[cfg(feature = "translations")]
 #[test]
 fn printer_mark_labels_are_distinct_from_language_names() {
     let cs = crate::i18n::Lang::from_code("cs").unwrap();

@@ -1279,6 +1279,8 @@ mod tests {
     /// Those choices read as their dialogs show them in the UI language: in French, the channel's
     /// RGB is RVB, and in Spanish, Extrude & Bevel's Rounded is the "3d" row's Redondeado, not the
     /// plain row's Redondeada. Rasterize names the document's color mode.
+    // Reads catalogs other than English.
+    #[cfg(feature = "translations")]
     #[test]
     fn the_effect_editor_shows_those_choices_as_their_dialogs_do() {
         crate::i18n::set_current(crate::i18n::Lang::from_code("fr").unwrap());
