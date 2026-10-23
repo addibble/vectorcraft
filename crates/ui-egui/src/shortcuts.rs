@@ -601,6 +601,8 @@ fn single_key_shortcuts(app: &mut VectorcraftApp, ctx: &egui::Context) {
         // its slider, and Move opens its dialog.
         match hit.id.strip_prefix("tool:") {
             Some(tool) => held_tool::choose(app, ctx, tool, pressed, repeat),
+            // A command an embedding page hid does nothing from its key.
+            None if crate::menus::host_hidden(app, &hit.id) => {}
             None => {
                 run_hit(app, ctx, hit);
                 if dialog_or_palette_open(app) {
