@@ -39,8 +39,9 @@ pub fn app_bar(app: &mut VectorcraftApp, ui: &mut Ui) {
             titlebar::drag_area(ui, ui.max_rect());
         }
         ui.horizontal_centered(|ui| {
-            // With the system title bar the OS draws its own icon: no in-app brand mark.
-            if !system {
+            // With the system title bar the OS draws its own icon: no in-app brand mark; nor when
+            // an embedding page hid it.
+            if !system && !app.ui.host_hide_mark {
                 let (r, _) = ui.allocate_exact_size(vec2(MARK, MARK), Sense::hover());
                 crate::brand::paint_mark(ui, r);
                 ui.add_space(6.0);
@@ -91,7 +92,7 @@ pub fn app_bar(app: &mut VectorcraftApp, ui: &mut Ui) {
                     app.ui.palette_query.clear();
                 }
             }
-            if discord {
+            if discord && !menus::host_hidden(app, "help.discord") {
                 ui.add_space(10.0);
                 crate::community::discord_button(app, ui, false);
             }
