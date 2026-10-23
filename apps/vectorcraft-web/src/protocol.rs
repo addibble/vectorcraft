@@ -42,49 +42,76 @@ pub fn open(name: Option<String>, bytes: Option<Vec<u8>>) -> Result<Open, String
     Ok(Open { name, bytes })
 }
 
-/// The most commands a page may hide, the longest id or prefix, and the longest message: a page's
-/// message is untrusted input.
+/// The most commands (or menus) a page may hide, the longest id or title, and the longest message
+/// or link: a page's message is untrusted input.
 pub const MAX_HIDDEN: usize = 1_000;
 pub const MAX_ID_CHARS: usize = 200;
 pub const MAX_MESSAGE_CHARS: usize = 1_000;
 
-/// What a `vectorcraft:configure` sets: the commands hidden from the user and the empty window's
-/// message. Each message replaces the last whole, so a field left out is cleared.
+/// What a `vectorcraft:configure` sets: the commands, menus and brand mark hidden from the user, and
+/// the empty window's message and link. Each message replaces the last whole, so a field left out
+/// is cleared.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Configure {
     /// Command ids, or id prefixes ending in `*` (`file.openRecent*`).
     pub hide: Vec<String>,
+    /// The menu bar's menus, by their English titles (`File`, `Help`).
+    pub hide_menus: Vec<String>,
+    /// The application bar's brand mark is hidden.
+    pub hide_mark: bool,
     /// Shown in the window while no document is open, in place of the Home screen.
     pub empty_message: Option<String>,
+    /// A link after the message; a click on it is posted to the parent as `vectorcraft:emptyLink`.
+    pub empty_link: Option<String>,
 }
 
 /// A field of a message: left out (or `null`), of the type it should be, or of another.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub enum Field<T> {
+    #[default]
     Absent,
     Given(T),
     Wrong,
 }
 
+/// A `vectorcraft:configure`'s fields as the page sent them (`hide`, `hideMenus`, `hideMark`,
+/// `emptyMessage`, `emptyLink`).
+#[derive(Debug, Default)]
+pub struct ConfigureFields {
+    pub hide: Field<Vec<String>>,
+    pub hide_menus: Field<Vec<String>>,
+    pub hide_mark: Field<bool>,
+    pub empty_message: Field<String>,
+    pub empty_link: Field<String>,
+}
+
 /// Check a `vectorcraft:configure` the bridge accepted. `hide` is an array of strings, each a
-/// command id or a prefix ending in `*`; `emptyMessage` a string. The error is the text of the
-/// `vectorcraft:failed` reply, and nothing changes.
-pub fn configure(hide: Field<Vec<String>>, empty_message: Field<String>) -> Result<Configure, String> {
-    let hide = match hide {
-        Field::Absent => Vec::new(),
-        Field::Given(ids) if ids.len() <= MAX_HIDDEN && ids.iter().all(|id| !id.trim().is_empty() && id.chars().count() <= MAX_ID_CHARS) => ids,
-        _ => {
-            return Err(format!(
-                "vectorcraft:configure's `hide` is an array of at most {MAX_HIDDEN} command ids (strings of 1 to {MAX_ID_CHARS} characters; a prefix ends in `*`)"
-            ));
-        }
+/// command id or a prefix ending in `*`; `hideMenus` an array of menu titles; `hideMark` a boolean;
+/// `emptyMessage` and `emptyLink` strings. The error is the text of the `vectorcraft:failed`
+/// reply, and nothing changes.
+pub fn configure(f: ConfigureFields) -> Result<Configure, String> {
+    let names = |field: Field<Vec<String>>, key: &str, what: &str| match field {
+        Field::Absent => Ok(Vec::new()),
+        Field::Given(ids) if ids.len() <= MAX_HIDDEN && ids.iter().all(|id| !id.trim().is_empty() && id.chars().count() <= MAX_ID_CHARS) => Ok(ids),
+        _ => Err(format!("vectorcraft:configure's `{key}` is an array of at most {MAX_HIDDEN} {what} (strings of 1 to {MAX_ID_CHARS} characters)")),
     };
-    let empty_message = match empty_message {
-        Field::Absent => None,
-        Field::Given(m) if m.chars().count() <= MAX_MESSAGE_CHARS => Some(m).filter(|m| !m.trim().is_empty()),
-        _ => return Err(format!("vectorcraft:configure's `emptyMessage` is a string of at most {MAX_MESSAGE_CHARS} characters")),
+    let text = |field: Field<String>, key: &str| match field {
+        Field::Absent => Ok(None),
+        Field::Given(m) if m.chars().count() <= MAX_MESSAGE_CHARS => Ok(Some(m).filter(|m| !m.trim().is_empty())),
+        _ => Err(format!("vectorcraft:configure's `{key}` is a string of at most {MAX_MESSAGE_CHARS} characters")),
     };
-    Ok(Configure { hide, empty_message })
+    let hide_mark = match f.hide_mark {
+        Field::Absent => false,
+        Field::Given(b) => b,
+        Field::Wrong => return Err("vectorcraft:configure's `hideMark` is a boolean".to_string()),
+    };
+    Ok(Configure {
+        hide: names(f.hide, "hide", "command ids (a prefix ends in `*`)")?,
+        hide_menus: names(f.hide_menus, "hideMenus", "menu titles")?,
+        hide_mark,
+        empty_message: text(f.empty_message, "emptyMessage")?,
+        empty_link: text(f.empty_link, "emptyLink")?,
+    })
 }
 
 #[cfg(test)]
@@ -171,23 +198,52 @@ mod tests {
         assert!(!accepts("https://cloud.example", "https://cloud.example", false, Some("vectorcraft:configure")));
     }
 
+    fn fields(hide: Field<Vec<String>>, empty_message: Field<String>) -> ConfigureFields {
+        ConfigureFields { hide, empty_message, ..Default::default() }
+    }
+
     #[test]
     fn configures_hidden_commands_and_the_empty_message() {
-        let c = configure(Field::Given(vec!["file.new".into(), "file.openRecent*".into()]), Field::Given("Open a file from the Files app".into()))
-            .unwrap();
+        let c = configure(fields(
+            Field::Given(vec!["file.new".into(), "file.openRecent*".into()]),
+            Field::Given("Open a file from the Files app".into()),
+        ))
+        .unwrap();
         assert_eq!(c.hide, ["file.new", "file.openRecent*"]);
         assert_eq!(c.empty_message.as_deref(), Some("Open a file from the Files app"));
         // Left out, each is cleared; a blank message is none.
-        assert_eq!(configure(Field::Absent, Field::Given("  ".into())).unwrap(), Configure::default());
+        assert_eq!(configure(fields(Field::Absent, Field::Given("  ".into()))).unwrap(), Configure::default());
+    }
+
+    #[test]
+    fn configures_hidden_menus_the_mark_and_the_empty_link() {
+        let c = configure(ConfigureFields {
+            hide_menus: Field::Given(vec!["File".into(), "Help".into()]),
+            hide_mark: Field::Given(true),
+            empty_message: Field::Given("No file open.".into()),
+            empty_link: Field::Given("Open one from Files".into()),
+            ..Default::default()
+        })
+        .unwrap();
+        assert_eq!(c.hide_menus, ["File", "Help"]);
+        assert!(c.hide_mark);
+        assert_eq!(c.empty_link.as_deref(), Some("Open one from Files"));
+        // A blank link is none, as a blank message is.
+        assert_eq!(configure(ConfigureFields { empty_link: Field::Given(" ".into()), ..Default::default() }).unwrap().empty_link, None);
     }
 
     #[test]
     fn refuses_a_configure_of_the_wrong_shape() {
-        assert!(configure(Field::Wrong, Field::Absent).unwrap_err().contains("`hide`"));
-        assert!(configure(Field::Given(vec![String::new()]), Field::Absent).is_err());
-        assert!(configure(Field::Given(vec!["x".repeat(MAX_ID_CHARS + 1)]), Field::Absent).is_err());
-        assert!(configure(Field::Given(vec!["file.new".into(); MAX_HIDDEN + 1]), Field::Absent).is_err());
-        assert!(configure(Field::Absent, Field::Wrong).unwrap_err().contains("`emptyMessage`"));
-        assert!(configure(Field::Absent, Field::Given("x".repeat(MAX_MESSAGE_CHARS + 1))).is_err());
+        assert!(configure(fields(Field::Wrong, Field::Absent)).unwrap_err().contains("`hide`"));
+        assert!(configure(fields(Field::Given(vec![String::new()]), Field::Absent)).is_err());
+        assert!(configure(fields(Field::Given(vec!["x".repeat(MAX_ID_CHARS + 1)]), Field::Absent)).is_err());
+        assert!(configure(fields(Field::Given(vec!["file.new".into(); MAX_HIDDEN + 1]), Field::Absent)).is_err());
+        assert!(configure(fields(Field::Absent, Field::Wrong)).unwrap_err().contains("`emptyMessage`"));
+        assert!(configure(fields(Field::Absent, Field::Given("x".repeat(MAX_MESSAGE_CHARS + 1)))).is_err());
+        assert!(configure(ConfigureFields { hide_menus: Field::Wrong, ..Default::default() }).unwrap_err().contains("`hideMenus`"));
+        assert!(configure(ConfigureFields { hide_menus: Field::Given(vec![" ".into()]), ..Default::default() }).is_err());
+        assert!(configure(ConfigureFields { hide_mark: Field::Wrong, ..Default::default() }).unwrap_err().contains("`hideMark`"));
+        assert!(configure(ConfigureFields { empty_link: Field::Wrong, ..Default::default() }).unwrap_err().contains("`emptyLink`"));
+        assert!(configure(ConfigureFields { empty_link: Field::Given("x".repeat(MAX_MESSAGE_CHARS + 1)), ..Default::default() }).is_err());
     }
 }
