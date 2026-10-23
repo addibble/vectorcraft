@@ -728,3 +728,26 @@ fn global_swatch_edits_reach_the_tile_that_pattern_cancel_puts_back() {
     }
     assert_eq!(fills, [Paint::Solid { color: Color::rgb(0.0, 0.0, 1.0), swatch: Some("Tone".into()), tint: 1.0 }]);
 }
+
+/// A saved file writes a colour linked to a global swatch by the swatch's name, and reads it back
+/// filled in from the swatch; a rename re-points every link, so the saved names follow it, and
+/// document.query reads the names as the file holds them.
+#[test]
+fn a_saved_file_links_colours_by_swatch_name_and_a_rename_follows() {
+    let mut s = session();
+    run(&mut s, "swatch.new", json!({"name": "Brand", "color": "#2a6fb0", "global": true}));
+    let a = rect(&mut s);
+    run(&mut s, "paint.setFill", json!({"ids": [a.0], "swatch": "Brand"}));
+    run(&mut s, "swatch.edit", json!({"name": "Brand", "newName": "Accent"}));
+    let bytes = vectorcraft_format::save(doc(&s), false);
+    let text = String::from_utf8(bytes.clone()).unwrap();
+    assert!(text.contains("\"paint\": \"Accent\"") || text.contains("\"paint\":\"Accent\""), "linked by name");
+    let back = vectorcraft_format::load(&bytes).unwrap();
+    assert_eq!(back.node(a).unwrap().appearance.fill_paint(), linked("#2a6fb0", "Accent"));
+    assert_eq!(&back, doc(&s));
+    let q = run(&mut s, "document.query", json!({"path": format!("$.layers..[?@.id == {}].appearance.items[?@.kind == 'fill'].paint", a.0)}));
+    assert_eq!(q["matches"][0]["value"], json!("Accent"), "{q}");
+    // A command answers with the colour, as before.
+    let full = run(&mut s, "document.json", json!({}));
+    assert!(full.to_string().contains("\"swatch\":\"Accent\""));
+}
