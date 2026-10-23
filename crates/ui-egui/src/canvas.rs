@@ -278,10 +278,30 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
     }
     if app.session.active().is_none() {
         // No document and Show The Home Screen When No Documents Are Open off: an empty window,
-        // with the embedding page's message when it gave one (already in the user's language).
+        // with the embedding page's message and link when it gave them (already in the user's
+        // language). The link is the page's to follow: a click is only noted for it to hear.
         ui.painter().rect_filled(full, 0.0, t.panel_darker);
-        if let Some(message) = &app.ui.host_empty_message {
-            ui.painter().text(full.center(), egui::Align2::CENTER_CENTER, message, egui::FontId::proportional(16.0), t.text_dim);
+        let font = egui::FontId::proportional(16.0);
+        let message = app.ui.host_empty_message.as_ref().map(|m| ui.painter().layout_no_wrap(m.clone(), font.clone(), t.text_dim));
+        let link = app.ui.host_empty_link.as_ref().map(|l| ui.painter().layout_no_wrap(l.clone(), font.clone(), t.accent));
+        let gap = if message.is_some() && link.is_some() { 6.0 } else { 0.0 };
+        let width = message.as_ref().map_or(0.0, |g| g.size().x) + gap + link.as_ref().map_or(0.0, |g| g.size().x);
+        let mut x = full.center().x - width / 2.0;
+        if let Some(g) = message {
+            let w = g.size().x;
+            ui.painter().galley(egui::pos2(x, full.center().y - g.size().y / 2.0), g, t.text_dim);
+            x += w + gap;
+        }
+        if let Some(g) = link {
+            let r = egui::Rect::from_min_size(egui::pos2(x, full.center().y - g.size().y / 2.0), g.size());
+            let resp = ui.interact(r, egui::Id::new("host-empty-link"), Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand);
+            if resp.hovered() {
+                ui.painter().hline(r.x_range(), r.bottom(), Stroke::new(1.0, t.accent));
+            }
+            ui.painter().galley(r.min, g, t.accent);
+            if resp.clicked() {
+                app.ui.host_empty_link_clicked = true;
+            }
         }
         return;
     }
