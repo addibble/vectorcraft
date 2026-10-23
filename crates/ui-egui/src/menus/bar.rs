@@ -166,7 +166,8 @@ pub(crate) fn home_key(app: &VectorcraftApp) -> (Option<u64>, usize) {
 
 /// Whether the Home screen is up: chosen with the Home button (`app.home`), or no document is open
 /// and Preferences › General › Show The Home Screen When No Documents Are Open is on (#394). Off,
-/// an app with no document shows an empty window, and the Home button still opens the screen.
+/// an app with no document shows an empty window, and the Home button still opens the screen. An
+/// embedding page's message for the empty window (`vectorcraft:configure`) stands in for it.
 pub(crate) fn home_showing(app: &VectorcraftApp) -> bool {
-    app.ui.home.is_some() || (app.session.active().is_none() && app.session.prefs.show_home_screen)
+    app.ui.home.is_some() || (app.session.active().is_none() && app.session.prefs.show_home_screen && app.ui.host_empty_message.is_none())
 }
