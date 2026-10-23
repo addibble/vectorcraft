@@ -2567,6 +2567,7 @@ mark-style	Japanese	Японський
 	Reflect Y	Відобразити за Y
 	Reflect…	Відобразити…
 	Refresh	Оновити
+	Add Font	Додати шрифт
 	Refresh Font List	Оновити список шрифтів
 	Missing Fonts	Відсутні шрифти
 	Missing Fonts Dialog	Діалогове вікно «Відсутні шрифти»
@@ -5133,3 +5134,7 @@ axis	Y Axis	Вісь Y
 	Symbol Definition	Визначення символу
 	Override Symbol Instance	Перевизначити екземпляр символу
 	Reset Symbol Instance	Скинути екземпляр символу
+@msg	give the font file as dataBase64	вкажіть файл шрифту як dataBase64
+@msg	{name} is larger than {_1} MB	{name} більший за {_1} МБ
+@msg	{name} is not a TrueType, OpenType or collection font	{name} — не шрифт TrueType, OpenType і не колекція шрифтів
+@msg	{name}: dataBase64 is not base64	{name}: dataBase64 — не base64

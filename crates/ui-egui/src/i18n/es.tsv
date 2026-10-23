@@ -2544,6 +2544,7 @@ font-technology	Variable	Variables
 	Reflect Y	Reflejar Y
 	Reflect…	Reflejar…
 	Refresh	Actualizar
+	Add Font	Añadir fuente
 	Refresh Font List	Actualizar lista de fuentes
 	Missing Fonts	Fuentes que faltan
 	Missing Fonts Dialog	Cuadro de diálogo Fuentes que faltan
@@ -5478,3 +5479,7 @@ axis	Y Axis	Eje Y
 	Symbol Definition	Definición del símbolo
 	Override Symbol Instance	Anular instancia de símbolo
 	Reset Symbol Instance	Restablecer instancia de símbolo
+@msg	give the font file as dataBase64	indica el archivo de fuente como dataBase64
+@msg	{name} is larger than {_1} MB	{name} ocupa más de {_1} MB
+@msg	{name} is not a TrueType, OpenType or collection font	{name} no es una fuente TrueType, OpenType ni una colección de fuentes
+@msg	{name}: dataBase64 is not base64	{name}: dataBase64 no está en base64

@@ -3081,6 +3081,7 @@ mark-style	Japanese	Japán
 	Reflect Y	Y-tükrözés
 	Reflect…	Tükrözés…
 	Refresh	Frissítés
+	Add Font	Betűtípus hozzáadása
 	Refresh Font List	Betűtípuslista frissítése
 	Registered Trademark Symbol	Bejegyzett védjegy jele
 	Registration marks	Illesztőjelek
@@ -5522,3 +5523,7 @@ axis	Y Axis	Y tengely
 	Symbol Definition	Szimbólumdefiníció
 	Override Symbol Instance	Szimbólumpéldány felülbírálása
 	Reset Symbol Instance	Szimbólumpéldány visszaállítása
+@msg	give the font file as dataBase64	a betűtípusfájlt dataBase64 formában add meg
+@msg	{name} is larger than {_1} MB	{name} nagyobb, mint {_1} MB
+@msg	{name} is not a TrueType, OpenType or collection font	{name} nem TrueType, OpenType vagy gyűjteményes betűtípus
+@msg	{name}: dataBase64 is not base64	{name}: a dataBase64 nem base64

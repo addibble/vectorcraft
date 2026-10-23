@@ -2489,6 +2489,7 @@ font-technology	Variable	Variabla
 	Reflect Y	Spegla Y
 	Reflect…	Spegla…
 	Refresh	Uppdatera
+	Add Font	Lägg till typsnitt
 	Refresh Font List	Uppdatera teckensnittslistan
 	Missing Fonts	Saknade typsnitt
 	Missing Fonts Dialog	Dialogruta för saknade typsnitt
@@ -5492,3 +5493,7 @@ axis	Y Axis	Y-axel
 	Symbol Definition	Symboldefinition
 	Override Symbol Instance	Åsidosätt symbolinstans
 	Reset Symbol Instance	Återställ symbolinstans
+@msg	give the font file as dataBase64	ange typsnittsfilen som dataBase64
+@msg	{name} is larger than {_1} MB	{name} är större än {_1} MB
+@msg	{name} is not a TrueType, OpenType or collection font	{name} är inte ett TrueType-, OpenType- eller samlingstypsnitt
+@msg	{name}: dataBase64 is not base64	{name}: dataBase64 är inte base64

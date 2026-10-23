@@ -2107,6 +2107,7 @@
 	Reflect Y	Espelhar Y
 	Reflect…	Espelhar…
 	Refresh	Atualizar
+	Add Font	Adicionar Fonte
 	Refresh Font List	Atualizar Lista de Fontes
 	Missing Fonts	Fontes Ausentes
 	Missing Fonts Dialog	Diálogo de Fontes Ausentes
@@ -5453,3 +5454,7 @@ axis	Y Axis	Eixo Y
 	Symbol Definition	Definição do Símbolo
 	Override Symbol Instance	Substituir Instância de Símbolo
 	Reset Symbol Instance	Redefinir Instância de Símbolo
+@msg	give the font file as dataBase64	informe o arquivo da fonte como dataBase64
+@msg	{name} is larger than {_1} MB	{name} é maior que {_1} MB
+@msg	{name} is not a TrueType, OpenType or collection font	{name} não é uma fonte TrueType, OpenType nem uma coleção de fontes
+@msg	{name}: dataBase64 is not base64	{name}: dataBase64 não é base64

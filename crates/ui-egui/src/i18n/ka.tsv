@@ -2759,6 +2759,7 @@ theme	Appearance	იერსახე
 	Add Font Files	შრიფტის ფაილების დამატება
 	Font List	შრიფტების სია
 	Fonts in Document	დოკუმენტის შრიფტები
+	Add Font	შრიფტის დამატება
 	Refresh Font List	შრიფტების სიის განახლება
 	Replace Font	შრიფტის ჩანაცვლება
 	Select Text by Font	ტექსტის მონიშვნა შრიფტის მიხედვით
@@ -5452,3 +5453,7 @@ axis	Y Axis	Y ღერძი
 	Symbol Definition	სიმბოლოს განსაზღვრება
 	Override Symbol Instance	სიმბოლოს ეგზემპლარის გადაფარვა
 	Reset Symbol Instance	სიმბოლოს ეგზემპლარის ჩამოყრა
+@msg	give the font file as dataBase64	მიუთითეთ შრიფტის ფაილი dataBase64-ის სახით
+@msg	{name} is larger than {_1} MB	{name} {_1} MB-ზე დიდია
+@msg	{name} is not a TrueType, OpenType or collection font	{name} არ არის TrueType, OpenType ან კოლექციის შრიფტი
+@msg	{name}: dataBase64 is not base64	{name}: dataBase64 არ არის base64
