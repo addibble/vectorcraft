@@ -3124,6 +3124,7 @@ theme	Appearance	Ulkoasu
 	Add Font Files	Lisää fonttitiedostoja
 	Font List	Fonttiluettelo
 	Fonts in Document	Asiakirjan fontit
+	Add Font	Lisää fontti
 	Refresh Font List	Päivitä fonttiluettelo
 	Replace Font	Korvaa fontti
 	Select Text by Font	Valitse teksti fontin mukaan
@@ -5574,3 +5575,7 @@ axis	Y Axis	Y-akseli
 	Symbol Definition	Symbolin määritys
 	Override Symbol Instance	Ohita symbolin ilmentymä
 	Reset Symbol Instance	Palauta symbolin ilmentymä
+@msg	give the font file as dataBase64	anna fonttitiedosto dataBase64-muodossa
+@msg	{name} is larger than {_1} MB	{name} on suurempi kuin {_1} Mt
+@msg	{name} is not a TrueType, OpenType or collection font	{name} ei ole TrueType-, OpenType- tai kokoelmafontti
+@msg	{name}: dataBase64 is not base64	{name}: dataBase64 ei ole base64-muotoa

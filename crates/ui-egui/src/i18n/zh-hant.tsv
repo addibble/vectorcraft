@@ -3333,6 +3333,7 @@ font-script	Japanese	漢字
 	Reflect Y	鏡射 Y
 	Reflect…	鏡射…
 	Refresh	重新整理
+	Add Font	加入字體
 	Refresh Font List	重新整理字體清單
 	Missing Fonts	遺失的字體
 	Missing Fonts Dialog	遺失的字體對話框
@@ -5178,3 +5179,7 @@ axis	Y Axis	Y 軸
 	Symbol Definition	符號定義
 	Override Symbol Instance	覆寫符號範例
 	Reset Symbol Instance	重設符號範例
+@msg	give the font file as dataBase64	請以 dataBase64 提供字體檔案
+@msg	{name} is larger than {_1} MB	{name} 大於 {_1} MB
+@msg	{name} is not a TrueType, OpenType or collection font	{name} 不是 TrueType、OpenType 或字體集合檔案
+@msg	{name}: dataBase64 is not base64	{name}：dataBase64 不是 base64

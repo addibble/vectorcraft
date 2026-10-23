@@ -2364,6 +2364,7 @@ font-technology	Variable	Değişken
 	Reflect Y	Y'yi yansıt
 	Reflect…	Yansıt…
 	Refresh	Yenile
+	Add Font	Yazı Tipi Ekle
 	Refresh Font List	Yazı Tipi Listesini Yenile
 	Missing Fonts	Eksik Yazı Tipleri
 	Missing Fonts Dialog	Eksik Yazı Tipleri İletişim Kutusu
@@ -5506,3 +5507,7 @@ axis	Y Axis	Y ekseni
 	Symbol Definition	Sembol Tanımı
 	Override Symbol Instance	Sembol Örneğini Geçersiz Kıl
 	Reset Symbol Instance	Sembol Örneğini Sıfırla
+@msg	give the font file as dataBase64	yazı tipi dosyasını dataBase64 olarak verin
+@msg	{name} is larger than {_1} MB	{name}, {_1} MB'tan büyük
+@msg	{name} is not a TrueType, OpenType or collection font	{name} bir TrueType, OpenType ya da koleksiyon yazı tipi değil
+@msg	{name}: dataBase64 is not base64	{name}: dataBase64, base64 değil

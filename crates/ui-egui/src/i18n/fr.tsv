@@ -2541,6 +2541,7 @@ font-technology	Variable	Variables
 	Reflect Y	Miroir Y
 	Reflect…	Miroir…
 	Refresh	Actualiser
+	Add Font	Ajouter une police
 	Refresh Font List	Actualiser la liste des polices
 	Missing Fonts	Polices manquantes
 	Missing Fonts Dialog	Boîte de dialogue Polices manquantes
@@ -5542,3 +5543,7 @@ axis	Y Axis	Axe Y
 	Symbol Definition	Définition du symbole
 	Override Symbol Instance	Surcharger l’instance de symbole
 	Reset Symbol Instance	Réinitialiser l’instance de symbole
+@msg	give the font file as dataBase64	indiquez le fichier de police en dataBase64
+@msg	{name} is larger than {_1} MB	{name} dépasse {_1} Mo
+@msg	{name} is not a TrueType, OpenType or collection font	{name} n’est pas une police TrueType, OpenType ni une collection de polices
+@msg	{name}: dataBase64 is not base64	{name} : dataBase64 n’est pas du base64

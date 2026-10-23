@@ -3062,6 +3062,7 @@ theme	Appearance	Wygląd
 	Add Font Files	Dodaj pliki czcionek
 	Font List	Lista czcionek
 	Fonts in Document	Czcionki w dokumencie
+	Add Font	Dodaj czcionkę
 	Refresh Font List	Odśwież listę czcionek
 	Replace Font	Zastąp czcionkę
 	Select Text by Font	Zaznacz tekst według czcionki
@@ -5395,3 +5396,7 @@ axis	Y Axis	Oś Y
 	Symbol Definition	Definicja symbolu
 	Override Symbol Instance	Nadpisz wystąpienie symbolu
 	Reset Symbol Instance	Resetuj wystąpienie symbolu
+@msg	give the font file as dataBase64	podaj plik czcionki jako dataBase64
+@msg	{name} is larger than {_1} MB	{name} jest większy niż {_1} MB
+@msg	{name} is not a TrueType, OpenType or collection font	{name} nie jest czcionką TrueType, OpenType ani kolekcją czcionek
+@msg	{name}: dataBase64 is not base64	{name}: dataBase64 nie jest w base64

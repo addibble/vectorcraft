@@ -2859,6 +2859,7 @@ mark-style	Japanese	Kiểu Nhật
 	Reflect Y	Phản chiếu Y
 	Reflect…	Phản chiếu…
 	Refresh	Làm mới
+	Add Font	Thêm phông chữ
 	Refresh Font List	Làm mới danh sách phông chữ
 	Registered Trademark Symbol	Ký hiệu nhãn hiệu đã đăng ký
 	Registration marks	Dấu căn chỉnh
@@ -5139,3 +5140,7 @@ axis	Y Axis	Trục Y
 	Symbol Definition	Định nghĩa ký hiệu
 	Override Symbol Instance	Ghi đè thực thể ký hiệu
 	Reset Symbol Instance	Đặt lại thực thể ký hiệu
+@msg	give the font file as dataBase64	hãy cung cấp tệp phông chữ dưới dạng dataBase64
+@msg	{name} is larger than {_1} MB	{name} lớn hơn {_1} MB
+@msg	{name} is not a TrueType, OpenType or collection font	{name} không phải phông chữ TrueType, OpenType hay bộ sưu tập phông chữ
+@msg	{name}: dataBase64 is not base64	{name}: dataBase64 không phải base64

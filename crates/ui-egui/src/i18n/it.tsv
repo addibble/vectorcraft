@@ -2575,6 +2575,7 @@ mark-style	Japanese	Giapponese
 	Reflect Y	Rifletti Y
 	Reflect…	Rifletti…
 	Refresh	Aggiorna
+	Add Font	Aggiungi font
 	Refresh Font List	Aggiorna elenco font
 	Missing Fonts	Font mancanti
 	Missing Fonts Dialog	Finestra di dialogo Font mancanti
@@ -5159,3 +5160,7 @@ axis	Y Axis	Asse Y
 	Symbol Definition	Definizione simbolo
 	Override Symbol Instance	Sovrascrivi istanza di simbolo
 	Reset Symbol Instance	Reimposta istanza di simbolo
+@msg	give the font file as dataBase64	specifica il file del font come dataBase64
+@msg	{name} is larger than {_1} MB	{name} supera {_1} MB
+@msg	{name} is not a TrueType, OpenType or collection font	{name} non è un font TrueType, OpenType né una raccolta di font
+@msg	{name}: dataBase64 is not base64	{name}: dataBase64 non è in base64
