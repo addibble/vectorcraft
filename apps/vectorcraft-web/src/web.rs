@@ -391,6 +391,10 @@ impl eframe::App for WebShell {
             self.restart(&why);
         }
         let Some(app) = &mut self.app else { return };
+        // The embedding page's hidden commands and empty-window message (`host`).
+        if let Some(bridge) = &self.host.bridge {
+            bridge.configure(app);
+        }
         let pasted = self.host.pasted.borrow_mut().flavour.take();
         if let Some((f, held)) = pasted {
             app.paste_from_host(ctx, f, held);

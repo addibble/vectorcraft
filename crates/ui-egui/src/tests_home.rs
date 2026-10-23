@@ -325,3 +325,58 @@ fn home_recent_reopen_focuses_an_already_open_document() {
     assert_eq!(app.session.doc().unwrap().doc.layers[0].children().unwrap().len(), 1);
     let _ = std::fs::remove_dir_all(d);
 }
+
+/// An embedding page (`vectorcraft:configure`, docs/web-embed.md) hides commands from the user and
+/// says what the window shows with no document open: the message stands in for the Home screen,
+/// the Home button and the hidden commands' menu items, shortcuts and runs from the UI are gone,
+/// and the page's own control requests still run them.
+#[test]
+fn an_embedding_page_hides_commands_and_says_what_the_empty_window_shows() {
+    fn press(app: &mut VectorcraftApp, key: egui::Key, modifiers: egui::Modifiers) {
+        let ctx = egui::Context::default();
+        let ev = egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers };
+        let mut out = ctx.run_ui(egui::RawInput { events: vec![ev], ..Default::default() }, |ui| crate::shortcuts::handle(app, ui.ctx()));
+        out.textures_delta.clear();
+    }
+    fn control(app: &mut VectorcraftApp, method: &str, params: serde_json::Value) -> serde_json::Value {
+        let (req, _rx) = crate::control::ControlRequest::new(method, params);
+        let crate::control::Outcome::Done(r) = crate::control::handle(app, &egui::Context::default(), &req) else { panic!("not done") };
+        r
+    }
+    let mut app = VectorcraftApp::new(vectorcraft_engine::Session::new(), crate::Services::default());
+    app.ui.host_hidden = vec!["file.newWithoutDialog".into(), "file.newDialog".into(), "file.openRecent*".into(), "app.home".into()];
+    app.ui.host_empty_message = Some("No project open. Open one from the Projects tab".into());
+
+    // The message stands in for the Home screen, whatever its preference says.
+    assert!(!crate::menus::home_showing(&app));
+    assert!(draws_text(&mut app), "the empty window says the page's message");
+    assert!(!shows_document(&mut app));
+
+    // Hidden ids, and ids under a hidden prefix, leave the menus; the rest stay.
+    assert!(crate::menus::shown_state(&app, "file.newDialog", &json!(null)).is_none());
+    assert!(crate::menus::shown_state(&app, "file.openRecent3", &json!(null)).is_none());
+    assert!(crate::menus::shown_state(&app, "file.save", &json!(null)).is_some());
+    let listed = control(&mut app, "ui.menu.list", json!({})).to_string();
+    assert!(!listed.contains("file.newDialog") && listed.contains("file.save"), "the menus the control channel lists follow");
+
+    // Its shortcut and a run from the UI (menus, palette, buttons: `invoke`) do nothing.
+    press(&mut app, egui::Key::N, egui::Modifiers::COMMAND | egui::Modifiers::ALT);
+    assert!(app.session.active().is_none(), "Cmd+Alt+N made no document");
+    crate::menus::invoke(&mut app, "file.newDialog", json!({}));
+    assert!(app.ui.dialog.is_none(), "New Document did not open");
+    crate::menus::invoke(&mut app, "app.home", json!({}));
+    assert!(app.ui.home.is_none());
+
+    // The page's own control requests still run them.
+    control(&mut app, "engine.execute", json!({"command": "file.newWithoutDialog"}));
+    assert_eq!(app.session.documents().len(), 1);
+    assert!(shows_document(&mut app));
+
+    // A page that clears them gives the user everything back.
+    app.ui.host_hidden.clear();
+    app.ui.host_empty_message = None;
+    app.run("file.close", json!({})).unwrap();
+    assert!(crate::menus::home_showing(&app), "Home again with no document");
+    crate::menus::invoke(&mut app, "file.newDialog", json!({}));
+    assert_eq!(app.ui.dialog.as_ref().map(|d| d.kind.as_str()), Some("newDocument"));
+}
