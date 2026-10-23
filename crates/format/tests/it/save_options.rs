@@ -155,9 +155,9 @@ fn the_limit_is_on_the_pretty_printed_size() {
 
 #[test]
 fn the_files_indentation_counts_toward_the_limit() {
-    // The pretty JSON's size and line breaks; the file indents every line after the first by two spaces more.
+    // The pretty JSON's size and line breaks as saved; the file indents every line after the first by two spaces more.
     let measure = |anchors: usize| {
-        let json = serde_json::to_vec_pretty(&paths_doc(1, anchors)).unwrap();
+        let json = vectorcraft_doc::as_saved(|| serde_json::to_vec_pretty(&paths_doc(1, anchors))).unwrap();
         (json.len(), json.iter().filter(|&&b| b == b'\n').count())
     };
     // The most anchors for which `fits` holds (it holds for 1 and not past twice the estimate).

@@ -125,28 +125,50 @@ pub enum TextAlignment {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct DimensionOptions {
+    #[serde(skip_serializing_if = "dimension_options_defaults::units")]
     pub units: LengthUnit,
+    #[serde(skip_serializing_if = "dimension_options_defaults::precision")]
     pub precision: usize,
     /// Drawing : real size. 1:10 multiplies the drawn length by ten.
+    #[serde(skip_serializing_if = "dimension_options_defaults::scale")]
     pub scale: String,
+    #[serde(skip_serializing_if = "dimension_options_defaults::hide_units")]
     pub hide_units: bool,
+    #[serde(skip_serializing_if = "dimension_options_defaults::line_weight")]
     pub line_weight: f64,
+    #[serde(skip_serializing_if = "dimension_options_defaults::line_type")]
     pub line_type: LineType,
+    #[serde(skip_serializing_if = "dimension_options_defaults::line_color")]
     pub line_color: [u8; 3],
+    #[serde(skip_serializing_if = "dimension_options_defaults::arrow_style")]
     pub arrow_style: ArrowStyle,
+    #[serde(skip_serializing_if = "dimension_options_defaults::arrow_scale")]
     pub arrow_scale: f64,
+    #[serde(skip_serializing_if = "dimension_options_defaults::extension_weight")]
     pub extension_weight: f64,
+    #[serde(skip_serializing_if = "dimension_options_defaults::extension_type")]
     pub extension_type: LineType,
+    #[serde(skip_serializing_if = "dimension_options_defaults::extension_color")]
     pub extension_color: [u8; 3],
+    #[serde(skip_serializing_if = "dimension_options_defaults::extension_offset")]
     pub extension_offset: f64,
+    #[serde(skip_serializing_if = "dimension_options_defaults::extension_length")]
     pub extension_length: f64,
+    #[serde(skip_serializing_if = "dimension_options_defaults::hide_extensions")]
     pub hide_extensions: bool,
+    #[serde(skip_serializing_if = "dimension_options_defaults::font_family")]
     pub font_family: String,
+    #[serde(skip_serializing_if = "dimension_options_defaults::font_style")]
     pub font_style: String,
+    #[serde(skip_serializing_if = "dimension_options_defaults::font_size")]
     pub font_size: f64,
+    #[serde(skip_serializing_if = "dimension_options_defaults::text_color")]
     pub text_color: [u8; 3],
+    #[serde(skip_serializing_if = "dimension_options_defaults::text_position")]
     pub text_position: TextPosition,
+    #[serde(skip_serializing_if = "dimension_options_defaults::text_alignment")]
     pub text_alignment: TextAlignment,
+    #[serde(skip_serializing_if = "dimension_options_defaults::text_offset")]
     pub text_offset: f64,
 }
 
@@ -570,4 +592,33 @@ pub fn corner(doc: &Document, node: NodeId, subpath: usize, anchor: usize) -> Op
     let first = SegmentRef { node, subpath, segment: before };
     let second = SegmentRef { node, subpath, segment: after };
     (first.is_straight(doc) && second.is_straight(doc)).then_some((first, second))
+}
+
+/// What a reader fills in for each field of [`DimensionOptions`] left out (see `crate::skip::container_defaults`).
+mod dimension_options_defaults {
+    use super::*;
+    crate::skip::container_defaults!(DimensionOptions {
+        units: LengthUnit,
+        precision: usize,
+        scale: String,
+        hide_units: bool,
+        line_weight: f64,
+        line_type: LineType,
+        line_color: [u8; 3],
+        arrow_style: ArrowStyle,
+        arrow_scale: f64,
+        extension_weight: f64,
+        extension_type: LineType,
+        extension_color: [u8; 3],
+        extension_offset: f64,
+        extension_length: f64,
+        hide_extensions: bool,
+        font_family: String,
+        font_style: String,
+        font_size: f64,
+        text_color: [u8; 3],
+        text_position: TextPosition,
+        text_alignment: TextAlignment,
+        text_offset: f64,
+    });
 }
