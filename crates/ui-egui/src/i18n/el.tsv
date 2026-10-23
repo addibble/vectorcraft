@@ -3063,6 +3063,7 @@ theme	Appearance	Εμφάνιση
 	Reflect X	Κατοπτρισμός X
 	Reflect Y	Κατοπτρισμός Y
 	Refresh	Ανανέωση
+	Add Font	Προσθήκη γραμματοσειράς
 	Refresh Font List	Ανανέωση λίστας γραμματοσειρών
 	Missing Fonts	Γραμματοσειρές που λείπουν
 	Missing Fonts Dialog	Παράθυρο γραμματοσειρών που λείπουν
@@ -5422,3 +5423,7 @@ axis	Y Axis	Άξονας Y
 	Symbol Definition	Ορισμός συμβόλου
 	Override Symbol Instance	Παράκαμψη στιγμιότυπου συμβόλου
 	Reset Symbol Instance	Επαναφορά στιγμιότυπου συμβόλου
+@msg	give the font file as dataBase64	δώστε το αρχείο γραμματοσειράς ως dataBase64
+@msg	{name} is larger than {_1} MB	το {name} είναι μεγαλύτερο από {_1} MB
+@msg	{name} is not a TrueType, OpenType or collection font	το {name} δεν είναι γραμματοσειρά TrueType, OpenType ή συλλογή γραμματοσειρών
+@msg	{name}: dataBase64 is not base64	{name}: το dataBase64 δεν είναι base64

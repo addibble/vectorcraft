@@ -2498,6 +2498,7 @@ mark-style	Japanese	Japanisch
 	Reflect Y	Y spiegeln
 	Reflect…	Spiegeln…
 	Refresh	Aktualisieren
+	Add Font	Schrift hinzufügen
 	Refresh Font List	Schriftliste aktualisieren
 	Missing Fonts	Fehlende Schriften
 	Missing Fonts Dialog	Dialogfeld „Fehlende Schriften“
@@ -5053,3 +5054,7 @@ axis	Y Axis	Y-Achse
 	Symbol Definition	Symboldefinition
 	Override Symbol Instance	Symbolinstanz überschreiben
 	Reset Symbol Instance	Symbolinstanz zurücksetzen
+@msg	give the font file as dataBase64	geben Sie die Schriftdatei als dataBase64 an
+@msg	{name} is larger than {_1} MB	{name} ist größer als {_1} MB
+@msg	{name} is not a TrueType, OpenType or collection font	{name} ist keine TrueType-, OpenType- oder Sammlungsschrift
+@msg	{name}: dataBase64 is not base64	{name}: dataBase64 ist kein Base64

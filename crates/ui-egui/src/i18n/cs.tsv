@@ -3168,6 +3168,7 @@ theme	Appearance	Motiv
 	Add Font Files	Přidat soubory písem
 	Font List	Seznam písem
 	Fonts in Document	Písma v dokumentu
+	Add Font	Přidat písmo
 	Refresh Font List	Obnovit seznam písem
 	Replace Font	Nahradit písmo
 	Select Text by Font	Vybrat text podle písma
@@ -5470,3 +5471,7 @@ axis	Y Axis	osa Y
 	Symbol Definition	Definice symbolu
 	Override Symbol Instance	Přepsat instanci symbolu
 	Reset Symbol Instance	Obnovit instanci symbolu
+@msg	give the font file as dataBase64	zadejte soubor písma jako dataBase64
+@msg	{name} is larger than {_1} MB	{name} je větší než {_1} MB
+@msg	{name} is not a TrueType, OpenType or collection font	{name} není písmo TrueType, OpenType ani kolekce písem
+@msg	{name}: dataBase64 is not base64	{name}: dataBase64 není base64
