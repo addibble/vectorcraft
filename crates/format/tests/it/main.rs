@@ -5,5 +5,6 @@
 mod links;
 mod native_v3;
 mod native_v4;
+mod native_v5;
 mod save_options;
 mod streaming;
