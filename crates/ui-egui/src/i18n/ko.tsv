@@ -2525,6 +2525,7 @@ mark-style	Japanese	일본식
 	Reflect X	X축 반사
 	Reflect Y	Y축 반사
 	Refresh	새로 고침
+	Add Font	글꼴 추가
 	Refresh Font List	글꼴 목록 새로 고침
 	Missing Fonts	누락된 글꼴
 	Missing Fonts Dialog	누락된 글꼴 대화상자
@@ -5050,3 +5051,7 @@ axis	Y Axis	Y축
 	Symbol Definition	심볼 정의
 	Override Symbol Instance	심볼 인스턴스 덮어쓰기
 	Reset Symbol Instance	심볼 인스턴스 재설정
+@msg	give the font file as dataBase64	글꼴 파일을 dataBase64로 지정하세요
+@msg	{name} is larger than {_1} MB	{name}이(가) {_1}MB보다 큽니다
+@msg	{name} is not a TrueType, OpenType or collection font	{name}은(는) TrueType, OpenType 또는 컬렉션 글꼴이 아닙니다
+@msg	{name}: dataBase64 is not base64	{name}: dataBase64가 base64가 아닙니다
