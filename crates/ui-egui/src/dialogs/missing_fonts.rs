@@ -741,6 +741,8 @@ mod tests {
 
     /// The status lines are translated with the reasons in them, and so are the reasons a search
     /// failed and a file wasn't copied, which the code holds as constants.
+    // Reads catalogs other than English.
+    #[cfg(feature = "translations")]
     #[test]
     fn the_status_lines_read_in_the_interface_language() {
         let fr = crate::i18n::Lang::from_code("fr").unwrap();
