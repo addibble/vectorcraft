@@ -163,6 +163,7 @@ impl Document {
                 if let NodeKind::Mesh(mesh) = &m.kind {
                     mesh.points.iter().for_each(|p| f(&Paint::solid(p.color)));
                 }
+                m.extras().symbol_overrides.iter().flat_map(|o| &o.items).for_each(|it| f(item_paint(it)));
             })
         };
         self.layers
@@ -348,6 +349,21 @@ fn map_node(n: &Node, f: &mut LinkFn) -> Option<(Node, usize)> {
         if let Some(slot) = m.extras_if_any().and_then(|e| e.mask.as_deref_mut()) {
             slot.art = Arc::new(new);
             count += k;
+        }
+    }
+    // A dynamic symbol instance's overrides paint its symbol's objects: their colours are the
+    // instance's, linked to swatches like any other.
+    for (o, over) in n.extras().symbol_overrides.iter().enumerate() {
+        for (i, it) in over.items.iter().enumerate() {
+            let mut q = item_paint(it).clone();
+            if !matches!(q, Paint::Solid { .. } | Paint::Gradient(_)) || !q.map_links(f) {
+                continue;
+            }
+            let m = out.get_or_insert_with(|| n.clone());
+            if let Some(slot) = m.extras_if_any().and_then(|e| e.symbol_overrides.get_mut(o)).and_then(|s| s.items.get_mut(i)) {
+                *item_paint_mut(slot) = q;
+                count += 1;
+            }
         }
     }
     out.map(|m| (m, count))

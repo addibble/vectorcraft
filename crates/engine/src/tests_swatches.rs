@@ -406,3 +406,32 @@ fn a_saved_file_links_colours_by_swatch_name_and_a_rename_follows() {
     let full = run(&mut s, "document.json", json!({}));
     assert!(full.to_string().contains("\"swatch\":\"Accent\""));
 }
+
+/// A dynamic symbol instance's override linked to a global swatch is saved by the swatch's name
+/// and filled in from it on load, so a document saved, opened, saved again and opened again keeps
+/// it; a swatch edit reaches the override as it reaches any linked colour.
+#[test]
+fn a_symbol_overrides_linked_colour_survives_saving_twice() {
+    let mut s = session();
+    run(&mut s, "swatch.new", json!({"name": "Brand", "color": "#2a6fb0", "global": true}));
+    let a = rect(&mut s);
+    run(&mut s, "symbol.new", json!({"name": "Mark", "ids": [a.0], "symbolType": "dynamic"}));
+    let art = doc(&s).symbols.iter().find(|x| x.name == "Mark").unwrap().art.id.0;
+    let placed = run(&mut s, "symbol.place", json!({"name": "Mark", "x": 50, "y": 50}))["id"].as_u64().unwrap();
+    run(&mut s, "symbol.override", json!({"ids": [placed], "target": art, "fill": {"swatch": "Brand"}}));
+    let override_fill = |d: &vectorcraft_doc::Document| {
+        let n = d.node(NodeId(placed)).unwrap();
+        n.extras().symbol_overrides[0].items.iter().find_map(|it| match it {
+            vectorcraft_doc::AppearanceItem::Fill(f) => Some(f.paint.clone()),
+            _ => None,
+        })
+    };
+    let brand = Paint::Solid { color: Color::from_hex("#2a6fb0").unwrap(), swatch: Some("Brand".into()), tint: 1.0 };
+    assert_eq!(override_fill(doc(&s)), Some(brand.clone()));
+    let first = vectorcraft_format::load(&vectorcraft_format::save(doc(&s), false)).unwrap();
+    assert_eq!(override_fill(&first), Some(brand.clone()), "filled in from the swatch on load");
+    let second = vectorcraft_format::load(&vectorcraft_format::save(&first, false)).unwrap();
+    assert_eq!(override_fill(&second), Some(brand));
+    run(&mut s, "swatch.edit", json!({"name": "Brand", "color": "#000000"}));
+    assert_eq!(override_fill(doc(&s)).and_then(|p| p.color()), Some(Color::rgb(0.0, 0.0, 0.0)));
+}
