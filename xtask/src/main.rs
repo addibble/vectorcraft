@@ -33,7 +33,7 @@ commands:
   layers          enforce the crate dependency layering (plan/architecture.md §3)
   wasm            cargo check --target wasm32-unknown-unknown for the wasm-safe crates and the web app
   test            the workspace tests (cargo nextest when installed, else cargo test), then the doctests
-  ci              fmt --check, clippy -D warnings, test, doctests, no-bundled-fonts, pdf-deps, assets, brands, cursors (warnings only), layers, wasm (stops at first failure)
+  ci              fmt --check, clippy -D warnings, test, doctests, no-bundled-fonts, no-translations, pdf-deps, assets, brands, cursors (warnings only), layers, wasm (stops at first failure)
   corpus [--download] [--affinity]
                   show where test corpora live; --download fetches PngSuite into corpus/pngsuite,
                   --affinity the pinned public Affinity documents into corpus/affinity
@@ -286,6 +286,17 @@ fn cmd_ci() -> Result<(), String> {
                 let mut c = cargo();
                 c.args(["test", "-p", "vectorcraft-ui-egui", "--no-default-features", "--test", "install_fonts"]);
                 run(c, "cargo test -p vectorcraft-ui-egui --no-default-features --test install_fonts")
+            }),
+        ),
+        (
+            "no-translations",
+            Box::new(|| {
+                // The egui panels as an English-only embedder builds them (no language feature),
+                // its tests too: they build and lint clean. What a left-out language does is
+                // tested in the test step (i18n::tests_compiled_in).
+                let mut c = cargo();
+                c.args(["clippy", "-p", "vectorcraft-ui-egui", "--no-default-features", "--all-targets", "--", "-D", "warnings"]);
+                run(c, "cargo clippy -p vectorcraft-ui-egui --no-default-features --all-targets -- -D warnings")
             }),
         ),
         ("pdf-deps", Box::new(|| pdf_deps::run(&root()))),
