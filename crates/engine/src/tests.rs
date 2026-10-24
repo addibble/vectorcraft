@@ -2679,6 +2679,7 @@ fn document_query_and_schema_read_the_model_a_part_at_a_time() {
     // A paragraph's list (Paragraph panel › Bullets) has a schema too (`ParaStyle.list`).
     let list = s.execute("document.schema", &json!({"type": "ParaList"})).unwrap();
     assert!(list["properties"].as_array().unwrap().iter().any(|p| p["name"] == "bullet"), "{list}");
+    assert!(list["properties"].as_array().unwrap().iter().any(|p| p["name"] == "number"), "a numbered list's style too: {list}");
 }
 
 /// `document.patch` edits the model by JSON Patch at the pointers `document.query` answers: one
