@@ -95,6 +95,17 @@ fn paths_doc(paths: usize, anchors: usize) -> Document {
     b.doc
 }
 
+/// A document's pretty-printed JSON as a save in the current version writes it: fields at their
+/// defaults left out ([`vectorcraft_doc::as_saved`]).
+fn saved_pretty(d: &Document) -> serde_json::Result<Vec<u8>> {
+    vectorcraft_doc::as_saved(|| serde_json::to_vec_pretty(d))
+}
+
+/// [`saved_pretty`], compact.
+fn saved_compact(d: &Document) -> serde_json::Result<Vec<u8>> {
+    vectorcraft_doc::as_saved(|| serde_json::to_vec(d))
+}
+
 fn is_pretty(bytes: &[u8]) -> bool {
     bytes.windows(3).any(|w| w == b"\n  ")
 }
@@ -114,7 +125,7 @@ fn many_objects_are_saved_compact() {
 
 /// Anchors per path that make a document of `paths` paths about `bytes` of compact JSON.
 fn anchors_for(paths: usize, bytes: usize) -> usize {
-    let per_anchor = serde_json::to_vec(&paths_doc(1, 1000)).unwrap().len() / 1000;
+    let per_anchor = saved_compact(&paths_doc(1, 1000)).unwrap().len() / 1000;
     bytes / per_anchor / paths
 }
 
@@ -129,7 +140,7 @@ fn few_objects_with_many_anchors_are_saved_compact() {
 
 /// Anchors per path that make a document of `paths` paths about `bytes` of pretty-printed JSON.
 fn pretty_anchors_for(paths: usize, bytes: usize) -> usize {
-    let per_anchor = serde_json::to_vec_pretty(&paths_doc(1, 1000)).unwrap().len() / 1000;
+    let per_anchor = saved_pretty(&paths_doc(1, 1000)).unwrap().len() / 1000;
     bytes / per_anchor / paths
 }
 
@@ -144,8 +155,8 @@ fn documents_under_the_size_limit_stay_pretty() {
 fn the_limit_is_on_the_pretty_printed_size() {
     // One traced-sized path: well under the limit as compact JSON, over it pretty-printed.
     let d = paths_doc(1, 20_000);
-    let compact = serde_json::to_vec(&d).unwrap().len();
-    let pretty = serde_json::to_vec_pretty(&d).unwrap().len();
+    let compact = saved_compact(&d).unwrap().len();
+    let pretty = saved_pretty(&d).unwrap().len();
     assert!(compact < PRETTY_MAX_BYTES && pretty > PRETTY_MAX_BYTES, "compact {compact} bytes, pretty {pretty} bytes");
     assert!(!SaveOptions::for_doc(&d).pretty);
     let bytes = save_file(&d);
@@ -157,7 +168,7 @@ fn the_limit_is_on_the_pretty_printed_size() {
 fn the_files_indentation_counts_toward_the_limit() {
     // The pretty JSON's size and line breaks; the file indents every line after the first by two spaces more.
     let measure = |anchors: usize| {
-        let json = serde_json::to_vec_pretty(&paths_doc(1, anchors)).unwrap();
+        let json = saved_pretty(&paths_doc(1, anchors)).unwrap();
         (json.len(), json.iter().filter(|&&b| b == b'\n').count())
     };
     // The most anchors for which `fits` holds (it holds for 1 and not past twice the estimate).
