@@ -38,9 +38,9 @@ mod parent_store;
 #[cfg(any(target_arch = "wasm32", test))]
 mod pencil;
 #[cfg(any(target_arch = "wasm32", test))]
-mod saved_files;
-#[cfg(any(target_arch = "wasm32", test))]
 mod protocol;
+#[cfg(any(target_arch = "wasm32", test))]
+mod saved_files;
 #[cfg(target_arch = "wasm32")]
 mod web;
 
