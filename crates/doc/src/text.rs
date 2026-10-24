@@ -510,7 +510,7 @@ impl Bullet {
 
 /// How a numbered list writes its numbers ([`ParaList::number`]): the Paragraph panel's Numbered
 /// List presets.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum NumberStyle {
     /// 1, 2, 3…
