@@ -902,7 +902,7 @@ font-technology	Variable	バリアブル
 	Appearance of Black	ブラックのアピアランス
 	Appearance panel	アピアランスパネル
 	Applies the next time VectorCraft starts.	VectorCraft の次回起動時に適用されます。
-	Applies when the linked file is relinked or updated.	リンクファイルを再リンクまたは更新したときに適用されます。
+	Applies to linked files now, and when they are relinked or updated.	リンクファイルに今すぐ適用され、再リンクまたは更新したときにも適用されます。
 	Apply Brush	ブラシを適用
 	Apply Character Style	文字スタイルを適用
 	Apply Effect	効果を適用
