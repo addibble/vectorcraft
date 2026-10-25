@@ -2152,8 +2152,9 @@ impl Renderer {
     }
 
     /// Over a linked image showing its preview, its file's pixels as a host supplied them
-    /// ([`link_pixels`]); and the image noted as wanting them when it is drawn magnified past its
-    /// preview's pixels. `unit` maps the image's unit square to the device.
+    /// ([`link_pixels`]), recoloured as the image is when colour adjustments made it
+    /// ([`Self::adjusted_image`]); and the image noted as wanting them when it is drawn magnified
+    /// past its preview's pixels. `unit` maps the image's unit square to the device.
     fn draw_supplied(
         &mut self,
         ctx: &mut RenderContext,
@@ -2162,17 +2163,26 @@ impl Renderer {
         area: Option<&(BezPath, FillRule)>,
         unit: Affine,
     ) {
-        let Some(blob) = f.doc.image_blob(im).filter(|b| im.link.is_some() && b.is_proxy()) else { return };
+        // Adjusted art's image names its recoloured copy; the file is the source image's.
+        let adjust = self.adjusts.get(&im.key).cloned();
+        let key = adjust.as_ref().map_or(im.key.as_str(), |(src, _, _)| src.as_str());
+        let Some(blob) = im.pixels.as_deref().or_else(|| f.doc.images.get(key)).filter(|b| im.link.is_some() && b.is_proxy()) else {
+            return;
+        };
         // Device pixels along the image's longer stretch, against the preview's longer side.
         let [a, b, c, d, _, _] = unit.as_coeffs();
         let device = a.hypot(b).max(c.hypot(d));
         let preview = images::blob_id(blob).size.map_or(f64::from(vectorcraft_doc::links::PROXY_SIZE), |(w, h)| f64::from(w.max(h)));
         if device.is_finite() && device > preview {
-            link_pixels::note_drawn(&im.key);
+            link_pixels::note_drawn(key);
         }
-        let Some(supplied) = link_pixels::get(&im.key) else { return };
+        let Some(supplied) = link_pixels::get(key) else { return };
         let mips = f.opts.image_mips;
         let Some((key, pm)) = blob_pixmap(&supplied.blob, !mips) else { return };
+        let (key, pm) = match &adjust {
+            Some((_, hash, map)) => adjusted_pixmap(key, &pm, *hash, map, !mips),
+            None => (key, pm),
+        };
         let (key, pm) = ink::ink_image(&key, &pm, f.ink, Some(&supplied.blob), !mips);
         let pm = if mips { image_mip(&key, pm, unit) } else { pm };
         let sx = im.width as f64 / pm.width().max(1) as f64;
@@ -2227,25 +2237,7 @@ impl Renderer {
             None => {
                 let (src, hash, map) = self.adjusts.get(key)?.clone();
                 let (src_key, src) = self.image_pixmap(doc, &src, None, false, touch)?;
-                let key = images::ImageKey { adjust: Some(hash), ..src_key };
-                match lookup(&key, touch) {
-                    Some(pm) => (key, pm),
-                    None => {
-                        let mut pm = (*src).clone();
-                        let mut memo: HashMap<[u8; 4], [u8; 3]> = HashMap::new();
-                        for px in pm.data_mut().iter_mut().filter(|p| p.a > 0) {
-                            let a = px.a as u32;
-                            let [r, g, b] = *memo.entry([px.r, px.g, px.b, px.a]).or_insert_with(|| {
-                                // Premultiplied to straight, adjusted, then premultiplied again.
-                                let straight = [px.r, px.g, px.b].map(|v| ((v as u32 * 255 + a / 2) / a).min(255) as u8);
-                                map.apply_rgb8(straight).map(|v| ((v as u32 * a + 127) / 255) as u8)
-                            });
-                            (px.r, px.g, px.b) = (r, g, b);
-                        }
-                        let pm = images::store().insert(key.clone(), Arc::new(pm));
-                        (key, pm)
-                    }
-                }
+                adjusted_pixmap(src_key, &src, hash, &map, touch)
             }
         };
         if !grey {
@@ -2294,6 +2286,34 @@ impl Renderer {
         }
         images::store().get(&images::ImageKey { mip: level, ..key })
     }
+}
+
+/// Pixels `src` (under `src_key` in the shared image store) recoloured by `map` (its hash `hash`),
+/// made once and kept in the store beside them.
+fn adjusted_pixmap(
+    src_key: images::ImageKey,
+    src: &Pixmap,
+    hash: u64,
+    map: &vectorcraft_effects::ColorMap,
+    touch: bool,
+) -> (images::ImageKey, Arc<Pixmap>) {
+    let key = images::ImageKey { adjust: Some(hash), ..src_key };
+    if let Some(pm) = lookup(&key, touch) {
+        return (key, pm);
+    }
+    let mut pm = src.clone();
+    let mut memo: HashMap<[u8; 4], [u8; 3]> = HashMap::new();
+    for px in pm.data_mut().iter_mut().filter(|p| p.a > 0) {
+        let a = px.a as u32;
+        let [r, g, b] = *memo.entry([px.r, px.g, px.b, px.a]).or_insert_with(|| {
+            // Premultiplied to straight, adjusted, then premultiplied again.
+            let straight = [px.r, px.g, px.b].map(|v| ((v as u32 * 255 + a / 2) / a).min(255) as u8);
+            map.apply_rgb8(straight).map(|v| ((v as u32 * a + 127) / 255) as u8)
+        });
+        (px.r, px.g, px.b) = (r, g, b);
+    }
+    let pm = images::store().insert(key.clone(), Arc::new(pm));
+    (key, pm)
 }
 
 /// `key`'s pixels in the shared image store; `touch` marks them used.

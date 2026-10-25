@@ -14,27 +14,29 @@ pub trait ColorVisitor {
     fn paint(&mut self, p: &mut Paint) -> bool;
     /// One gradient-mesh point's colour.
     fn color(&mut self, c: Color) -> Color;
-    /// The key of embedded image `key` recoloured, `None` when it stays as it is.
+    /// The key of image `key` recoloured, `None` when it stays as it is.
     fn image(&mut self, key: &str) -> Option<String>;
 }
 
-/// What a recolouring pass reaches: fills (with gradient-mesh points), strokes and the pixels of
-/// embedded images.
+/// What a recolouring pass reaches: fills (with gradient-mesh points), strokes, the pixels of
+/// embedded images and, with `linked`, those of linked images (a live effect, which recolours
+/// what is drawn and output and leaves the link as it is).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Reach {
     pub fill: bool,
     pub stroke: bool,
     pub images: bool,
+    pub linked: bool,
 }
 
 impl Reach {
-    /// Every colour.
-    pub const ALL: Reach = Reach { fill: true, stroke: true, images: true };
+    /// Every colour, linked images' too.
+    pub const ALL: Reach = Reach { fill: true, stroke: true, images: true, linked: true };
 }
 
 /// Recolour `n` and everything inside it through `v`: the paints of its fills and strokes and of
-/// its text runs, its gradient-mesh points and an embedded image's pixels (linked images stay
-/// as they are). Members that change are replaced by copies; the others stay shared. Returns the
+/// its text runs, its gradient-mesh points and an image's pixels (a linked image's only with
+/// [`Reach::linked`]). Members that change are replaced by copies; the others stay shared. Returns the
 /// number of paints, meshes and images that changed.
 pub fn recolor_node(n: &mut Node, reach: Reach, v: &mut dyn ColorVisitor) -> usize {
     let mut changed = 0;
@@ -67,7 +69,7 @@ pub fn recolor_node(n: &mut Node, reach: Reach, v: &mut dyn ColorVisitor) -> usi
         }
         // An image holding its own pixels is a glyph's (emoji in outlined type): it keeps its
         // colours, as the glyph does in type.
-        NodeKind::Image(im) if reach.images && im.link.is_none() && im.pixels.is_none() => {
+        NodeKind::Image(im) if reach.images && (reach.linked || im.link.is_none()) && im.pixels.is_none() => {
             if let Some(k) = v.image(&im.key) {
                 im.key = k;
                 changed += 1;
