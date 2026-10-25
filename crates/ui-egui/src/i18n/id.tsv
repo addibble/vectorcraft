@@ -2244,7 +2244,7 @@ lighting	Light	Cahaya
 	Images: link to the file instead of only embedding it.	Gambar: tautkan ke file alih-alih hanya menyematkannya.
 	VectorCraft documents: one locked object, updated when the file changes.	Dokumen VectorCraft: satu objek terkunci, diperbarui saat file berubah.
 	Alignment:	Perataan:
-	Applies when the linked file is relinked or updated.	Berlaku saat file tertaut ditautkan ulang atau diperbarui.
+	Applies to linked files now, and when they are relinked or updated.	Berlaku untuk file tertaut sekarang, dan saat file ditautkan ulang atau diperbarui.
 	Bounds (Fill Proportionally)	Batas (isi proporsional)
 	Bounds (Fit Proportionally)	Batas (pas proporsional)
 	File Dimensions	Dimensi file

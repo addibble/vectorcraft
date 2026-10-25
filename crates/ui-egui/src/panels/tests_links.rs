@@ -209,12 +209,21 @@ fn placement_options_dialog_sets_the_options() {
     let dir = Folder::new("dialog");
     let (mut app, linked, _) = app(&dir);
     app.run("select.set", json!({"ids": [linked]})).unwrap();
+    // Squeezed to half its width: 150 × 200 pt, its centre where it was placed.
+    app.run("object.scale", json!({"sx": 50, "sy": 100})).unwrap();
+    let bounds = |app: &VectorcraftApp| {
+        let id = vectorcraft_doc::NodeId(linked);
+        let r = app.session.doc().unwrap().doc.node(id).unwrap().geometric_bounds().unwrap();
+        [r.x0, r.y0, r.x1, r.y1].map(|v| (v * 1e6).round() / 1e6 + 0.0)
+    };
+    assert_eq!(bounds(&app), [25.0, 0.0, 175.0, 200.0]);
     assert!(crate::menus::enabled(&app, "ui.placementOptionsDialog"));
     app.run("ui.placementOptionsDialog", json!({})).unwrap();
     let d = app.ui.dialog.as_ref().unwrap();
     assert_eq!((d.kind.as_str(), d.str("preserve"), d.str("align")), ("placementOptions", "bounds".into(), "center".into()));
     let text = painted_text(&mut app, |app, ui| crate::dialogs::show(app, ui.ctx()));
     assert!(text.contains("Clip to Bounding Box") && text.contains("Preserve"), "{text}");
+    assert!(text.contains("Applies to linked files now"), "{text}");
     let fields = &mut app.ui.dialog.as_mut().unwrap().fields;
     fields.insert("preserve".into(), json!("fit"));
     fields.insert("align".into(), json!("bottomRight"));
@@ -222,6 +231,11 @@ fn placement_options_dialog_sets_the_options() {
     assert!(app.ui.dialog.is_none());
     let r = app.run("links.placementOptions", json!({"ids": [linked]})).unwrap();
     assert_eq!(r["placement"], json!({"preserve": "fit", "align": "bottomRight", "clip": false}));
+    // OK applied them: the 300 × 200 px file in proportion inside the squeezed bounds, at their
+    // bottom right; one Undo puts it back.
+    assert_eq!(bounds(&app), [25.0, 100.0, 175.0, 200.0]);
+    app.run("edit.undo", json!({})).unwrap();
+    assert_eq!(bounds(&app), [25.0, 0.0, 175.0, 200.0]);
 }
 
 #[test]
