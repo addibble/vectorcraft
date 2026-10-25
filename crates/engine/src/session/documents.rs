@@ -106,6 +106,7 @@ impl Session {
             image_hand_off: None,
             trace_hand_off: None,
             place_cursor_requests: false,
+            save_recovered_in_place: false,
             package_hand_off: None,
             screens_hand_off: None,
             recovery: Default::default(),
