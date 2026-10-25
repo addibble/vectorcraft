@@ -2447,7 +2447,7 @@ theme	Appearance	Εμφάνιση
 	1 {unit} on the artboard stands for {real} {unit} in the scene.	1 {unit} στον πίνακα σχεδίασης αντιστοιχεί σε {real} {unit} στη σκηνή.
 	[Default] is protected: New… starts an editable copy.	Η [Προεπιλογή] προστατεύεται: το Νέο… δημιουργεί επεξεργάσιμο αντίγραφο.
 	A lower value follows the stroke closely; a higher one gives fewer points and smoother curves.	Μια μικρότερη τιμή ακολουθεί πιστά το περίγραμμα· μια μεγαλύτερη δημιουργεί λιγότερα σημεία και πιο ομαλές καμπύλες.
-	Applies when the linked file is relinked or updated.	Εφαρμόζεται όταν το συνδεδεμένο αρχείο επανασυνδέεται ή ενημερώνεται.
+	Applies to linked files now, and when they are relinked or updated.	Εφαρμόζεται αμέσως στα συνδεδεμένα αρχεία και όταν επανασυνδέονται ή ενημερώνονται.
 	Art using a deleted global swatch keeps its colour.	Τα σχέδια που χρησιμοποιούν διαγραμμένο καθολικό δείγμα διατηρούν το χρώμα τους.
 	ArtCraft website	Ιστότοπος ArtCraft
 	Built-in presets are read-only: New… starts an editable copy.	Οι ενσωματωμένες προεπιλογές είναι μόνο για ανάγνωση: το Νέο… δημιουργεί επεξεργάσιμο αντίγραφο.
