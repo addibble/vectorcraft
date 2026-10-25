@@ -1,6 +1,6 @@
 //! The rules of the embedding protocol (`host`, `docs/web-embed.md`), kept free of browser types so
-//! they are tested natively: which messages the bridge reads, and what a `vectorcraft:open` and a
-//! `vectorcraft:configure` must carry.
+//! they are tested natively: which messages the bridge reads, and what a `vectorcraft:open`, a
+//! `vectorcraft:configure` and a `vectorcraft:saved` must carry.
 
 /// What a `vectorcraft:open` delivers: a file to open like one picked with File › Open.
 #[derive(Debug, PartialEq, Eq)]
@@ -11,10 +11,10 @@ pub struct Open {
 }
 
 /// The messages the parent may send.
-pub const FROM_PARENT: [&str; 2] = ["vectorcraft:open", "vectorcraft:configure"];
+pub const FROM_PARENT: [&str; 3] = ["vectorcraft:open", "vectorcraft:configure", "vectorcraft:saved"];
 
-/// Whether the bridge reads a message at all: a `vectorcraft:open` or `vectorcraft:configure` from
-/// the parent window, on the page's own origin. Anything else is ignored without a reply, so another page learns nothing.
+/// Whether the bridge reads a message at all: one of [`FROM_PARENT`] from the parent window, on
+/// the page's own origin. Anything else is ignored without a reply, so another page learns nothing.
 ///
 /// `own_origin` is the page's origin and `origin` the event's; `from_parent` says whether the
 /// event's source is the parent window; `kind` is the message's `type`, when it is a string. An
@@ -63,6 +63,9 @@ pub struct Configure {
     pub empty_message: Option<String>,
     /// A link after the message; a click on it is posted to the parent as `vectorcraft:emptyLink`.
     pub empty_link: Option<String>,
+    /// Closing a modified document saves it and closes it once the parent answers
+    /// `vectorcraft:saved`, in place of asking Save Changes.
+    pub save_on_close: bool,
 }
 
 /// A field of a message: left out (or `null`), of the type it should be, or of another.
@@ -75,7 +78,7 @@ pub enum Field<T> {
 }
 
 /// A `vectorcraft:configure`'s fields as the page sent them (`hide`, `hideMenus`, `hideMark`,
-/// `emptyMessage`, `emptyLink`).
+/// `emptyMessage`, `emptyLink`, `saveOnClose`). Fields it doesn't name are never read.
 #[derive(Debug, Default)]
 pub struct ConfigureFields {
     pub hide: Field<Vec<String>>,
@@ -83,11 +86,12 @@ pub struct ConfigureFields {
     pub hide_mark: Field<bool>,
     pub empty_message: Field<String>,
     pub empty_link: Field<String>,
+    pub save_on_close: Field<bool>,
 }
 
 /// Check a `vectorcraft:configure` the bridge accepted. `hide` is an array of strings, each a
-/// command id or a prefix ending in `*`; `hideMenus` an array of menu titles; `hideMark` a boolean;
-/// `emptyMessage` and `emptyLink` strings. The error is the text of the `vectorcraft:failed`
+/// command id or a prefix ending in `*`; `hideMenus` an array of menu titles; `hideMark` and
+/// `saveOnClose` booleans; `emptyMessage` and `emptyLink` strings. The error is the text of the `vectorcraft:failed`
 /// reply, and nothing changes.
 pub fn configure(f: ConfigureFields) -> Result<Configure, String> {
     let names = |field: Field<Vec<String>>, key: &str, what: &str| match field {
@@ -100,18 +104,67 @@ pub fn configure(f: ConfigureFields) -> Result<Configure, String> {
         Field::Given(m) if m.chars().count() <= MAX_MESSAGE_CHARS => Ok(Some(m).filter(|m| !m.trim().is_empty())),
         _ => Err(format!("vectorcraft:configure's `{key}` is a string of at most {MAX_MESSAGE_CHARS} characters")),
     };
-    let hide_mark = match f.hide_mark {
-        Field::Absent => false,
-        Field::Given(b) => b,
-        Field::Wrong => return Err("vectorcraft:configure's `hideMark` is a boolean".to_string()),
+    let flag = |field: Field<bool>, key: &str| match field {
+        Field::Absent => Ok(false),
+        Field::Given(b) => Ok(b),
+        Field::Wrong => Err(format!("vectorcraft:configure's `{key}` is a boolean")),
     };
     Ok(Configure {
         hide: names(f.hide, "hide", "command ids (a prefix ends in `*`)")?,
         hide_menus: names(f.hide_menus, "hideMenus", "menu titles")?,
-        hide_mark,
+        hide_mark: flag(f.hide_mark, "hideMark")?,
         empty_message: text(f.empty_message, "emptyMessage")?,
         empty_link: text(f.empty_link, "emptyLink")?,
+        save_on_close: flag(f.save_on_close, "saveOnClose")?,
     })
+}
+
+/// The largest save id: every integer up to it is exact in a JavaScript number.
+pub const MAX_SAVE_ID: f64 = 9_007_199_254_740_991.0;
+
+/// What a `vectorcraft:saved` says: whether the parent stored the `vectorcraft:save` it answers.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Saved {
+    /// The answered save's `id`.
+    pub id: u64,
+    /// The answered save's `name`.
+    pub name: String,
+    /// Stored (`true`), or not.
+    pub ok: bool,
+    /// Why not, in the parent's words, for the status line.
+    pub error: Option<String>,
+}
+
+/// Check a `vectorcraft:saved` the bridge accepted: `id` is the answered save's (a whole number),
+/// `name` its file name, `ok` a boolean and `error`, if given, a string of at most
+/// [`MAX_MESSAGE_CHARS`]. The error is the text of the `vectorcraft:failed` reply.
+pub fn saved(id: Field<f64>, name: Field<String>, ok: Field<bool>, error: Field<String>) -> Result<Saved, String> {
+    let id = match id {
+        Field::Given(n) if n.is_finite() && n.fract() == 0.0 && (0.0..=MAX_SAVE_ID).contains(&n) => n as u64,
+        _ => return Err("vectorcraft:saved needs the answered save's `id` (a whole number)".to_string()),
+    };
+    let Field::Given(name) = name.into_non_empty() else {
+        return Err("vectorcraft:saved needs the answered save's `name` (a non-empty string)".to_string());
+    };
+    let Field::Given(ok) = ok else {
+        return Err(format!("vectorcraft:saved of {name} needs `ok`, a boolean"));
+    };
+    let error = match error {
+        Field::Absent => None,
+        Field::Given(e) if e.chars().count() <= MAX_MESSAGE_CHARS => Some(e).filter(|e| !e.trim().is_empty()),
+        _ => return Err(format!("vectorcraft:saved's `error` is a string of at most {MAX_MESSAGE_CHARS} characters")),
+    };
+    Ok(Saved { id, name, ok, error })
+}
+
+impl Field<String> {
+    /// A blank string counts as left out.
+    fn into_non_empty(self) -> Self {
+        match self {
+            Field::Given(s) if s.trim().is_empty() => Field::Absent,
+            other => other,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -245,5 +298,57 @@ mod tests {
         assert!(configure(ConfigureFields { hide_mark: Field::Wrong, ..Default::default() }).unwrap_err().contains("`hideMark`"));
         assert!(configure(ConfigureFields { empty_link: Field::Wrong, ..Default::default() }).unwrap_err().contains("`emptyLink`"));
         assert!(configure(ConfigureFields { empty_link: Field::Given("x".repeat(MAX_MESSAGE_CHARS + 1)), ..Default::default() }).is_err());
+        assert!(configure(ConfigureFields { save_on_close: Field::Wrong, ..Default::default() }).unwrap_err().contains("`saveOnClose`"));
+    }
+
+    #[test]
+    fn configures_saving_on_close() {
+        assert!(configure(ConfigureFields { save_on_close: Field::Given(true), ..Default::default() }).unwrap().save_on_close);
+        // Left out, it is off: a host that never sets it is asked Save Changes as before.
+        assert!(!configure(ConfigureFields::default()).unwrap().save_on_close);
+    }
+
+    #[test]
+    fn accepts_a_saved_answer_from_the_parent_on_the_same_origin() {
+        assert!(accepts(SITE, SITE, true, Some("vectorcraft:saved")));
+        assert!(!accepts(SITE, "https://evil.example", true, Some("vectorcraft:saved")));
+        assert!(!accepts(SITE, SITE, false, Some("vectorcraft:saved")));
+    }
+
+    #[test]
+    fn reads_a_saved_answer() {
+        let name = || Field::Given("Logo.vectorcraft".to_string());
+        assert_eq!(
+            saved(Field::Given(7.0), name(), Field::Given(true), Field::Absent),
+            Ok(Saved { id: 7, name: "Logo.vectorcraft".into(), ok: true, error: None })
+        );
+        let failed = saved(Field::Given(8.0), name(), Field::Given(false), Field::Given("The server is offline".into())).unwrap();
+        assert_eq!((failed.ok, failed.error.as_deref()), (false, Some("The server is offline")));
+        // A blank reason is none.
+        assert_eq!(saved(Field::Given(8.0), name(), Field::Given(false), Field::Given(" ".into())).unwrap().error, None);
+    }
+
+    #[test]
+    fn refuses_a_saved_answer_of_the_wrong_shape() {
+        let name = || Field::Given("Logo.vectorcraft".to_string());
+        for id in [
+            Field::Absent,
+            Field::Wrong,
+            Field::Given(-1.0),
+            Field::Given(1.5),
+            Field::Given(f64::NAN),
+            Field::Given(f64::INFINITY),
+            Field::Given(MAX_SAVE_ID * 2.0),
+        ] {
+            assert!(saved(id, name(), Field::Given(true), Field::Absent).unwrap_err().contains("`id`"));
+        }
+        for n in [Field::Absent, Field::Wrong, Field::Given("  ".to_string())] {
+            assert!(saved(Field::Given(1.0), n, Field::Given(true), Field::Absent).unwrap_err().contains("`name`"));
+        }
+        for ok in [Field::Absent, Field::Wrong] {
+            assert!(saved(Field::Given(1.0), name(), ok, Field::Absent).unwrap_err().contains("`ok`"));
+        }
+        assert!(saved(Field::Given(1.0), name(), Field::Given(false), Field::Wrong).unwrap_err().contains("`error`"));
+        assert!(saved(Field::Given(1.0), name(), Field::Given(false), Field::Given("x".repeat(MAX_MESSAGE_CHARS + 1))).is_err());
     }
 }
