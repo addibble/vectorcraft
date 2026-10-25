@@ -76,6 +76,7 @@ mod layers;
 mod legacy_ai;
 mod library;
 mod link_paths;
+mod link_sources;
 mod linked_stops;
 mod linkfiles;
 pub(super) mod links;

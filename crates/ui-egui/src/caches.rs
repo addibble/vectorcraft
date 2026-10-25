@@ -91,6 +91,8 @@ pub struct CacheKey {
     pub highlight_substituted_fonts: bool,
     /// [`vectorcraft_render::placed_document::generation`]: placed documents' bitmaps made since.
     pub placed: u64,
+    /// [`vectorcraft_render::link_pixels::generation`]: linked files' pixels a host supplied since.
+    pub linked: u64,
     /// View › Pixel Preview: the document pixels rendered (x0, y0, x1, y1), one per point, shown
     /// with hard edges. None: the art is rendered for the screen.
     pub pixel: Option<[i64; 4]>,

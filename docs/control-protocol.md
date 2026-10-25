@@ -945,6 +945,11 @@ The browser has no installed fonts, so a host page supplies the fonts its docume
 `vectorcraft.execute("text.addFontSources", {fonts: [{family, style, url, sha256}]})` lists a whole collection in the
 font menus and lets the app fetch each face itself when type uses it (`docs/mcp.md`, fonts).
 
+Nor can it read a document's linked files: `vectorcraft.execute("links.addSources", {sources: [{path, url}]})` lists the
+ones the page can supply, and the app fetches each (`url` with `{width}`, `{height}` or `{side}` filled in) once an image
+linking it is drawn larger than its preview, at the size it prints at; `links.loadSources` asks for all of them before a
+print, and `view.imageCache` sets the memory they and decoded images may hold (`docs/mcp.md`, links).
+
 ## Revision history
 
 | Date | Change | Summary |
@@ -959,3 +964,4 @@ font menus and lets the app fetch each face itself when type uses it (`docs/mcp.
 | 2026-10-18 | minor | Documented `window.vectorcraft`, the web build's control channel. |
 | 2026-10-22 | minor | A host page supplies fonts with `text.addFont`. |
 | 2026-10-22 | minor | A host page lists the fonts it can supply with `text.addFontSources`. |
+| 2026-10-25 | minor | A host page lists the linked files it can supply with `links.addSources`; `view.imageCache` sets the image budgets. |
