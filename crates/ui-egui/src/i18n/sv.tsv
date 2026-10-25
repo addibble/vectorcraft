@@ -192,7 +192,7 @@ font-technology	Variable	Variabla
 	Appearance of Black	Utseende för svart
 	Appearance Panel	Utseendepanel
 	Appearance panel	Utseendepanelen
-	Applies when the linked file is relinked or updated.	Gäller när den länkade filen länkas om eller uppdateras.
+	Applies to linked files now, and when they are relinked or updated.	Gäller länkade filer direkt och när de länkas om eller uppdateras.
 	Applies the next time VectorCraft starts.	Gäller nästa gång VectorCraft startas.
 	Apply	Använd
 	Apply Brush	Använd pensel

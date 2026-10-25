@@ -202,7 +202,7 @@ font-technology	Variable	Вариативные
 	Appearance of Black	Отображение чёрного
 	Appearance Panel	Панель «Оформление»
 	Appearance panel	Панель «Оформление»
-	Applies when the linked file is relinked or updated.	Применяется при повторной привязке или обновлении связанного файла.
+	Applies to linked files now, and when they are relinked or updated.	Применяется к связанным файлам сразу, а также при их повторной привязке или обновлении.
 	Applies the next time VectorCraft starts.	Применяется при следующем запуске VectorCraft.
 	Apply	Применить
 	Apply Brush	Применить кисть

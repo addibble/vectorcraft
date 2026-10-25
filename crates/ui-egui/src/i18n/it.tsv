@@ -204,7 +204,7 @@ font-technology	Variable	Variabili
 	Appearance of Black	Aspetto del nero
 	Appearance Panel	Pannello Aspetto
 	Appearance panel	Pannello Aspetto
-	Applies when the linked file is relinked or updated.	Si applica quando il file collegato viene ricollegato o aggiornato.
+	Applies to linked files now, and when they are relinked or updated.	Si applica subito ai file collegati e quando vengono ricollegati o aggiornati.
 	Applies the next time VectorCraft starts.	Si applica al prossimo avvio di VectorCraft.
 	Apply	Applica
 	Apply Brush	Applica pennello

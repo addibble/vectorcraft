@@ -1,6 +1,7 @@
 //! Links panel → Placement Options: how a file read again (Relink, Update Link) takes the place of
 //! the selected images: what it preserves, where it aligns in the old bounds, and whether it is
-//! clipped to them.
+//! clipped to them. OK also applies them at once to the linked images, from the file each already
+//! shows: Fit or Fill puts a distorted image back in proportion, File Dimensions at its 100% size.
 //!
 //! Fields: `ids` (the images; null: the selected ones), `preserve` (transforms|bounds|fileDimensions|fit|fill), `align`
 //! (topLeft … bottomRight) and `clip`. OK runs `links.placementOptions` with them: one undo step.
@@ -70,6 +71,6 @@ fn body(_: &mut VectorcraftApp, ui: &mut egui::Ui, d: &mut Dialog) -> bool {
         });
     });
     ui.add_space(6.0);
-    widgets::dim_label(ui, tl!("Applies when the linked file is relinked or updated."));
+    widgets::dim_label(ui, tl!("Applies to linked files now, and when they are relinked or updated."));
     false
 }

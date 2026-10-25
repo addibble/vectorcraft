@@ -2408,7 +2408,7 @@ lighting	Light	Światło
 	Images: link to the file instead of only embedding it.	Obrazy: połącz z plikiem zamiast tylko go osadzać.
 	VectorCraft documents: one locked object, updated when the file changes.	Dokumenty VectorCraft: jeden zablokowany obiekt, aktualizowany przy zmianie pliku.
 	Alignment:	Wyrównanie:
-	Applies when the linked file is relinked or updated.	Ma zastosowanie, gdy połączony plik zostanie ponownie połączony lub zaktualizowany.
+	Applies to linked files now, and when they are relinked or updated.	Ma zastosowanie od razu do połączonych plików oraz przy ich ponownym połączeniu lub aktualizacji.
 	Bounds (Fill Proportionally)	Granice (wypełnij proporcjonalnie)
 	Bounds (Fit Proportionally)	Granice (dopasuj proporcjonalnie)
 	File Dimensions	Wymiary pliku
