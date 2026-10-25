@@ -3669,7 +3669,8 @@ in; `resolution`, default 300 ppi, is the host's output resolution). A linked im
 drawn magnified past it; the file is then fetched at the size its largest placement needs at that resolution (never more
 than the file has), drawn over the preview and used for PDF export, and fetched again larger when the image is resized
 larger. What arrives is kept outside the document, so it is no edit: nothing is saved, journaled or undone, and undo never
-brings back the preview. `links.supplySource {path, dataBase64}` hands a source's file in (the web build calls it with
+brings back the preview. A link with a source counts as found (`ok` in `links.list` and `links.check`, and in the
+Links panel) until its fetch fails. `links.supplySource {path, dataBase64}` hands a source's file in (the web build calls it with
 what it fetched). `links.loadSources` asks for every linked image of the active document at once, drawn or not, and
 answers `{loaded, loading, failed}`: a host calls it until `loading` is 0 before printing. `view.imageCache {decoded?,
 linked?}` sets the budgets, in bytes, of the decoded images all views share and of the pixels link sources supplied (the
