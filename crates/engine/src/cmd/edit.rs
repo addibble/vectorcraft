@@ -27,7 +27,15 @@ pub fn specs() -> Vec<CommandSpec> {
             always,
             super::newdoc::file_new
         ),
-        cmd!("file.close", "Close", ["File"], Some("Cmd+W"), "{index?}", has_doc, file_close),
+        cmd!(
+            "file.close",
+            "Close",
+            ["File"],
+            Some("Cmd+W"),
+            "{index?, discard?: bool (the app closes a modified document without asking Save Changes, unsaved; the menu item and shortcut never pass it)}",
+            has_doc,
+            file_close
+        ),
         cmd!("document.activate", "Activate Document", [], None, "{index}", always, doc_activate),
         cmd!(
             "document.move",
@@ -247,6 +255,7 @@ pub fn specs() -> Vec<CommandSpec> {
     ]
 }
 
+/// `discard` is the app's: the engine closes without asking anyway.
 fn file_close(s: &mut Session, p: &Value) -> Result<Value> {
     let i = opt_u64(p, "file.close", "index")?.map(index).or(s.active_index()).ok_or(EngineError::NoDocument)?;
     if !s.close_document(i) {
