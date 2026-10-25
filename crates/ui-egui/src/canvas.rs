@@ -633,6 +633,7 @@ fn cache_key(
         highlight_substituted_fonts: app.session.prefs.highlight_substituted_fonts,
         placed: vectorcraft_render::placed_document::generation(),
         plugins,
+        linked: vectorcraft_render::link_pixels::generation(),
         pixel,
         smooth_images,
         isolated: st.isolation.map(|id| id.0),

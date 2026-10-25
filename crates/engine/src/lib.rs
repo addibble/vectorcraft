@@ -11,6 +11,7 @@ pub mod file_access;
 pub mod guard;
 pub mod inspect;
 pub mod journal;
+pub mod link_sources;
 pub mod link_watch;
 pub mod patch;
 pub mod query;

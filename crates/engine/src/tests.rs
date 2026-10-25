@@ -92,6 +92,7 @@ mod legacy_ai;
 mod library;
 mod library_roots;
 mod link_paths;
+mod link_sources;
 mod linked_stops;
 mod linkfiles;
 pub(super) mod links;
