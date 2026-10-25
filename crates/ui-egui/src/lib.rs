@@ -123,7 +123,8 @@ pub use clock::{now_ms, now_secs};
 #[cfg(test)]
 pub(crate) use services::browsable_url;
 pub use services::{
-    DownloadFn, ExistsFn, FileFilter, FilePick, Inbox, NativeInputHook, OpenUrlFn, PickOpen, PickSave, ReadFn, RevealFn, Services, WriteFn,
+    DownloadFn, ExistsFn, FileFilter, FilePick, Inbox, NativeInputHook, OpenArrival, OpenUrlFn, PickOpen, PickSave, ReadFn, RevealFn, Services,
+    WriteFn,
 };
 use state::{GeometryStamp, InputGeneration, PendingScreenshot, QueuedScreenshot};
 pub(crate) use state::{InputFrame, take_frame_once};
