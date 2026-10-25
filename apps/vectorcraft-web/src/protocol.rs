@@ -1,6 +1,6 @@
 //! The rules of the embedding protocol (`host`, `docs/web-embed.md`), kept free of browser types so
 //! they are tested natively: which messages the bridge reads, and what a `vectorcraft:open`, a
-//! `vectorcraft:configure` and a `vectorcraft:saved` must carry.
+//! `vectorcraft:configure`, a `vectorcraft:saved` and a `vectorcraft:recoveryEntries` must carry.
 
 /// What a `vectorcraft:open` delivers: a file to open like one picked with File › Open.
 #[derive(Debug, PartialEq, Eq)]
@@ -13,7 +13,7 @@ pub struct Open {
 }
 
 /// The messages the parent may send.
-pub const FROM_PARENT: [&str; 3] = ["vectorcraft:open", "vectorcraft:configure", "vectorcraft:saved"];
+pub const FROM_PARENT: [&str; 4] = ["vectorcraft:open", "vectorcraft:configure", "vectorcraft:saved", "vectorcraft:recoveryEntries"];
 
 /// Whether the bridge reads a message at all: one of [`FROM_PARENT`] from the parent window, on
 /// the page's own origin. Anything else is ignored without a reply, so another page learns nothing.
@@ -171,6 +171,40 @@ pub fn saved(id: Field<f64>, name: Field<String>, ok: Field<bool>, error: Field<
         _ => return Err(format!("vectorcraft:saved's `error` is a string of at most {MAX_MESSAGE_CHARS} characters")),
     };
     Ok(Saved { id, name, ok, error })
+}
+
+/// The most entries one `vectorcraft:recoveryEntries` gives, and the longest entry name.
+pub const MAX_RECOVERY_ENTRIES: usize = 100_000;
+pub const MAX_ENTRY_NAME_CHARS: usize = 300;
+
+/// A `vectorcraft:recoveryEntries`' entry as the page sent it: its `name` and `bytes`, each if it
+/// was of the right type.
+pub type EntryFields = (Option<String>, Option<Vec<u8>>);
+
+/// Check a `vectorcraft:recoveryEntries` the bridge accepted: `entries` is an array (`None`: not
+/// one, or longer than [`MAX_RECOVERY_ENTRIES`]) of `{ name, bytes }`, each name a Data Recovery
+/// entry's (`<area>/<entry>`, no other `/`, at most [`MAX_ENTRY_NAME_CHARS`]) and its bytes an
+/// `ArrayBuffer` or `Uint8Array`. The error is the text of the `vectorcraft:failed` reply, and
+/// none of them is taken.
+pub fn recovery_entries(entries: Option<Vec<EntryFields>>) -> Result<Vec<(String, Vec<u8>)>, String> {
+    let Some(entries) = entries.filter(|e| e.len() <= MAX_RECOVERY_ENTRIES) else {
+        return Err(format!("vectorcraft:recoveryEntries needs `entries`, an array of at most {MAX_RECOVERY_ENTRIES} {{ name, bytes }}"));
+    };
+    let named = |n: &str| {
+        n.chars().count() <= MAX_ENTRY_NAME_CHARS
+            && n.split_once('/').is_some_and(|(area, entry)| !area.trim().is_empty() && !entry.trim().is_empty() && !entry.contains('/'))
+    };
+    entries
+        .into_iter()
+        .enumerate()
+        .map(|(i, (name, bytes))| match (name.filter(|n| named(n)), bytes) {
+            (Some(name), Some(bytes)) => Ok((name, bytes)),
+            (None, _) => Err(format!(
+                "vectorcraft:recoveryEntries' entry {i} needs `name`, a recovery entry's (`<area>/<entry>`, at most {MAX_ENTRY_NAME_CHARS} characters)"
+            )),
+            (Some(name), None) => Err(format!("vectorcraft:recoveryEntries' entry {name} needs `bytes`, an ArrayBuffer or Uint8Array")),
+        })
+        .collect()
 }
 
 impl Field<String> {
@@ -380,5 +414,35 @@ mod tests {
         }
         assert!(saved(Field::Given(1.0), name(), Field::Given(false), Field::Wrong).unwrap_err().contains("`error`"));
         assert!(saved(Field::Given(1.0), name(), Field::Given(false), Field::Given("x".repeat(MAX_MESSAGE_CHARS + 1))).is_err());
+    }
+
+    #[test]
+    fn accepts_recovery_entries_from_the_parent_on_the_same_origin() {
+        assert!(accepts(SITE, SITE, true, Some("vectorcraft:recoveryEntries")));
+        assert!(!accepts(SITE, "https://evil.example", true, Some("vectorcraft:recoveryEntries")));
+        assert!(!accepts(SITE, SITE, false, Some("vectorcraft:recoveryEntries")));
+    }
+
+    #[test]
+    fn reads_recovery_entries() {
+        let entry = |n: &str, b: &[u8]| (Some(n.to_string()), Some(b.to_vec()));
+        assert_eq!(
+            recovery_entries(Some(vec![entry("1-1/Deck-1.json", b"{}"), entry("1-1/heartbeat", b"1")])),
+            Ok(vec![("1-1/Deck-1.json".to_string(), b"{}".to_vec()), ("1-1/heartbeat".to_string(), b"1".to_vec())])
+        );
+        assert_eq!(recovery_entries(Some(vec![])), Ok(vec![]));
+    }
+
+    #[test]
+    fn refuses_recovery_entries_of_the_wrong_shape() {
+        assert!(recovery_entries(None).unwrap_err().contains("`entries`"));
+        assert!(recovery_entries(Some(vec![(None, None); MAX_RECOVERY_ENTRIES + 1])).unwrap_err().contains("`entries`"));
+        for name in ["", "no-area", "/entry", "area/", "a/b/c", " /x"] {
+            let error = recovery_entries(Some(vec![(Some(name.to_string()), Some(vec![]))])).unwrap_err();
+            assert!(error.contains("`name`"), "{name}: {error}");
+        }
+        let long = format!("a/{}", "x".repeat(MAX_ENTRY_NAME_CHARS));
+        assert!(recovery_entries(Some(vec![(Some(long), Some(vec![]))])).unwrap_err().contains("`name`"));
+        assert!(recovery_entries(Some(vec![(Some("a/b".into()), None)])).unwrap_err().contains("`bytes`"));
     }
 }
