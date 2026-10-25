@@ -41,7 +41,24 @@ pub type WriteFn = Box<dyn FnMut(&str, &[u8]) -> Result<(), String>>;
 
 pub type ExistsFn = Box<dyn Fn(&str) -> bool>;
 
-pub type Inbox = Arc<Mutex<Vec<(String, Vec<u8>)>>>;
+pub type Inbox = Arc<Mutex<Vec<OpenArrival>>>;
+
+/// A file that arrived to be opened ([`Services::inbox`]): its name (which decides how it is read,
+/// and which the document is saved under), its bytes, and the title its document tab shows in
+/// place of the name, when the host gave one ([`crate::UiState::host_titles`]).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct OpenArrival {
+    pub name: String,
+    pub bytes: Vec<u8>,
+    pub title: Option<String>,
+}
+
+impl OpenArrival {
+    /// A file to open under its own name.
+    pub fn file(name: impl Into<String>, bytes: Vec<u8>) -> Self {
+        Self { name: name.into(), bytes, title: None }
+    }
+}
 
 /// Starts a browser download of the bytes under a file name; an error when it couldn't be started
 /// (the save or export then fails as a refused write does: #1693).
@@ -78,7 +95,7 @@ pub struct Services {
     /// save panel's name names once the app gives it an extension ([`picks::ask_to_replace`]).
     /// Without it, no file counts as there.
     pub exists: Option<ExistsFn>,
-    /// Files that arrived asynchronously (web open / drops): (name, bytes).
+    /// Files that arrived asynchronously (web open / drops, an embedding page's files).
     pub inbox: Option<Inbox>,
     /// Web: trigger a browser download instead of writing a path.
     pub download: Option<DownloadFn>,

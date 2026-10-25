@@ -25,7 +25,7 @@ Every message is a plain object with a string `type`. VectorCraft posts only to 
 | `type` | Direction | Fields | Meaning |
 |---|---|---|---|
 | `vectorcraft:ready` | to the parent | `version` (string) | The app is running and listening. Send the file now. |
-| `vectorcraft:open` | from the parent | `name` (string), `bytes` (`ArrayBuffer` or `Uint8Array`) | Open this file, as if it were picked with File › Open. |
+| `vectorcraft:open` | from the parent | `name` (string), `bytes` (`ArrayBuffer` or `Uint8Array`), `title` (string, optional) | Open this file, as if it were picked with File › Open; its tab shows `title`. |
 | `vectorcraft:save` | to the parent | `id` (number), `name` (string), `bytes` (`ArrayBuffer`, transferred) | Store this file. |
 | `vectorcraft:saved` | from the parent | `id` (number), `name` (string), `ok` (boolean), `error` (string, optional) | Save `id` was stored (`ok: true`), or couldn't be. |
 | `vectorcraft:dirty` | to the parent | `dirty` (boolean) | Unsaved changes appeared (`true`) or went away (`false`). |
@@ -39,7 +39,8 @@ Every message is a plain object with a string `type`. VectorCraft posts only to 
 
 - `name` is the file's name, such as `Logo.svg`. Its extension decides how the file is read, as for a picked file, so anything File › Open reads can be sent. It also becomes the document's name, which saves are named after.
 - `bytes` is the file's contents. The buffer may be transferred.
-- A message without a non-empty `name`, or without `bytes` of one of those two types, is refused: VectorCraft answers `vectorcraft:failed` and opens nothing.
+- `title` (optional, up to 200 characters) is what the document's tab shows in place of `name`, such as a project's name `Poster` for a file the host names `Poster v5.vectorcraft`. Without it the tab shows the file name with its extension, as it does for any file. The title is the tab's alone: the document keeps `name`, which saves (`vectorcraft:save`), exports, Document Info, printing and the questions about the file go by, so the host's own names come back to it unchanged. Once the document's name changes (Save As) its tab shows the new name. A title is given per file, since only the host knows which part of its name the user should see; there is no setting to drop extensions from every tab.
+- A message without a non-empty `name`, without `bytes` of one of those two types, or with a `title` that isn't such a string is refused: VectorCraft answers `vectorcraft:failed` and opens nothing.
 - A file that has both but can't be read (an empty or damaged file) is reported inside the app, like any file that fails to open.
 
 **`vectorcraft:save`**: `name` is a bare file name with no folders, the name a download would have had. `id` numbers the saves since the app started (1, 2, 3, …), so an answer can say which one it means. The parent stores the file and reports any failure to the user itself. VectorCraft treats the save as done, as it does a download: after Save or Save As the document counts as saved, and `dirty: false` follows.

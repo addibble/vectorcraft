@@ -860,12 +860,35 @@ fn the_tab_title_names_the_opacity_mask_while_it_is_edited() {
     let mut s = Session::new();
     s.execute("file.new", &json!({"width": 100, "height": 100})).unwrap();
     s.execute("shape.rectangle", &json!({"x": 0, "y": 0, "width": 50, "height": 50})).unwrap();
-    let title = |s: &Session| super::tab_title(s.active().unwrap(), 1.0, false, false);
+    let title = |s: &Session| super::tab_title(s.active().unwrap(), None, 1.0, false, false);
     assert!(title(&s).ends_with("(RGB/Preview)"), "{}", title(&s));
     s.execute("transparency.makeOpacityMask", &json!({})).unwrap();
     assert!(title(&s).ends_with("(<Opacity Mask>/Opacity Mask)"), "{}", title(&s));
     s.execute("transparency.stopEditingOpacityMask", &json!({})).unwrap();
     assert!(title(&s).ends_with("(RGB/Preview)"));
+}
+
+/// A host-given title shows on the tab in place of the document's name, which saves and the
+/// rest of the app keep using; once the name changes the tab shows the name again.
+#[test]
+fn the_tab_shows_the_title_the_host_gave_the_document_while_its_name_is_unchanged() {
+    let inbox = crate::Inbox::default();
+    let services = crate::Services { inbox: Some(inbox.clone()), write: Some(Box::new(|_: &str, _: &[u8]| Ok(()))), ..Default::default() };
+    let mut app = crate::VectorcraftApp::new(Session::new(), services);
+    let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><rect width="10" height="10"/></svg>"#.to_vec();
+    let titled = crate::OpenArrival { title: Some("Patterns & Proof".into()), ..crate::OpenArrival::file("Patterns & Proof v5.svg", svg.clone()) };
+    inbox.lock().unwrap().extend([crate::OpenArrival::file("Plain.svg", svg), titled]);
+    app.drain_inbox();
+    let tabs = |app: &crate::VectorcraftApp| -> Vec<String> {
+        app.session.documents().iter().map(|d| super::tab_title(d, crate::state::host_title(&app.ui.host_titles, d), 1.0, false, false)).collect()
+    };
+    let shown = tabs(&app);
+    assert!(shown[0].starts_with("Plain.svg @ "), "{shown:?}");
+    assert!(shown[1].starts_with("Patterns & Proof @ "), "{shown:?}");
+    // The document keeps its name: what saves, exports and Document Info go by.
+    assert_eq!(app.session.documents()[1].title(), "Patterns & Proof v5.svg");
+    app.run("file.saveAs", json!({ "path": "/docs/Copy.vectorcraft" })).unwrap();
+    assert!(tabs(&app)[1].starts_with("Copy.vectorcraft @ "), "{:?}", tabs(&app));
 }
 
 /// One headless frame of the Control bar; returns the isolation button's rectangle, if it shows.
