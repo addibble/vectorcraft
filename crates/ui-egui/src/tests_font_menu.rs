@@ -452,3 +452,70 @@ fn a_preview_stays_put_while_the_menu_is_still() {
     assert_eq!(picked, Some(FontPick::EndPreview));
     assert_eq!(font(&app), "Inter");
 }
+
+/// A font source not loaded yet has no sample in the menu, and showing it asks for nothing (only
+/// type set in it does); once its file is added, its sample draws.
+#[test]
+fn a_font_source_has_no_sample_until_its_file_is_added() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
+    const FAMILY: &str = "Menu Source 1";
+    let db = vectorcraft_text::FontDb::global();
+    let integrity = format!("sha256-{}", vectorcraft_format::base64_encode(&[0xcd; 32]));
+    db.add_sources(vec![vectorcraft_text::FontSource { family: FAMILY.into(), style: "Regular".into(), url: "fonts/menu.ttf".into(), integrity }]);
+    assert!(db.menu_family_list().iter().any(|f| f == FAMILY), "listed in the menus");
+    assert!(crate::font_menu::render_sample_for_test(FAMILY, "Sample", 24).is_none());
+    assert!(db.take_source_requests().iter().all(|r| r.family != FAMILY), "a sample asks for nothing");
+    assert!(db.add_font(vectorcraft_testkit::fonts::renamed(FAMILY)) > 0);
+    assert!(crate::font_menu::render_sample_for_test(FAMILY, "Sample", 24).is_some(), "drawn once added");
+}
+
+/// Arrowing onto a font source not loaded yet previews nothing and asks for nothing: a highlight
+/// passing over the menu would otherwise fetch every source family it passes.
+#[test]
+fn the_highlight_does_not_preview_a_font_source_not_loaded_yet() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
+    // A family of this test's own, sorting last (the font database is the process's, so other
+    // tests' menus see what this one adds), and the source right after it, where ↓ lands.
+    const CURRENT: &str = "Zz Menu Test0";
+    const FAMILY: &str = "Zz Menu Test0 Source";
+    let db = vectorcraft_text::FontDb::global();
+    assert!(db.add_font(vectorcraft_testkit::fonts::renamed(CURRENT)) > 0 || db.has_family(CURRENT));
+    let integrity = format!("sha256-{}", vectorcraft_format::base64_encode(&[0x77; 32]));
+    db.add_sources(vec![vectorcraft_text::FontSource { family: FAMILY.into(), style: "Regular".into(), url: "fonts/menu.ttf".into(), integrity }]);
+    let ctx = egui::Context::default();
+    crate::theme::install_fonts(&ctx);
+    let mut app = VectorcraftApp::new(Session::new(), Default::default());
+    app.run("file.new", json!({"width": 300, "height": 200})).unwrap();
+    let id = app.session.execute("text.create", &json!({"x": 20, "y": 50, "text": "Gagaku", "font": CURRENT})).unwrap()["id"].as_u64().unwrap();
+    app.session.execute("select.set", &json!({"ids": [id]})).unwrap();
+    let frame = |app: &mut VectorcraftApp, events: Vec<egui::Event>| {
+        let input =
+            egui::RawInput { events, screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(600.0, 800.0))), ..Default::default() };
+        let (mut at, mut picked) = (egui::Pos2::ZERO, None);
+        let mut out = ctx.run_ui(input, |ui| {
+            at = ui.next_widget_position();
+            picked = font_menu(ui, "test-pending", CURRENT, 260.0, None, MenuLook::default());
+            if let Some(p) = picked.clone() {
+                crate::font_menu::apply(app, ui.ctx(), p);
+            }
+        });
+        out.textures_delta.clear();
+        (at, picked)
+    };
+    let (at, _) = frame(&mut app, vec![]);
+    let click = at + egui::vec2(40.0, 10.0);
+    let button = |pressed| egui::Event::PointerButton { pos: click, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+    frame(&mut app, vec![egui::Event::PointerMoved(click), button(true)]);
+    frame(&mut app, vec![button(false)]);
+    for _ in 0..3 {
+        frame(&mut app, vec![]);
+    }
+    let (_, picked) = frame(&mut app, key(egui::Key::ArrowDown));
+    assert!(!matches!(picked, Some(FontPick::Preview(..))), "{picked:?}");
+    for _ in 0..3 {
+        frame(&mut app, vec![]);
+    }
+    assert!(db.take_source_requests().iter().all(|r| r.family != FAMILY), "the highlight asks for nothing");
+}

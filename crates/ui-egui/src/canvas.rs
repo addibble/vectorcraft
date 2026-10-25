@@ -7033,6 +7033,8 @@ mod tests {
     /// that arrives, a frame draws what a new overlay draws, and the marks moved.
     #[test]
     fn show_hidden_characters_follows_edits_zooms_and_fonts() {
+        // Adds to the shared font database: other tests' font lists hold still meanwhile.
+        let _fonts = crate::adding_fonts();
         let mut app = VectorcraftApp::new(Session::new(), Default::default());
         app.session.execute("file.new", &json!({"width": 400, "height": 300})).unwrap();
         // The type is set in Bold of a family that is not installed and whose name starts with a
