@@ -37,7 +37,7 @@ Every message is a plain object with a string `type`. VectorCraft posts only to 
 
 **`vectorcraft:open`** needs both fields:
 
-- `name` is the file's name, such as `Logo.svg`. Its extension decides how the file is read, as for a picked file, so anything File › Open reads can be sent. It also becomes the document's name, which saves are named after.
+- `name` is the file's name, such as `Logo.svg`. Its extension decides how the file is read, as for a picked file, so anything File › Open reads can be sent. It also becomes the document's name (its path, as a file opened from disk has), which saves are named after and a recovery copy remembers, a native `.vectorcraft` document's too, which would otherwise be known by the title saved inside it.
 - `bytes` is the file's contents. The buffer may be transferred.
 - `title` (optional, up to 200 characters) is what the document's tab shows in place of `name`, such as a project's name `Poster` for a file the host names `Poster v5.vectorcraft`. Without it the tab shows the file name with its extension, as it does for any file. The title is the tab's alone: the document keeps `name`, which saves (`vectorcraft:save`), exports, Document Info, printing and the questions about the file go by, so the host's own names come back to it unchanged. Once the document's name changes (Save As) its tab shows the new name. A title is given per file, since only the host knows which part of its name the user should see; there is no setting to drop extensions from every tab.
 - A message without a non-empty `name`, without `bytes` of one of those two types, or with a `title` that isn't such a string is refused: VectorCraft answers `vectorcraft:failed` and opens nothing.

@@ -238,19 +238,31 @@ pub type ExistsFn = Box<dyn Fn(&str) -> bool>;
 pub type Inbox = Arc<Mutex<Vec<OpenArrival>>>;
 
 /// A file that arrived to be opened ([`Services::inbox`]): its name (which decides how it is read,
-/// and which the document is saved under), its bytes, and the title its document tab shows in
-/// place of the name, when the host gave one ([`UiState::host_titles`]).
+/// and which the document is saved under), its bytes, the title its document tab shows in place
+/// of the name, when the host gave one ([`UiState::host_titles`]), and the document's path, when
+/// the file is one the host keeps.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct OpenArrival {
     pub name: String,
     pub bytes: Vec<u8>,
     pub title: Option<String>,
+    /// The document's path ([`vectorcraft_engine::DocState::path`]): a host's file keeps the
+    /// host's name for it (`name`), so Save stores it under that name and a recovery copy
+    /// remembers it, even a native document, which is otherwise known by its own title. None for
+    /// a file picked or dropped, which has no path to keep on the web.
+    pub path: Option<String>,
 }
 
 impl OpenArrival {
     /// A file to open under its own name.
     pub fn file(name: impl Into<String>, bytes: Vec<u8>) -> Self {
-        Self { name: name.into(), bytes, title: None }
+        Self { name: name.into(), bytes, title: None, path: None }
+    }
+
+    /// A file the host keeps, opened under the host's name for it, which is its path too.
+    pub fn hosted(name: impl Into<String>, bytes: Vec<u8>, title: Option<String>) -> Self {
+        let name = name.into();
+        Self { path: Some(name.clone()), name, bytes, title }
     }
 }
 /// Starts a browser download of the bytes under a file name; an error when it couldn't be started
@@ -1594,8 +1606,8 @@ impl VectorcraftApp {
     fn drain_inbox(&mut self) {
         let arrived: Vec<OpenArrival> =
             self.services.inbox.as_ref().map(|q| std::mem::take(&mut *q.lock().unwrap_or_else(|e| e.into_inner()))).unwrap_or_default();
-        for OpenArrival { name, bytes, title } in arrived {
-            match io::open_bytes(self, &name, &bytes, None) {
+        for OpenArrival { name, bytes, title, path } in arrived {
+            match io::open_bytes(self, &name, &bytes, path) {
                 Ok(_) => {
                     if let Some(title) = title {
                         self.title_active(title);

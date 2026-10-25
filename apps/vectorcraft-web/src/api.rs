@@ -161,7 +161,7 @@ pub fn install() -> Result<(), JsValue> {
                 let title = protocol::title(title).map_err(|e| JsValue::from(js_sys::Error::new(&format!("openFile of {name}: {e}"))))?;
                 let queued = INBOX.with(|i| {
                     i.borrow().as_ref().is_some_and(|inbox| {
-                        inbox.lock().unwrap_or_else(|e| e.into_inner()).push(OpenArrival { name, bytes: bytes.to_vec(), title });
+                        inbox.lock().unwrap_or_else(|e| e.into_inner()).push(OpenArrival::hosted(name, bytes.to_vec(), title));
                         true
                     })
                 });
