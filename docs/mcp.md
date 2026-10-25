@@ -3951,6 +3951,27 @@ except for a placed document, which opens in a tab.
 {"name":"run_command","arguments":{"command":"links.unembed","params":{"id":14,"path":"/tmp/logo.png"}}}
 ```
 
+Link sources are for a build that reads no files (the web): a page that embeds VectorCraft lists the linked files it can
+supply with `links.addSources {sources: [{path, url}], resolution?}` (`path` is what links name, their relative path or
+else their path; `url` is where the page serves the file at a size, `{width}`, `{height}` and `{side}`, the longer, filled
+in; `resolution`, default 300 ppi, is the host's output resolution). A linked image shows its saved preview until it is
+drawn magnified past it; the file is then fetched at the size its largest placement needs at that resolution (never more
+than the file has), drawn over the preview and used for PDF export, and fetched again larger when the image is resized
+larger. What arrives is kept outside the document, so it is no edit: nothing is saved, journaled or undone, and undo never
+brings back the preview. `links.supplySource {path, dataBase64}` hands a source's file in (the web build calls it with
+what it fetched). `links.loadSources` asks for every linked image of the active document at once, drawn or not, and
+answers `{loaded, loading, failed}`: a host calls it until `loading` is 0 before printing. `view.imageCache {decoded?,
+linked?}` sets the budgets, in bytes, of the decoded images all views share and of the pixels link sources supplied (the
+least recently drawn go past them, decoded or fetched again when next drawn) and answers both with the bytes held now.
+Illustrator draws linked images from a preview and reads the file for output, with no setting for the preview's
+resolution (https://community.adobe.com/t5/illustrator-discussions/linked-file-preview-resolution/m-p/14871637).
+
+```json
+{"name":"run_command","arguments":{"command":"links.addSources","params":{"sources":[{"path":"pictures/ace.png","url":"pictures/ace.png?side={side}"}]}}}
+{"name":"run_command","arguments":{"command":"links.loadSources","params":{}}}
+{"name":"run_command","arguments":{"command":"view.imageCache","params":{"decoded":1073741824,"linked":536870912}}}
+```
+
 ## Package and Document Info
 
 `file.package {folder?, name?, copyLinks?, linksFolder?, relink?, copyFonts?, report?}` copies a saved document (an

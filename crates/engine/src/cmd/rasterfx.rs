@@ -634,6 +634,9 @@ pub fn export_pdf_with_report(
     doc: &Document,
     opts: &vectorcraft_pdf::PdfOptions,
 ) -> std::result::Result<vectorcraft_pdf::ExportReport, vectorcraft_pdf::PdfError> {
+    // Linked images a host supplied the pixels of (link sources) export them, not their previews.
+    let sourced = crate::link_sources::for_output(doc);
+    let doc = sourced.as_ref();
     let mut report = FlattenReport::new(Which::All, doc);
     let flat = flatten(doc, &mut report);
     // Flattening stops early when cancelled, leaving a half-flattened copy that must not be written.
