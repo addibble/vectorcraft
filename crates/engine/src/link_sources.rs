@@ -105,6 +105,13 @@ pub fn add(list: Vec<(String, LinkSource)>, resolution: Option<f64>) -> usize {
     added
 }
 
+/// Does the host supply the file `link` names (a source by its relative path or its path, whose
+/// fetch has not failed)? The Links panel shows such a link as found.
+pub fn sourced(link: &vectorcraft_doc::LinkInfo) -> bool {
+    let s = sources();
+    link.relative.iter().chain(std::iter::once(&link.path)).any(|p| s.by_path.contains_key(p.as_str()) && !s.failed.contains_key(p.as_str()))
+}
+
 /// How many paths are sources, and the resolution they are asked for at.
 pub fn summary() -> (usize, f64) {
     let s = sources();
