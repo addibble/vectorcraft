@@ -82,6 +82,9 @@ pub struct Configure {
     /// Closing a modified document saves it and closes it once the parent answers
     /// `vectorcraft:saved`, in place of asking Save Changes.
     pub save_on_close: bool,
+    /// Save writes a copy Data Recovery restored under its own name, as any document, rather than
+    /// asking where: the host merges each save with what changed since.
+    pub save_recovered_in_place: bool,
 }
 
 /// A field of a message: left out (or `null`), of the type it should be, or of another.
@@ -94,7 +97,8 @@ pub enum Field<T> {
 }
 
 /// A `vectorcraft:configure`'s fields as the page sent them (`hide`, `hideMenus`, `hideMark`,
-/// `emptyMessage`, `emptyLink`, `saveOnClose`). Fields it doesn't name are never read.
+/// `emptyMessage`, `emptyLink`, `saveOnClose`, `saveRecoveredInPlace`). Fields it doesn't name are
+/// never read.
 #[derive(Debug, Default)]
 pub struct ConfigureFields {
     pub hide: Field<Vec<String>>,
@@ -103,6 +107,7 @@ pub struct ConfigureFields {
     pub empty_message: Field<String>,
     pub empty_link: Field<String>,
     pub save_on_close: Field<bool>,
+    pub save_recovered_in_place: Field<bool>,
 }
 
 /// Check a `vectorcraft:configure` the bridge accepted. `hide` is an array of strings, each a
@@ -132,6 +137,7 @@ pub fn configure(f: ConfigureFields) -> Result<Configure, String> {
         empty_message: text(f.empty_message, "emptyMessage")?,
         empty_link: text(f.empty_link, "emptyLink")?,
         save_on_close: flag(f.save_on_close, "saveOnClose")?,
+        save_recovered_in_place: flag(f.save_recovered_in_place, "saveRecoveredInPlace")?,
     })
 }
 
@@ -363,6 +369,15 @@ mod tests {
         assert!(configure(ConfigureFields { empty_link: Field::Wrong, ..Default::default() }).unwrap_err().contains("`emptyLink`"));
         assert!(configure(ConfigureFields { empty_link: Field::Given("x".repeat(MAX_MESSAGE_CHARS + 1)), ..Default::default() }).is_err());
         assert!(configure(ConfigureFields { save_on_close: Field::Wrong, ..Default::default() }).unwrap_err().contains("`saveOnClose`"));
+    }
+
+    #[test]
+    fn configures_saving_a_recovered_copy_in_place() {
+        assert!(configure(ConfigureFields { save_recovered_in_place: Field::Given(true), ..Default::default() }).unwrap().save_recovered_in_place);
+        // Left out, a recovered copy is saved as, as before.
+        assert!(!configure(ConfigureFields::default()).unwrap().save_recovered_in_place);
+        let wrong = ConfigureFields { save_recovered_in_place: Field::Wrong, ..Default::default() };
+        assert!(configure(wrong).unwrap_err().contains("`saveRecoveredInPlace`"));
     }
 
     #[test]

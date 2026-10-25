@@ -66,6 +66,7 @@ impl Session {
             place_hand_off: None,
             queue_hand_off: None,
             place_cursor_requests: false,
+            save_recovered_in_place: false,
             package_hand_off: None,
             screens_hand_off: None,
             recovery: Default::default(),
