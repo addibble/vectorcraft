@@ -89,6 +89,15 @@ mod tests_distortkeys;
 mod tests_docsetup;
 #[cfg(test)]
 mod tests_document_drag;
+/// Held by the tests that add fonts or font sources to the shared
+/// [`vectorcraft_text::FontDb::global`] for as long as they run, and by those that read its font
+/// list more than once: adding clears the database's cached lists.
+#[cfg(test)]
+pub(crate) fn adding_fonts() -> std::sync::MutexGuard<'static, ()> {
+    static FONTS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    FONTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 #[cfg(test)]
 mod tests_font_menu;
 #[cfg(test)]
@@ -1213,6 +1222,12 @@ impl VectorcraftApp {
     /// Show a transient status message.
     pub fn status(&mut self, s: impl Into<String>) {
         self.ui.status = s.into();
+    }
+
+    /// A font source (`text.addFontSources`) the host couldn't fetch or add: its type stays in the
+    /// fallback face, which the status line says.
+    pub fn font_source_failed(&mut self, font: &str, reason: &str) {
+        self.status(format!("{font} couldn't be loaded ({reason}): its text shows in another font"));
     }
 
     fn drain_inbox(&mut self) {
