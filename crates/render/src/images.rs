@@ -259,6 +259,11 @@ pub fn image_cache_bytes() -> usize {
     store().bytes()
 }
 
+/// The byte budget of the decoded images all renderers share.
+pub fn image_cache_budget() -> usize {
+    store().budget
+}
+
 /// `blob`'s content key and kind, hashed and sniffed once per blob allocation.
 pub(crate) fn blob_id(blob: &ImageBlob) -> BlobId {
     if let Some(id) = store().known_id(&blob.bytes) {
