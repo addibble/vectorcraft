@@ -549,6 +549,9 @@ fn list(ui: &mut Ui, state_id: egui::Id, st: &mut MenuState, current: &str, samp
     let lit = st.highlight.and_then(|i| rows.get(i)).and_then(Row::pick);
     match lit {
         Some((f, None)) if f == current => st.previewed.take().map(|_| FontPick::EndPreview),
+        // A font source not loaded yet isn't previewed: that would fetch every family the
+        // highlight passes over. Choosing it fetches it.
+        Some((f, s)) if is_pending(&f, s.as_deref()) => st.previewed.take().map(|_| FontPick::EndPreview),
         Some(pick) if st.previewed.as_ref() != Some(&pick) => {
             st.previewed = Some(pick.clone());
             Some(FontPick::Preview(pick.0, pick.1))
@@ -622,6 +625,10 @@ thread_local! {
 /// on native (the worker asks for a frame when it is done), a few per frame; `None` until it is
 /// ready.
 fn sample_texture(ctx: &egui::Context, family: &str, style: Option<&str>, sample: Option<&str>, height: f32) -> Option<egui::TextureHandle> {
+    // Not cached while the font is on its way: its sample draws once it arrives.
+    if is_pending(family, style) {
+        return None;
+    }
     let px = (height * ctx.pixels_per_point()).round().clamp(8.0, 96.0) as u32;
     let key: Key = (family.to_string(), style.unwrap_or("Regular").to_string(), sample.unwrap_or_default().to_string(), px);
     let texture = |img: egui::ColorImage| ctx.load_texture(format!("font-sample-{family}-{px}"), img, egui::TextureOptions::LINEAR);
@@ -678,6 +685,12 @@ fn sample_texture(ctx: &egui::Context, family: &str, style: Option<&str>, sample
     })
 }
 
+/// Whether `family` in `style` (a family's row: Regular) is a font source not loaded yet, which the
+/// menu neither samples nor previews ([`vectorcraft_text::FontDb::is_pending_source`]).
+fn is_pending(family: &str, style: Option<&str>) -> bool {
+    vectorcraft_text::FontDb::global().is_pending_source(family, style.unwrap_or("Regular"))
+}
+
 /// Longest sample, in pixels per pixel of height (wider samples are cut).
 const MAX_ASPECT: f32 = 10.0;
 
@@ -685,6 +698,11 @@ const MAX_ASPECT: f32 = 10.0;
 /// `px` pixels high: a coverage mask as white with alpha.
 fn render_sample(family: &str, style: &str, text: &str, px: u32) -> Option<egui::ColorImage> {
     let db = vectorcraft_text::FontDb::global();
+    // A font source not loaded yet has no sample: drawing one would fetch every family the menu
+    // shows. Choosing it sets type in it, which fetches it.
+    if db.is_pending_source(family, style) {
+        return None;
+    }
     let face: Arc<vectorcraft_text::FontFace> = db.face(family, style)?;
     let covers = |s: &str| !s.trim().is_empty() && s.chars().filter(|c| !c.is_whitespace()).all(|c| face.covers(c));
     let text = if covers(text) { text } else { FALLBACK_SAMPLE };
@@ -1097,6 +1115,8 @@ mod tests {
     /// filters; clicked again, every family is back.
     #[test]
     fn the_variable_filter_lists_only_variable_families() {
+        // Adds to the shared font database: other tests' font lists hold still meanwhile.
+        let _fonts = crate::adding_fonts();
         use vectorcraft_text::FontClass;
         use vectorcraft_text::test_fonts::{TWO_AXIS_FAMILY, two_axis_font};
         let db = vectorcraft_text::FontDb::global();
