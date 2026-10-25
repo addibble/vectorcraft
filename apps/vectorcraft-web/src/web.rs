@@ -3,7 +3,7 @@
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use vectorcraft_engine::Session;
 use vectorcraft_engine::cmd::clipboard::{FILE_HEAD, Flavour, PASTE_ORDER, file_flavour, is_address};
@@ -20,7 +20,7 @@ use wasm_bindgen::JsCast as _;
 use crate::locks::WebLocks;
 use crate::pencil::SharedPointers;
 
-pub(crate) type Inbox = Arc<Mutex<Vec<(String, Vec<u8>)>>>;
+pub(crate) use vectorcraft_ui_egui::{Inbox, OpenArrival};
 
 /// Where the pointer was over the canvas during the last file drag (CSS px from its top-left) and
 /// whether Shift was held: where dropped files land.
@@ -464,7 +464,7 @@ impl eframe::App for WebShell {
                                     DropTarget::Place(d) => {
                                         place_inbox.lock().unwrap_or_else(|e| e.into_inner()).push(PlaceArrival { name, bytes, drop: Some(d) })
                                     }
-                                    DropTarget::Open => inbox.lock().unwrap_or_else(|e| e.into_inner()).push((name, bytes)),
+                                    DropTarget::Open => inbox.lock().unwrap_or_else(|e| e.into_inner()).push(OpenArrival::file(name, bytes)),
                                 }
                                 repaint.request_repaint();
                             }
@@ -527,7 +527,7 @@ fn services(inbox: Inbox, place_inbox: PlaceInbox, ctx: egui::Context, locks: Op
                     return;
                 };
                 let bytes = file.read().await;
-                inbox.lock().unwrap_or_else(|e| e.into_inner()).push((file.file_name(), bytes));
+                inbox.lock().unwrap_or_else(|e| e.into_inner()).push(OpenArrival::file(file.file_name(), bytes));
                 ctx.request_repaint();
             });
         })),
