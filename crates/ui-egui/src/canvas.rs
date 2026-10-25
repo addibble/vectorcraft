@@ -308,7 +308,7 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
         }
         if let Some(g) = link {
             let r = egui::Rect::from_min_size(egui::pos2(x, full.center().y - g.size().y / 2.0), g.size());
-            let resp = ui.interact(r, egui::Id::new("host-empty-link"), Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand);
+            let resp = ui.interact(r, egui::Id::unique("host-empty-link"), Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand);
             if resp.hovered() {
                 ui.painter().hline(r.x_range(), r.bottom(), Stroke::new(1.0, t.accent));
             }
