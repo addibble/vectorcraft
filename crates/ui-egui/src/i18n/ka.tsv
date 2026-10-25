@@ -2139,7 +2139,7 @@ lighting	Light	სინათლე
 	Images: link to the file instead of only embedding it.	გამოსახულებები: ფაილის ბმული მხოლოდ ჩაშენების ნაცვლად.
 	VectorCraft documents: one locked object, updated when the file changes.	VectorCraft-ის დოკუმენტები: ერთი ჩაკეტილი ობიექტი, რომელიც ფაილის ცვლილებისას ახლდება.
 	Alignment:	სწორება:
-	Applies when the linked file is relinked or updated.	მოქმედებს, როცა დაკავშირებული ფაილი ხელახლა უკავშირდება ან ახლდება.
+	Applies to linked files now, and when they are relinked or updated.	მოქმედებს დაკავშირებულ ფაილებზე ახლავე და მაშინაც, როცა ისინი ხელახლა უკავშირდება ან ახლდება.
 	Bounds (Fill Proportionally)	საზღვრები (პროპორციული შევსება)
 	Bounds (Fit Proportionally)	საზღვრები (პროპორციული მორგება)
 	File Dimensions	ფაილის ზომები
