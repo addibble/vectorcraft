@@ -4,9 +4,10 @@
 //! objects with a `type`:
 //!
 //! - `vectorcraft:ready` (to the parent): `{ version }`, the app is listening; send a file now.
-//! - `vectorcraft:open` (from the parent): `{ name, bytes }`, bytes an `ArrayBuffer` or
-//!   `Uint8Array`. It opens like a file picked with File › Open. Without a `name` or `bytes` it is
-//!   refused with `vectorcraft:failed`.
+//! - `vectorcraft:open` (from the parent): `{ name, bytes, title? }`, bytes an `ArrayBuffer` or
+//!   `Uint8Array`. It opens like a file picked with File › Open; its tab shows `title`, when given,
+//!   in place of `name`. Without a `name` or `bytes`, or with a `title` that isn't a short string,
+//!   it is refused with `vectorcraft:failed`.
 //! - `vectorcraft:save` (to the parent): `{ id, name, bytes }` (a transferred `ArrayBuffer`) for
 //!   every file VectorCraft would otherwise download (`Services::download`): Save, Save As, Save a
 //!   Copy and exports. `id` numbers the saves of the page's life. The parent stores it and reports
@@ -34,7 +35,6 @@
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use std::sync::{Arc, Mutex};
 
 use vectorcraft_ui_egui::{Services, VectorcraftApp};
 use wasm_bindgen::JsCast as _;
@@ -43,7 +43,7 @@ use wasm_bindgen::closure::Closure;
 
 use crate::protocol;
 
-type Inbox = Arc<Mutex<Vec<(String, Vec<u8>)>>>;
+use vectorcraft_ui_egui::{Inbox, OpenArrival};
 
 #[derive(Clone)]
 pub struct Bridge {
@@ -207,9 +207,10 @@ impl Bridge {
                 }
                 return;
             }
-            match protocol::open(string(&data, "name"), bytes(&data)) {
+            match protocol::open(string(&data, "name"), bytes(&data), field(&data, "title")) {
                 Ok(open) => {
-                    inbox.lock().unwrap_or_else(|e| e.into_inner()).push((open.name, open.bytes));
+                    let arrival = OpenArrival { name: open.name, bytes: open.bytes, title: open.title };
+                    inbox.lock().unwrap_or_else(|e| e.into_inner()).push(arrival);
                     wake();
                 }
                 Err(error) => {
