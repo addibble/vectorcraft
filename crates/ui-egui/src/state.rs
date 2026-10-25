@@ -584,6 +584,10 @@ pub struct UiState {
     /// The close waiting for the embedding page to store a document's save (`saveOnClose`).
     #[serde(skip)]
     pub host_closing: Option<crate::unsaved::HostClose>,
+    /// The titles the host gave documents it opened ([`crate::OpenArrival::title`]), shown on
+    /// their tabs in place of their names.
+    #[serde(skip)]
+    pub host_titles: Vec<HostTitle>,
     /// Layers panel › Panel Options… (row size, thumbnails, Show Layers Only, Locate Selected Objects).
     #[serde(default)]
     pub layers_panel: crate::panels::layers::PanelOptions,
@@ -954,6 +958,7 @@ impl Default for UiState {
             host_hide_mark: false,
             host_save_on_close: false,
             host_closing: None,
+            host_titles: Vec::new(),
             layers_panel: Default::default(),
             layers_filter: Default::default(),
             image_trace_advanced: true,
@@ -1010,4 +1015,23 @@ mod tests {
         assert_eq!(d.f64("width", 0.0), 72.0);
         assert_eq!(d.f64("height", 0.0), 50.0);
     }
+}
+
+/// A title the host gave a document it opened (the web build's `vectorcraft:open` with `title`):
+/// its tab shows `title` in place of its name, such as a project's name for `Project v5.vectorcraft`,
+/// while the document keeps its name, which saves and exports are named after, and which Document
+/// Info, the print job and the questions about the file show. Once the document's name changes
+/// (Save As) the tab shows the name again.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HostTitle {
+    /// The document ([`vectorcraft_engine::DocState::uid`]).
+    pub uid: u64,
+    /// Its name when the title was given ([`vectorcraft_engine::DocState::title`]).
+    pub name: String,
+    pub title: String,
+}
+
+/// The title the host gave document `d`, while its name is still the one it was given for.
+pub fn host_title<'a>(titles: &'a [HostTitle], d: &vectorcraft_engine::DocState) -> Option<&'a str> {
+    titles.iter().find(|t| t.uid == d.uid && t.name == d.title()).map(|t| t.title.as_str())
 }
