@@ -8,6 +8,8 @@ pub struct Open {
     /// The file name: the document's name, and the name it is saved under.
     pub name: String,
     pub bytes: Vec<u8>,
+    /// What the document's tab shows in place of the name.
+    pub title: Option<String>,
 }
 
 /// The messages the parent may send.
@@ -30,16 +32,30 @@ pub fn is_opaque(origin: &str) -> bool {
 }
 
 /// Check a `vectorcraft:open` the bridge accepted: it needs a file name and the file's bytes (an
-/// empty file is passed on: opening it reports the problem like any unreadable file). The error is
-/// the text of the `vectorcraft:failed` reply.
-pub fn open(name: Option<String>, bytes: Option<Vec<u8>>) -> Result<Open, String> {
+/// empty file is passed on: opening it reports the problem like any unreadable file), and may give
+/// the tab a `title` ([`title`]). The error is the text of the `vectorcraft:failed` reply.
+pub fn open(name: Option<String>, bytes: Option<Vec<u8>>, title: Field<String>) -> Result<Open, String> {
     let Some(name) = name.filter(|n| !n.trim().is_empty()) else {
         return Err("vectorcraft:open needs the file's name (`name`, a non-empty string)".to_string());
     };
     let Some(bytes) = bytes else {
         return Err(format!("vectorcraft:open of {name} needs the file's contents (`bytes`, an ArrayBuffer or Uint8Array)"));
     };
-    Ok(Open { name, bytes })
+    let title = self::title(title).map_err(|e| format!("vectorcraft:open of {name}: {e}"))?;
+    Ok(Open { name, bytes, title })
+}
+
+/// The longest title a document's tab is given.
+pub const MAX_TITLE_CHARS: usize = 200;
+
+/// A title for a document's tab, shown in place of its file name: left out (or blank) for none,
+/// else a string of at most [`MAX_TITLE_CHARS`]. Also `window.vectorcraft.openFile`'s `title`.
+pub fn title(title: Field<String>) -> Result<Option<String>, String> {
+    match title {
+        Field::Absent => Ok(None),
+        Field::Given(t) if t.chars().count() <= MAX_TITLE_CHARS => Ok(Some(t.trim().to_string()).filter(|t| !t.is_empty())),
+        _ => Err(format!("`title` is a string of at most {MAX_TITLE_CHARS} characters")),
+    }
 }
 
 /// The most commands (or menus) a page may hide, the longest id or title, and the longest message
@@ -225,22 +241,36 @@ mod tests {
 
     #[test]
     fn opens_a_named_file() {
-        assert_eq!(open(Some("Logo.svg".into()), Some(b"<svg/>".to_vec())), Ok(Open { name: "Logo.svg".into(), bytes: b"<svg/>".to_vec() }));
+        let opened =
+            |name: &str, bytes: &[u8], title: Option<&str>| Open { name: name.into(), bytes: bytes.to_vec(), title: title.map(String::from) };
+        assert_eq!(open(Some("Logo.svg".into()), Some(b"<svg/>".to_vec()), Field::Absent), Ok(opened("Logo.svg", b"<svg/>", None)));
         // An empty file is the importer's to report.
-        assert_eq!(open(Some("Empty.svg".into()), Some(Vec::new())), Ok(Open { name: "Empty.svg".into(), bytes: Vec::new() }));
+        assert_eq!(open(Some("Empty.svg".into()), Some(Vec::new()), Field::Absent), Ok(opened("Empty.svg", b"", None)));
+    }
+
+    #[test]
+    fn opens_a_file_whose_tab_shows_the_title_given() {
+        let open = |title| open(Some("Project v5.vectorcraft".into()), Some(b"x".to_vec()), title);
+        assert_eq!(open(Field::Given(" Project ".into())).unwrap().title.as_deref(), Some("Project"));
+        // Blank is none: the tab shows the name.
+        assert_eq!(open(Field::Given("  ".into())).unwrap().title, None);
+        for wrong in [Field::Wrong, Field::Given("x".repeat(MAX_TITLE_CHARS + 1))] {
+            let error = open(wrong).unwrap_err();
+            assert!(error.contains("`title`") && error.contains("Project v5.vectorcraft"), "{error}");
+        }
     }
 
     #[test]
     fn refuses_an_open_without_a_name() {
         for name in [None, Some(String::new()), Some("   ".to_string()), Some("\t\n".to_string())] {
-            let error = open(name.clone(), Some(b"<svg/>".to_vec())).err();
+            let error = open(name.clone(), Some(b"<svg/>".to_vec()), Field::Absent).err();
             assert!(error.as_deref().is_some_and(|e| e.contains("`name`")), "{name:?}: {error:?}");
         }
     }
 
     #[test]
     fn refuses_an_open_without_bytes() {
-        let error = open(Some("Logo.svg".into()), None).err();
+        let error = open(Some("Logo.svg".into()), None, Field::Absent).err();
         assert!(error.as_deref().is_some_and(|e| e.contains("`bytes`") && e.contains("Logo.svg")), "{error:?}");
     }
 
