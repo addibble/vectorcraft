@@ -2,12 +2,13 @@
 //! Hue/Saturation, Shift to Color and Temperature/Tint.
 //!
 //! They recolour what an object paints with, non-destructively: its fills and strokes (solid
-//! colours and gradient stops), type, gradient meshes, embedded images and, on a group or layer,
-//! every member — through the colour visitor the Edit Colors commands use
+//! colours and gradient stops), type, gradient meshes, images (linked ones too) and, on a group or
+//! layer, every member — through the colour visitor the Edit Colors commands use
 //! ([`vectorcraft_doc::recolor`]). Each colour keeps its colour model. An effect on one fill or
 //! stroke recolours that paint only. [`adjust`] evaluates them, innermost first and each list in
-//! stack order; the renderer draws the result (caching recoloured copies of embedded images) and
-//! [`crate::bake_document`] writes it for export, recoloured images as new embedded images.
+//! stack order; the renderer draws the result (caching recoloured copies of images, and of the
+//! pixels a host supplied for a linked one) and [`crate::bake_document`] writes it for export,
+//! recoloured images as new embedded images.
 //! Pattern tiles, and the shadows and glows of raster effects, keep their colours.
 
 use std::sync::Arc;
@@ -351,10 +352,10 @@ fn from_hsl([h, s, l]: [f32; 3]) -> [f32; 3] {
     [hue(h + 1.0 / 3.0), hue(h), hue(h - 1.0 / 3.0)]
 }
 
-/// Gives the key of an embedded image recoloured by a map (`None`: leave it as it is).
+/// Gives the key of an image recoloured by a map (`None`: leave it as it is).
 pub type ImageHook<'a> = dyn FnMut(&str, &ColorMap) -> Option<String> + 'a;
 
-/// The live visitor: every colour through `map`, embedded images through the hook.
+/// The live visitor: every colour through `map`, images through the hook.
 struct Live<'a, 'b> {
     map: &'a ColorMap,
     images: &'a mut ImageHook<'b>,
@@ -375,7 +376,7 @@ impl ColorVisitor for Live<'_, '_> {
 /// `n` with the colour adjustments in it applied, `None` when it has none: its members' first,
 /// then those of its fills and strokes on their paints, then its own followed by `outer` (the
 /// adjustments of an object `n` is the art of) on everything it paints. The adjustment effects
-/// are gone from the result; embedded images take the keys `images` gives.
+/// are gone from the result; images take the keys `images` gives.
 pub fn adjust(n: &Node, outer: Option<&ColorMap>, images: &mut ImageHook<'_>) -> Option<Node> {
     let mut m: Option<Node> = None;
     if let Some(ch) = n.children() {
@@ -408,8 +409,10 @@ pub fn adjust(n: &Node, outer: Option<&ColorMap>, images: &mut ImageHook<'_>) ->
     m
 }
 
-/// [`adjust`] for export and Expand Appearance: recoloured embedded images become new images in
-/// `d` (named by their content), and a symbol instance stands for its symbol's art.
+/// [`adjust`] for export and Expand Appearance: recoloured images become new embedded images in
+/// `d` (named by their content), and a symbol instance stands for its symbol's art. A linked
+/// image is recoloured from its file's pixels (output swaps in what a link source supplied), never
+/// from its preview.
 pub fn adjust_in_document(d: &mut Document, n: &Node) -> Option<Node> {
     let art;
     let src = match &n.kind {
@@ -421,7 +424,9 @@ pub fn adjust_in_document(d: &mut Document, n: &Node) -> Option<Node> {
         _ => n,
     };
     let mut hook = |key: &str, map: &ColorMap| -> Option<String> {
-        let blob = d.images.get(key)?.map_rgb(|rgb| map.apply_rgb8(rgb))?;
+        // A linked image's preview stands for pixels not loaded: recoloured, it would take the
+        // file's place at the preview's size, so the image keeps its file (and its colours).
+        let blob = d.images.get(key).filter(|b| !b.is_proxy())?.map_rgb(|rgb| map.apply_rgb8(rgb))?;
         let k = blob.content_key();
         d.images.entry(k.clone()).or_insert(blob);
         Some(k)
