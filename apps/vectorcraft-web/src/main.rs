@@ -20,7 +20,8 @@
 //! language code) stands in for the browser's languages when the interface language is Automatic;
 //! `?host=parent` (inside an `<iframe>`) talks to a same-origin parent page instead of
 //! downloading: it sends the files to open and stores what VectorCraft saves (`host`; protocol:
-//! `docs/web-embed.md`).
+//! `docs/web-embed.md`), and with `&recovery=parent` it keeps Data Recovery's copies too
+//! (`parent_store`) in place of the browser's local storage.
 
 #[cfg(target_arch = "wasm32")]
 mod api;
@@ -32,6 +33,8 @@ mod keys;
 mod host;
 #[cfg(target_arch = "wasm32")]
 mod locks;
+#[cfg(any(target_arch = "wasm32", test))]
+mod parent_store;
 #[cfg(any(target_arch = "wasm32", test))]
 mod pencil;
 #[cfg(any(target_arch = "wasm32", test))]
