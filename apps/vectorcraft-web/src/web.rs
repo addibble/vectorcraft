@@ -106,6 +106,7 @@ pub fn start() {
                 }
             });
         }
+        crate::keys::keep_app_keys();
         run(host, canvas, None).await;
     });
 }
