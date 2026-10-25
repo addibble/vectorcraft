@@ -2309,6 +2309,51 @@ fn a_turned_view_draws_the_last_frame_turned_until_its_own_arrives() {
     app.canvas.worker = None;
 }
 
+/// Link sources on the canvas: a document opened from bytes (its linked file unread, as on the
+/// web) draws the preview, the canvas's frame asks the source for the file, and once it is
+/// supplied the canvas draws again.
+#[test]
+fn a_sourced_link_drawn_on_the_canvas_is_asked_for() {
+    let dir = std::env::temp_dir().join(format!("vc-canvas-sources-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let pic = dir.join("canvas-sourced.png");
+    let mut png = vec![];
+    image::RgbaImage::from_pixel(1200, 900, image::Rgba([12, 140, 210, 255]))
+        .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+        .unwrap();
+    std::fs::write(&pic, &png).unwrap();
+    let mut s = Session::new();
+    s.execute("file.new", &json!({"width": 400, "height": 300})).unwrap();
+    let placed = s.execute("file.place", &json!({"path": pic.to_string_lossy(), "at": [200, 150]})).unwrap();
+    let image = placed["ids"][0].as_u64().unwrap();
+    // As a deck's card shows it: scaled down, cropped by a clipping path smaller than it.
+    s.execute("select.set", &json!({"ids": [image]})).unwrap();
+    s.execute("object.scale", &json!({"sx": 25, "sy": 25})).unwrap();
+    let rect = s.execute("shape.rectangle", &json!({"x": 170, "y": 120, "width": 60, "height": 60})).unwrap()["id"].as_u64().unwrap();
+    s.execute("select.set", &json!({"ids": [image, rect]})).unwrap();
+    s.execute("object.clippingMask.make", &json!({})).unwrap();
+    let saved = vectorcraft_format::save(&s.doc().unwrap().doc, false);
+    std::fs::remove_dir_all(&dir).unwrap();
+    let mut app = VectorcraftApp::new(Session::new(), Default::default());
+    app.session.execute("document.open", &json!({"name": "sourced.vectorcraft", "dataBase64": vectorcraft_format::base64_encode(&saved)})).unwrap();
+    let mut path = None;
+    app.session.doc().unwrap().doc.visit_images(|_, im| path = im.link.as_ref().map(|l| l.relative.clone().unwrap_or_else(|| l.path.clone())));
+    let path = path.unwrap();
+    app.run("links.addSources", json!({"sources": [{"path": path, "url": "p?side={side}"}]})).unwrap();
+    app.canvas.worker_started = true; // no worker, as in the web build
+    app.canvas.waits_for_still = true;
+    let ctx = egui::Context::default();
+    let frame = |app: &mut VectorcraftApp| {
+        let raw = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(Pos2::ZERO, vec2(800.0, 600.0))), ..Default::default() };
+        let mut out = ctx.run_ui(raw, |ui| show(app, ui));
+        out.textures_delta.clear();
+    };
+    frame(&mut app);
+    frame(&mut app);
+    let asked = vectorcraft_engine::link_sources::requests(&app.session);
+    assert!(asked.iter().any(|r| r.path == path), "the canvas's frame asks for the file: {asked:?}");
+}
+
 /// With the web build's setting (`waits_for_still`, no render worker), a heavy document's canvas
 /// is not rendered while the view moves: each frame draws the frame shown moved and scaled with
 /// the view and asks for a frame within STILL_SECS. The canvas renders once the view has been
