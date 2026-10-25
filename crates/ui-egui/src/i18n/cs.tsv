@@ -2463,7 +2463,7 @@ lighting	Light	Světlo
 	Images: link to the file instead of only embedding it.	Obrázky: propojit se souborem místo pouhého vložení.
 	VectorCraft documents: one locked object, updated when the file changes.	Dokumenty VectorCraft: jeden zamčený objekt, aktualizovaný při změně souboru.
 	Alignment:	Zarovnání:
-	Applies when the linked file is relinked or updated.	Platí při opětovném propojení nebo aktualizaci propojeného souboru.
+	Applies to linked files now, and when they are relinked or updated.	Platí ihned pro propojené soubory a také při jejich opětovném propojení nebo aktualizaci.
 	Bounds (Fill Proportionally)	Hranice (vyplnit proporcionálně)
 	Bounds (Fit Proportionally)	Hranice (přizpůsobit proporcionálně)
 	File Dimensions	Rozměry souboru
