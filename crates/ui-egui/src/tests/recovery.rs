@@ -198,3 +198,40 @@ fn a_resumed_tab_writes_again_the_copies_another_tab_discarded() {
     assert_eq!(copies(&store), 1);
     assert_eq!(a.ui.status, "Saved recovery data for Untitled-1");
 }
+
+/// A native file a host keeps opens under the host's name for it, not the document's own title:
+/// Save stores it under that name, and its recovery copy remembers it (title and path), so the
+/// host can tell which of its files a copy is of.
+#[test]
+fn a_hosts_file_keeps_the_hosts_name_in_saves_and_recovery_copies() {
+    type Saves = Arc<std::sync::Mutex<Vec<(String, Vec<u8>)>>>;
+    let saved: Saves = Arc::default();
+    let into = saved.clone();
+    let inbox = crate::Inbox::default();
+    let store = Arc::new(MemoryStore::default());
+    let services = Services {
+        inbox: Some(inbox.clone()),
+        download: Some(Box::new(move |name: &str, bytes: &[u8]| {
+            into.lock().unwrap().push((name.to_string(), bytes.to_vec()));
+            Ok(())
+        })),
+        ..Default::default()
+    };
+    let mut app = app_with(&store, services);
+    app.run("file.saveAs", json!({"path": "Seed.vectorcraft"})).unwrap();
+    let native = saved.lock().unwrap().last().unwrap().1.clone();
+    inbox.lock().unwrap().push(crate::OpenArrival::hosted("Deck v3.vectorcraft", native, Some("Deck".into())));
+    app.drain_inbox();
+    let d = app.session.active().unwrap();
+    assert_eq!((d.path.as_deref(), d.title()), (Some("Deck v3.vectorcraft"), "Deck v3.vectorcraft".to_string()));
+    app.run("shape.rectangle", json!({"x": 1, "y": 1, "width": 5, "height": 5})).unwrap();
+    app.run("file.save", json!({})).unwrap();
+    assert_eq!(saved.lock().unwrap().last().unwrap().0, "Deck v3.vectorcraft");
+    app.run("shape.rectangle", json!({"x": 2, "y": 2, "width": 5, "height": 5})).unwrap();
+    app.session.execute("file.recovery.save", &json!({})).unwrap();
+    let list = app.session.execute("file.recovery.list", &json!({})).unwrap();
+    let copy = list["copies"].as_array().unwrap().iter().find(|c| c["path"] == "Deck v3.vectorcraft");
+    assert_eq!(copy.map(|c| c["title"].clone()), Some(json!("Deck v3.vectorcraft")), "{list}");
+    // A file picked or dropped has no path to keep on the web: it is known by its title.
+    assert_eq!(crate::OpenArrival::file("Logo.svg", vec![]).path, None);
+}

@@ -209,7 +209,7 @@ impl Bridge {
             }
             match protocol::open(string(&data, "name"), bytes(&data), field(&data, "title")) {
                 Ok(open) => {
-                    let arrival = OpenArrival { name: open.name, bytes: open.bytes, title: open.title };
+                    let arrival = OpenArrival::hosted(open.name, open.bytes, open.title);
                     inbox.lock().unwrap_or_else(|e| e.into_inner()).push(arrival);
                     wake();
                 }

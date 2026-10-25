@@ -16,8 +16,8 @@ impl VectorcraftApp {
     pub(crate) fn drain_inbox(&mut self) {
         let arrived: Vec<OpenArrival> =
             self.services.inbox.as_ref().map(|q| std::mem::take(&mut *q.lock().unwrap_or_else(|e| e.into_inner()))).unwrap_or_default();
-        for OpenArrival { name, bytes, title } in arrived {
-            match io::open_bytes(self, &name, &bytes, None) {
+        for OpenArrival { name, bytes, title, path } in arrived {
+            match io::open_bytes(self, &name, &bytes, path) {
                 Ok(_) => {
                     if let Some(title) = title {
                         self.title_active(title);
