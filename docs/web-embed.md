@@ -30,7 +30,7 @@ Every message is a plain object with a string `type`. VectorCraft posts only to 
 | `vectorcraft:save` | to the parent | `id` (number), `name` (string), `bytes` (`ArrayBuffer`, transferred) | Store this file. |
 | `vectorcraft:saved` | from the parent | `id` (number), `name` (string), `ok` (boolean), `error` (string, optional) | Save `id` was stored (`ok: true`), or couldn't be. |
 | `vectorcraft:dirty` | to the parent | `dirty` (boolean) | Unsaved changes appeared (`true`) or went away (`false`). |
-| `vectorcraft:configure` | from the parent | `hide`, `hideMenus` (arrays of strings), `hideMark`, `saveOnClose` (booleans), `emptyMessage`, `emptyLink` (strings) | Hide commands, menus and the brand mark the host has no use for, say what the window shows with no document open, and save on closing instead of asking. |
+| `vectorcraft:configure` | from the parent | `hide`, `hideMenus` (arrays of strings), `hideMark`, `saveOnClose`, `saveRecoveredInPlace` (booleans), `emptyMessage`, `emptyLink` (strings) | Hide commands, menus and the brand mark the host has no use for, say what the window shows with no document open, save on closing instead of asking, and save a recovered copy under its own name. |
 | `vectorcraft:emptyLink` | to the parent | none | The user clicked the empty window's link (`emptyLink`). |
 | `vectorcraft:recoveryWrite` | to the parent | `name` (string), `bytes` (`ArrayBuffer`, transferred) | With `&recovery=parent`: keep Data Recovery entry `name`, replacing any of that name. |
 | `vectorcraft:recoveryRemove` | to the parent | `name` (string) | With `&recovery=parent`: delete entry `name` (one that isn't there is no error). |
@@ -59,8 +59,9 @@ Every message is a plain object with a string `type`. VectorCraft posts only to 
 - `emptyMessage` is what the window says while no document is open, such as "No file open.", in place of the Home screen. It is shown as given, so the host sends it in the user's language. Up to 1,000 characters; blank means none.
 - `emptyLink` is a link shown after the message, such as "Open one from the Files app". VectorCraft follows nothing itself: a click posts `vectorcraft:emptyLink` to the parent, which takes the user where the link says. Up to 1,000 characters; blank means none.
 - `saveOnClose` set to `true` replaces the Save Changes question for a host that stores every save itself. See [Closing without the Save Changes question](#closing-without-the-save-changes-question).
+- `saveRecoveredInPlace` set to `true` has Save write a copy Data Recovery restored under its own name (the name the host opened it under), as Save writes any document, a `vectorcraft:save` like any other. Without it a restored copy is saved as, the save options asking for a name with its old one suggested, since its file may have changed since it was copied: right where VectorCraft writes the file itself, but not for a host that stores every save and merges it with what changed since. Save As still asks.
 
-A message of any other shape (`hide` or `hideMenus` not an array of non-empty strings, `hideMark` or `saveOnClose` not a boolean, `emptyMessage` or `emptyLink` not a string, or any of them too long) is refused with `vectorcraft:failed`, and nothing changes. Fields it doesn't name are ignored, so a newer host's configuration works on an older build, which leaves out only what it doesn't know. Send it after `ready`, and again whenever the host's needs change.
+A message of any other shape (`hide` or `hideMenus` not an array of non-empty strings, `hideMark`, `saveOnClose` or `saveRecoveredInPlace` not a boolean, `emptyMessage` or `emptyLink` not a string, or any of them too long) is refused with `vectorcraft:failed`, and nothing changes. Fields it doesn't name are ignored, so a newer host's configuration works on an older build, which leaves out only what it doesn't know. Send it after `ready`, and again whenever the host's needs change.
 
 ### Closing without the Save Changes question
 
