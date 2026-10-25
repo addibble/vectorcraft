@@ -7,22 +7,27 @@
 //! - `vectorcraft:open` (from the parent): `{ name, bytes }`, bytes an `ArrayBuffer` or
 //!   `Uint8Array`. It opens like a file picked with File › Open. Without a `name` or `bytes` it is
 //!   refused with `vectorcraft:failed`.
-//! - `vectorcraft:save` (to the parent): `{ name, bytes }` (a transferred `ArrayBuffer`) for every
-//!   file VectorCraft would otherwise download (`Services::download`): Save, Save As, Save a
-//!   Copy and exports. The parent stores it and reports failures itself.
+//! - `vectorcraft:save` (to the parent): `{ id, name, bytes }` (a transferred `ArrayBuffer`) for
+//!   every file VectorCraft would otherwise download (`Services::download`): Save, Save As, Save a
+//!   Copy and exports. `id` numbers the saves of the page's life. The parent stores it and reports
+//!   failures itself.
+//! - `vectorcraft:saved` (from the parent): `{ id, name, ok, error? }`, the parent stored save
+//!   `id` of `name` (`ok: true`) or couldn't. With `saveOnClose`, closing a modified document saves
+//!   it and closes it only on this answer (`vectorcraft_ui_egui::unsaved::host_saved`); any other
+//!   answer changes nothing. A malformed one is refused with `vectorcraft:failed`.
 //! - `vectorcraft:dirty` (to the parent): `{ dirty }` whenever unsaved changes appear or go away.
 //! - `vectorcraft:configure` (from the parent): `{ hide, hideMenus, hideMark, emptyMessage,
-//!   emptyLink }`. `hide` lists command ids (or prefixes ending in `*`) the user isn't offered: they
+//!   emptyLink, saveOnClose }`. `hide` lists command ids (or prefixes ending in `*`) the user isn't offered: they
 //!   leave the menus, the command palette and their buttons, and their shortcuts do nothing; the
 //!   parent's own control requests still run them. `hideMenus` lists menu bar menus (English
 //!   titles) to leave out, their commands still running; `hideMark` hides the brand mark.
 //!   `emptyMessage` is what the window says while no document is open, in place of the Home
-//!   screen, and `emptyLink` a link after it. Each replaces the last whole; a malformed one is
-//!   refused with `vectorcraft:failed`.
+//!   screen, and `emptyLink` a link after it. `saveOnClose` saves a modified document on closing
+//!   instead of asking Save Changes, closing it once the parent answers `vectorcraft:saved`. Each
+//!   replaces the last whole; a malformed one is refused with `vectorcraft:failed`.
 //! - `vectorcraft:emptyLink` (to the parent): `{}`, the user clicked the empty window's link.
 //! - `vectorcraft:failed` (to the parent): `{ error }`. Before `ready`, the app couldn't start;
-//!   after it, the last `vectorcraft:open` or `vectorcraft:configure` was refused (the app keeps
-//!   running).
+//!   after it, the last message from the parent was refused (the app keeps running).
 //!
 //! Only the parent window on the page's own origin is heard or answered, and a page with an opaque
 //! origin (`null`) has no bridge. The parent guards leaving the page with unsaved changes.
@@ -49,6 +54,12 @@ pub struct Bridge {
     reported: Rc<Cell<Option<bool>>>,
     /// The last `vectorcraft:configure` heard, until the next frame applies it ([`Bridge::configure`]).
     configured: Rc<RefCell<Option<protocol::Configure>>>,
+    /// The last save's `id` (the first is 1).
+    last_save: Rc<Cell<u64>>,
+    /// The saves posted during this frame, by id and name ([`Bridge::follow_saves`]).
+    posted: Rc<RefCell<Vec<(u64, String)>>>,
+    /// The `vectorcraft:saved` answers heard, until the next frame applies them.
+    answers: Rc<RefCell<Vec<protocol::Saved>>>,
 }
 
 impl Bridge {
@@ -60,7 +71,16 @@ impl Bridge {
             return None;
         }
         let origin = window.location().origin().ok().filter(|o| !protocol::is_opaque(o))?;
-        Some(Self { window, parent, origin, reported: Rc::default(), configured: Rc::default() })
+        Some(Self {
+            window,
+            parent,
+            origin,
+            reported: Rc::default(),
+            configured: Rc::default(),
+            last_save: Rc::default(),
+            posted: Rc::default(),
+            answers: Rc::default(),
+        })
     }
 
     /// Send what VectorCraft would download to the parent instead (each time the services are
@@ -81,7 +101,8 @@ impl Bridge {
         self.send(&[("type", "vectorcraft:failed".into()), ("error", error.into())]);
     }
 
-    /// Before each frame: what the parent last configured, if it said anything since.
+    /// Before each frame: what the parent last configured, if it said anything since, and its
+    /// answers to saves.
     pub fn configure(&self, app: &mut VectorcraftApp) {
         if let Some(c) = self.configured.borrow_mut().take() {
             app.ui.host_hidden = c.hide;
@@ -89,6 +110,20 @@ impl Bridge {
             app.ui.host_hide_mark = c.hide_mark;
             app.ui.host_empty_message = c.empty_message;
             app.ui.host_empty_link = c.empty_link;
+            app.ui.host_save_on_close = c.save_on_close;
+        }
+        let answers = std::mem::take(&mut *self.answers.borrow_mut());
+        for a in answers {
+            vectorcraft_ui_egui::unsaved::host_saved(app, a.id, &a.name, a.ok, a.error.as_deref());
+        }
+    }
+
+    /// After each frame: the saves posted in it, so a close waiting for the parent to store a
+    /// document waits for the last save of its file (the one the close made, or a later Save).
+    pub fn follow_saves(&self, app: &mut VectorcraftApp) {
+        let posted = std::mem::take(&mut *self.posted.borrow_mut());
+        for (id, name) in posted {
+            vectorcraft_ui_egui::unsaved::host_posted(app, id, &name);
         }
     }
 
@@ -108,17 +143,28 @@ impl Bridge {
     }
 
     fn post_save(&self, name: &str, bytes: &[u8]) -> Result<(), String> {
+        let id = self.last_save.get().saturating_add(1);
         let buffer = js_sys::Uint8Array::from(bytes).buffer();
-        let message = message(&[("type", "vectorcraft:save".into()), ("name", name.into()), ("bytes", buffer.clone().into())])
-            .ok_or_else(|| "couldn't build the message".to_string())?;
+        // A JavaScript number holds the id exactly: ids never come near 2^53.
+        let message = message(&[
+            ("type", "vectorcraft:save".into()),
+            ("id", JsValue::from_f64(id as f64)),
+            ("name", name.into()),
+            ("bytes", buffer.clone().into()),
+        ])
+        .ok_or_else(|| "couldn't build the message".to_string())?;
         self.parent
             .post_message_with_transfer(&message, &self.origin, &js_sys::Array::of1(&buffer))
-            .map_err(|e| e.as_string().unwrap_or_else(|| format!("{e:?}")))
+            .map_err(|e| e.as_string().unwrap_or_else(|| format!("{e:?}")))?;
+        self.last_save.set(id);
+        self.posted.borrow_mut().push((id, name.to_string()));
+        Ok(())
     }
 
     /// Hear files from the parent: they go to the open inbox, which outlives graphics restarts.
-    /// `wake` asks the current runner for a frame. A `vectorcraft:open` that can't be opened is
-    /// answered with `vectorcraft:failed`; every other message is ignored (`protocol::accepts`).
+    /// `wake` asks the current runner for a frame. A `vectorcraft:open`, `vectorcraft:configure` or
+    /// `vectorcraft:saved` that can't be read is answered with `vectorcraft:failed`; every other
+    /// message is ignored (`protocol::accepts`).
     pub fn listen(&self, inbox: Inbox, wake: impl Fn() + 'static) {
         let bridge = self.clone();
         let on_message = Closure::<dyn FnMut(web_sys::MessageEvent)>::new(move |event: web_sys::MessageEvent| {
@@ -134,6 +180,7 @@ impl Bridge {
                     hide_mark: boolean(&data, "hideMark"),
                     empty_message: field(&data, "emptyMessage"),
                     empty_link: field(&data, "emptyLink"),
+                    save_on_close: boolean(&data, "saveOnClose"),
                 };
                 match protocol::configure(fields) {
                     Ok(configure) => {
@@ -142,6 +189,19 @@ impl Bridge {
                     }
                     Err(error) => {
                         log::warn!("refused the page's configuration: {error}");
+                        bridge.post_failed(&error);
+                    }
+                }
+                return;
+            }
+            if string(&data, "type").as_deref() == Some("vectorcraft:saved") {
+                match protocol::saved(number(&data, "id"), field(&data, "name"), boolean(&data, "ok"), field(&data, "error")) {
+                    Ok(saved) => {
+                        bridge.answers.borrow_mut().push(saved);
+                        wake();
+                    }
+                    Err(error) => {
+                        log::warn!("refused the page's answer to a save: {error}");
                         bridge.post_failed(&error);
                     }
                 }
@@ -187,6 +247,15 @@ fn field(data: &JsValue, key: &str) -> protocol::Field<String> {
     match js_sys::Reflect::get(data, &JsValue::from_str(key)) {
         Ok(v) if v.is_undefined() || v.is_null() => protocol::Field::Absent,
         Ok(v) => v.as_string().map_or(protocol::Field::Wrong, protocol::Field::Given),
+        Err(_) => protocol::Field::Wrong,
+    }
+}
+
+/// A number field: left out (or `null`), a number, or something else.
+fn number(data: &JsValue, key: &str) -> protocol::Field<f64> {
+    match js_sys::Reflect::get(data, &JsValue::from_str(key)) {
+        Ok(v) if v.is_undefined() || v.is_null() => protocol::Field::Absent,
+        Ok(v) => v.as_f64().map_or(protocol::Field::Wrong, protocol::Field::Given),
         Err(_) => protocol::Field::Wrong,
     }
 }

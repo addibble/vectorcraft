@@ -16,6 +16,7 @@ What changes in host mode:
 
 - Everything VectorCraft would download goes to the parent as `vectorcraft:save` instead: Save, Save As, Save a Copy and the exports. There is still no save panel, so the parent decides where each file goes.
 - The parent is told when unsaved changes appear or go away (`vectorcraft:dirty`). VectorCraft doesn't ask before the page is left; guarding that is the parent's job.
+- With `saveOnClose` (see `vectorcraft:configure`), closing a modified document saves it to the parent instead of asking Save Changes, and it closes once the parent says the save was stored (`vectorcraft:saved`).
 
 ## Messages
 
@@ -25,11 +26,12 @@ Every message is a plain object with a string `type`. VectorCraft posts only to 
 |---|---|---|---|
 | `vectorcraft:ready` | to the parent | `version` (string) | The app is running and listening. Send the file now. |
 | `vectorcraft:open` | from the parent | `name` (string), `bytes` (`ArrayBuffer` or `Uint8Array`) | Open this file, as if it were picked with File › Open. |
-| `vectorcraft:save` | to the parent | `name` (string), `bytes` (`ArrayBuffer`, transferred) | Store this file. |
+| `vectorcraft:save` | to the parent | `id` (number), `name` (string), `bytes` (`ArrayBuffer`, transferred) | Store this file. |
+| `vectorcraft:saved` | from the parent | `id` (number), `name` (string), `ok` (boolean), `error` (string, optional) | Save `id` was stored (`ok: true`), or couldn't be. |
 | `vectorcraft:dirty` | to the parent | `dirty` (boolean) | Unsaved changes appeared (`true`) or went away (`false`). |
-| `vectorcraft:configure` | from the parent | `hide`, `hideMenus` (arrays of strings), `hideMark` (boolean), `emptyMessage`, `emptyLink` (strings) | Hide commands, menus and the brand mark the host has no use for, and say what the window shows with no document open. |
+| `vectorcraft:configure` | from the parent | `hide`, `hideMenus` (arrays of strings), `hideMark`, `saveOnClose` (booleans), `emptyMessage`, `emptyLink` (strings) | Hide commands, menus and the brand mark the host has no use for, say what the window shows with no document open, and save on closing instead of asking. |
 | `vectorcraft:emptyLink` | to the parent | none | The user clicked the empty window's link (`emptyLink`). |
-| `vectorcraft:failed` | to the parent | `error` (string) | Before `ready`: the app couldn't start. After `ready`: the last `vectorcraft:open` or `vectorcraft:configure` was refused; the app keeps running. |
+| `vectorcraft:failed` | to the parent | `error` (string) | Before `ready`: the app couldn't start. After `ready`: the last `vectorcraft:open`, `vectorcraft:configure` or `vectorcraft:saved` was refused; the app keeps running. |
 
 **`vectorcraft:ready`** comes once, when the app has started. `version` is the app's version (`CARGO_PKG_VERSION`). A host that has heard neither `ready` nor `failed` after a reasonable time should assume the app couldn't start. The commonest reason is a browser without WebGPU or WebGL2.
 
@@ -40,7 +42,9 @@ Every message is a plain object with a string `type`. VectorCraft posts only to 
 - A message without a non-empty `name`, or without `bytes` of one of those two types, is refused: VectorCraft answers `vectorcraft:failed` and opens nothing.
 - A file that has both but can't be read (an empty or damaged file) is reported inside the app, like any file that fails to open.
 
-**`vectorcraft:save`**: `name` is a bare file name with no folders, the name a download would have had. The parent stores the file and reports any failure to the user itself; nothing is sent back. VectorCraft treats the save as done, as it does a download: after Save or Save As the document counts as saved, and `dirty: false` follows.
+**`vectorcraft:save`**: `name` is a bare file name with no folders, the name a download would have had. `id` numbers the saves since the app started (1, 2, 3, …), so an answer can say which one it means. The parent stores the file and reports any failure to the user itself. VectorCraft treats the save as done, as it does a download: after Save or Save As the document counts as saved, and `dirty: false` follows.
+
+**`vectorcraft:saved`** answers a `vectorcraft:save`: `id` and `name` are the save's own, `ok` says whether the parent stored it, and `error` (optional, up to 1,000 characters) says why not, in the user's language. VectorCraft acts only on the answer a close is waiting for (see `saveOnClose`); answering every save is allowed, and the others change nothing. A message without a whole-number `id`, a non-empty `name` and a boolean `ok` is refused with `vectorcraft:failed`.
 
 **`vectorcraft:configure`** fits the app to a host that manages files itself. Every field is optional, and each message replaces the last one whole, so a field left out (or `null`) is cleared:
 
@@ -49,8 +53,22 @@ Every message is a plain object with a string `type`. VectorCraft posts only to 
 - `hideMark` set to `true` hides the brand mark at the left of the application bar. The Discord button at its right follows `help.discord` in `hide`, as the Home button follows `app.home`.
 - `emptyMessage` is what the window says while no document is open, such as "No file open.", in place of the Home screen. It is shown as given, so the host sends it in the user's language. Up to 1,000 characters; blank means none.
 - `emptyLink` is a link shown after the message, such as "Open one from the Files app". VectorCraft follows nothing itself: a click posts `vectorcraft:emptyLink` to the parent, which takes the user where the link says. Up to 1,000 characters; blank means none.
+- `saveOnClose` set to `true` replaces the Save Changes question for a host that stores every save itself. See [Closing without the Save Changes question](#closing-without-the-save-changes-question).
 
-A message of any other shape (`hide` or `hideMenus` not an array of non-empty strings, `hideMark` not a boolean, `emptyMessage` or `emptyLink` not a string, or any of them too long) is refused with `vectorcraft:failed`, and nothing changes. Send it after `ready`, and again whenever the host's needs change.
+A message of any other shape (`hide` or `hideMenus` not an array of non-empty strings, `hideMark` or `saveOnClose` not a boolean, `emptyMessage` or `emptyLink` not a string, or any of them too long) is refused with `vectorcraft:failed`, and nothing changes. Fields it doesn't name are ignored, so a newer host's configuration works on an older build, which leaves out only what it doesn't know. Send it after `ready`, and again whenever the host's needs change.
+
+### Closing without the Save Changes question
+
+Without `saveOnClose`, closing a modified document (File › Close, a tab's ×, Close All, Quit) asks Save / Don't Save / Cancel, and Save posts a `vectorcraft:save` that VectorCraft counts as done. A host whose store can fail would lose the edits if the document closed then. With `saveOnClose: true`:
+
+1. Closing a modified document saves it as File › Save does: a `vectorcraft:save` with its `id`. The document stays open, and the status line says it closes once the page has stored it. (A save that asks something first, such as replacing a file that opening it lost parts of, asks as usual and closes nothing.)
+2. The parent stores the file and answers `vectorcraft:saved` with the save's `id` and `name`.
+3. `ok: true`: the document closes, and a Close All or Quit goes on to the next modified document, saving each the same way, one at a time. If the user changed the document after the save, it stays open, still modified.
+4. `ok: false`: the document stays open and counts as modified again (`dirty: true` follows); the status line shows `error`, and a Close All or Quit stops there. No answer at all leaves the document open just the same: there is no timeout.
+
+While a close waits, the document can't be closed again (nor can Close All or Quit run), but other documents with nothing unsaved close as usual. If the user saves the document again meanwhile, the close waits for the answer to that newer save, since it holds more. Documents with nothing unsaved close at once, as before.
+
+The host itself can still close a document and throw its changes away without any question, such as when it replaces the document with a newer copy: the command `file.close` with `discard: true` (`window.vectorcraft.execute("file.close", {index, discard: true})`, `index` defaulting to the active document) closes it unsaved, with or without `saveOnClose`, ending any close or question waiting for it. No menu item or shortcut passes `discard`, so the user is never offered it. A build without this answers the command with an error (an unknown parameter), and the host can fall back to answering the Save Changes question with Don't Save (`ui.dialog.set {field: "discard", value: true}`, then `ui.dialog.confirm`).
 
 **`vectorcraft:dirty`** is sent after the first frame and then whenever the answer changes, so the first one is usually `dirty: false`. `true` means at least one open document has unsaved changes.
 
@@ -60,7 +78,7 @@ The bridge reads a message only when all of these hold:
 
 1. it comes from `window.parent` (`event.source`), not from another window or frame on the site;
 2. its origin (`event.origin`) is exactly the page's own: same scheme, host and port;
-3. its `type` is `vectorcraft:open` or `vectorcraft:configure`.
+3. its `type` is `vectorcraft:open`, `vectorcraft:configure` or `vectorcraft:saved`.
 
 Anything else is ignored without a reply, so a page on another origin can neither open files in VectorCraft nor learn that it is there. Saves and other replies go only to `window.parent`, with the page's own origin as the target, so the browser delivers them to no other site. A same-origin parent can already script the frame directly, so the bridge gives it nothing it couldn't otherwise do; it only spares it reaching into the app's internals.
 
@@ -80,16 +98,19 @@ window.addEventListener('message', async (event) => {
   switch (message.type) {
     case 'vectorcraft:ready': {
       const bytes = await (await fetch('/files/Logo.svg')).arrayBuffer()
-      frame.contentWindow.postMessage({ type: 'vectorcraft:configure', hide: ['file.new', 'file.newDialog', 'file.open', 'file.openRecent*', 'app.home'], emptyMessage: 'No file open.', emptyLink: 'Open one from the Files app' }, window.location.origin)
+      frame.contentWindow.postMessage({ type: 'vectorcraft:configure', hide: ['file.new', 'file.newDialog', 'file.open', 'file.openRecent*', 'app.home'], emptyMessage: 'No file open.', emptyLink: 'Open one from the Files app', saveOnClose: true }, window.location.origin)
       frame.contentWindow.postMessage({ type: 'vectorcraft:open', name: 'Logo.svg', bytes }, window.location.origin, [bytes])
       break
     }
     case 'vectorcraft:emptyLink':
       window.location.assign('/files')
       break
-    case 'vectorcraft:save':
-      await fetch(`/files/${encodeURIComponent(message.name)}`, { method: 'PUT', body: message.bytes })
+    case 'vectorcraft:save': {
+      const stored = await fetch(`/files/${encodeURIComponent(message.name)}`, { method: 'PUT', body: message.bytes })
+      // Needed only with saveOnClose: a close waits for this.
+      frame.contentWindow.postMessage({ type: 'vectorcraft:saved', id: message.id, name: message.name, ok: stored.ok, error: stored.ok ? undefined : 'Not saved: the server said ' + stored.status }, window.location.origin)
       break
+    }
     case 'vectorcraft:dirty':
       unsaved = message.dirty
       break
