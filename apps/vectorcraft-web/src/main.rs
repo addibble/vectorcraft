@@ -27,10 +27,12 @@
 mod api;
 #[cfg(target_arch = "wasm32")]
 mod fonts;
+#[cfg(target_arch = "wasm32")]
+mod host;
 #[cfg(any(target_arch = "wasm32", test))]
 mod keys;
 #[cfg(target_arch = "wasm32")]
-mod host;
+mod link_sources;
 #[cfg(target_arch = "wasm32")]
 mod locks;
 #[cfg(any(target_arch = "wasm32", test))]
