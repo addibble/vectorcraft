@@ -1,6 +1,7 @@
 //! Link sources (`links.addSources`): a document opened from bytes, whose linked file can't be
 //! read, shows the preview until the image is drawn larger than it, then the file is asked for at
-//! its placement's size, drawn once supplied, exported, and never saved or undone.
+//! its placement's size, drawn once supplied, exported, and never saved or undone; the Links
+//! panel shows a sourced link as found, and missing again once its source fails.
 
 use serde_json::json;
 
@@ -26,7 +27,11 @@ fn a_sourced_link_is_asked_for_when_drawn_large_supplied_drawn_and_exported() {
     let path = im.link.as_ref().unwrap().path.clone();
     assert!(s.doc().unwrap().doc.images[&key].is_proxy(), "the web shows the preview");
 
+    let status = |s: &mut Session| s.execute("links.list", &json!({})).unwrap()["links"][0]["status"].clone();
+    assert_eq!(status(&mut s), "missing", "no file and no source");
     let added = s.execute("links.addSources", &json!({"sources": [{"path": path, "url": "pictures/sourced.png?side={side}"}]})).unwrap();
+    assert_eq!(status(&mut s), "ok", "the host supplies it: found, as the Links panel shows");
+    assert_eq!(s.execute("links.check", &json!({})).unwrap()["missing"], 0);
     assert_eq!((added["added"].clone(), added["resolution"].clone()), (json!(1), json!(300.0)), "{added}");
     assert!(link_sources::requests(&s).iter().all(|r| r.path != path), "nothing drawn yet: nothing asked for");
 
@@ -66,6 +71,7 @@ fn a_sourced_link_is_asked_for_when_drawn_large_supplied_drawn_and_exported() {
     centre_colour(&s.doc().unwrap().doc);
     assert!(link_sources::requests(&s).iter().all(|r| r.path != path), "a failed source is not asked for again by itself");
     assert_eq!(s.execute("links.loadSources", &json!({})).unwrap(), json!({"loaded": 0, "loading": 0, "failed": 1}));
+    assert_eq!(status(&mut s), "missing", "a source whose file failed is missing again");
 
     for bad in
         [json!({}), json!({"sources": []}), json!({"sources": [{"path": "p"}]}), json!({"sources": [{"path": "p", "url": "u"}], "resolution": 0})]

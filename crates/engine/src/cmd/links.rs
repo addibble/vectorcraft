@@ -131,7 +131,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Add Link Sources",
             [],
             None,
-            "{sources: [{path: the path links name (their relative path, else their path), url: where the host serves the file at a size, `{width}`, `{height}` and `{side}` (the longer) replaced by the pixels asked for (for the web build, relative to the page)}] (1 to 100000), resolution?: 300 (ppi, 1 to 2400: the most a placement is asked for at, the host's output resolution)} linked files a host can supply where VectorCraft reads no files (the web build): an image linking one shows its saved preview until it is drawn magnified past it, then the file is fetched at the size its largest placement needs at that resolution (never more than the file has) and drawn over the preview, and used for PDF export; resized larger, it is fetched again. What arrives is kept outside the document, the least recently drawn dropped first past view.imageCache's linked budget. A path already a source takes the new URL (its file is asked for again from it); one that failed is asked for again. Not an edit: nothing is saved, journaled or undone → {added, sources (how many there are now), resolution}",
+            "{sources: [{path: the path links name (their relative path, else their path), url: where the host serves the file at a size, `{width}`, `{height}` and `{side}` (the longer) replaced by the pixels asked for (for the web build, relative to the page)}] (1 to 100000), resolution?: 300 (ppi, 1 to 2400: the most a placement is asked for at, the host's output resolution)} linked files a host can supply where VectorCraft reads no files (the web build): an image linking one shows its saved preview until it is drawn magnified past it, then the file is fetched at the size its largest placement needs at that resolution (never more than the file has) and drawn over the preview, and used for PDF export; resized larger, it is fetched again. What arrives is kept outside the document, the least recently drawn dropped first past view.imageCache's linked budget. A link with a source counts as found (status ok in links.list, links.check and the Links panel) until its fetch fails. A path already a source takes the new URL (its file is asked for again from it); one that failed is asked for again. Not an edit: nothing is saved, journaled or undone → {added, sources (how many there are now), resolution}",
             always,
             add_sources
         ),
@@ -172,7 +172,7 @@ const MAX_LINK_SOURCES: usize = 100_000;
 
 /// `links.addSources`: the files a host can supply, checked and registered with
 /// [`crate::link_sources`].
-fn add_sources(_: &mut Session, p: &Value) -> Result<Value> {
+fn add_sources(s: &mut Session, p: &Value) -> Result<Value> {
     const C: &str = "links.addSources";
     let list = p.get("sources").and_then(Value::as_array).ok_or_else(|| bad(C, "give sources, a list of sources each with a path and a url"))?;
     if list.is_empty() || list.len() > MAX_LINK_SOURCES {
@@ -194,6 +194,10 @@ fn add_sources(_: &mut Session, p: &Value) -> Result<Value> {
         sources.push((text("path", 4096)?, crate::link_sources::LinkSource { url: text("url", 4096)? }));
     }
     let added = crate::link_sources::add(sources, resolution);
+    // Links supplied now count as found: the Links panel and the canvas look again (not an edit).
+    for st in &mut s.docs {
+        st.revision += 1;
+    }
     let (count, resolution) = crate::link_sources::summary();
     Ok(json!({ "added": added, "sources": count, "resolution": resolution }))
 }
@@ -393,14 +397,18 @@ fn refused(link: &LinkInfo, doc_path: Option<&str>) -> Option<craft_docpath::Ref
 }
 
 /// Where the file of group `g` (of the document saved at `doc_path`) is and whether it still has
-/// the content shown. Its bytes are read only when its size or modification time changed.
+/// the content shown. Its bytes are read only when its size or modification time changed. A file
+/// not found that a host supplies ([`crate::link_sources`]) is OK, with nothing found.
 fn probe(g: &Group, doc_path: Option<&str>) -> (Status, Option<Found>) {
-    let Some(mut f) = locate(&g.link, doc_path) else { return (Status::Missing, None) };
+    // Not found here, but supplied by the host (a link source): found all the same, as a file a
+    // font provider serves counts as installed.
+    let unread = || if crate::link_sources::sourced(&g.link) { Status::Ok } else { Status::Missing };
+    let Some(mut f) = locate(&g.link, doc_path) else { return (unread(), None) };
     let l = &g.link;
     if l.size == Some(f.size) && l.modified.is_some() && l.modified == f.modified {
         return (Status::Ok, Some(f));
     }
-    let Ok(bytes) = f.read() else { return (Status::Missing, None) };
+    let Ok(bytes) = f.read() else { return (unread(), None) };
     let same = match &l.hash {
         Some(h) => *h == hash_bytes(&bytes),
         // Linked before links kept a hash: the image the file decodes to.
