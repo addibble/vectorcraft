@@ -159,6 +159,11 @@ pub struct Session {
     /// While [`Session::place_queue_read`] runs `file.place.queue`: the files read for it, which
     /// the command loads the place cursor with instead of reading them; `None` otherwise.
     pub(crate) queue_hand_off: Option<cmd::place::QueueRead>,
+    /// Save writes a copy Data Recovery restored to the file it was a copy of, as it writes any
+    /// document, rather than asking where (Save As): for a host that stores every save itself and
+    /// merges it with what changed since (the web build's embedding bridge, `saveRecoveredInPlace`).
+    /// False: a recovered copy is saved as, since its file may have changed since it was copied.
+    pub save_recovered_in_place: bool,
     /// Whether a click or drag of the place cursor asks the frontend to place its file
     /// ([`UiRequest::Place`]) instead of running `file.place`: the desktop app sets it to read the
     /// file off the UI thread. False: the file is placed at once.
