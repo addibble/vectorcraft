@@ -104,6 +104,9 @@ impl Renderer {
                 }
             }
             ctx.reset_paint_transform();
+            if !outline {
+                self.draw_supplied(ctx, f, im, area, unit);
+            }
             // A dimmed layer's images: white over them, so they show at that opacity on paper.
             if let Some(dim) = self.dim_images.filter(|d| *d < 1.0 && !outline) {
                 ctx.set_paint(f.ink.fixed([255, 255, 255, ((1.0 - dim) * 255.0).round() as u8]));
@@ -155,6 +158,51 @@ impl Renderer {
         if area.is_some() {
             ctx.pop_layer();
         }
+    }
+
+    /// Over a linked image showing its preview, its file's pixels as a host supplied them
+    /// ([`link_pixels`]); and the image noted as wanting them when it is drawn magnified past its
+    /// preview's pixels. `unit` maps the image's unit square to the device.
+    fn draw_supplied(
+        &mut self,
+        ctx: &mut RenderContext,
+        f: &Frame,
+        im: &vectorcraft_doc::ImageObject,
+        area: Option<&(BezPath, FillRule)>,
+        unit: Affine,
+    ) {
+        let Some(blob) = f.doc.image_blob(im).filter(|b| im.link.is_some() && b.is_proxy()) else { return };
+        // Device pixels along the image's longer stretch, against the preview's longer side.
+        let [a, b, c, d, _, _] = unit.as_coeffs();
+        let device = a.hypot(b).max(c.hypot(d));
+        let preview = images::blob_id(blob).size.map_or(f64::from(vectorcraft_doc::links::PROXY_SIZE), |(w, h)| f64::from(w.max(h)));
+        if device.is_finite() && device > preview {
+            link_pixels::note_drawn(&im.key);
+        }
+        let Some(supplied) = link_pixels::get(&im.key) else { return };
+        let mips = f.opts.image_mips;
+        let Some((key, pm)) = blob_pixmap(&supplied.blob, !mips) else { return };
+        let (key, pm) = ink::ink_image(&key, &pm, f.ink, Some(&supplied.blob), !mips);
+        let pm = if mips { image_mip(&key, pm, unit) } else { pm };
+        let sx = im.width as f64 / pm.width().max(1) as f64;
+        let sy = im.height as f64 / pm.height().max(1) as f64;
+        let quality = if f.opts.smooth_images { peniko::ImageQuality::Medium } else { peniko::ImageQuality::Low };
+        let sampler = peniko::ImageSampler { quality, ..Default::default() };
+        ctx.set_paint(vello_cpu::Image { image: vello_cpu::ImageSource::Pixmap(pm), sampler });
+        match area {
+            Some((bp, rule)) => {
+                ctx.set_transform(f.view);
+                ctx.set_paint_transform(im.xf * Affine::scale_non_uniform(sx, sy));
+                ctx.set_fill_rule(fill_rule(*rule));
+                ctx.fill_path(bp);
+            }
+            None => {
+                ctx.set_transform(f.view * im.xf);
+                ctx.set_paint_transform(Affine::scale_non_uniform(sx, sy));
+                ctx.fill_rect(&Rect::new(0.0, 0.0, im.width as f64, im.height as f64));
+            }
+        }
+        ctx.reset_paint_transform();
     }
 
     /// Name image `key` recoloured by `map` (its hash `hash`) as `derived` (the key the adjusted
