@@ -3,7 +3,7 @@
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use vectorcraft_engine::Session;
 use vectorcraft_engine::cmd::clipboard::{FILE_HEAD, Flavour, PASTE_ORDER, file_flavour, is_address};
@@ -23,7 +23,7 @@ use wasm_bindgen::JsCast as _;
 use crate::locks::WebLocks;
 use crate::pencil::SharedPointers;
 
-pub(crate) type Inbox = Arc<Mutex<Vec<(String, Vec<u8>)>>>;
+pub(crate) use vectorcraft_ui_egui::{Inbox, OpenArrival};
 
 /// The files waiting to open, by where they came from (`Services::inbox`, `picked_inbox` and
 /// `page_inbox`).
@@ -483,7 +483,7 @@ impl eframe::App for WebShell {
                                     DropTarget::Place(d) => {
                                         place_inbox.lock().unwrap_or_else(|e| e.into_inner()).push(PlaceArrival { name, bytes, drop: Some(d) })
                                     }
-                                    DropTarget::Open => inbox.lock().unwrap_or_else(|e| e.into_inner()).push((name, bytes)),
+                                    DropTarget::Open => inbox.lock().unwrap_or_else(|e| e.into_inner()).push(OpenArrival::file(name, bytes)),
                                 }
                                 repaint.request_repaint();
                             }

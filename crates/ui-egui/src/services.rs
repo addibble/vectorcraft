@@ -53,7 +53,24 @@ pub type SaveStreamFn =
 /// Shared, so Background Save and Export can check from a worker thread too.
 pub type ExistsFn = Arc<dyn Fn(&str) -> bool + Send + Sync>;
 
-pub type Inbox = Arc<Mutex<Vec<(String, Vec<u8>)>>>;
+pub type Inbox = Arc<Mutex<Vec<OpenArrival>>>;
+
+/// A file that arrived to be opened ([`Services::inbox`]): its name (which decides how it is read,
+/// and which the document is saved under), its bytes, and the title its document tab shows in
+/// place of the name, when the host gave one ([`crate::UiState::host_titles`]).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct OpenArrival {
+    pub name: String,
+    pub bytes: Vec<u8>,
+    pub title: Option<String>,
+}
+
+impl OpenArrival {
+    /// A file to open under its own name.
+    pub fn file(name: impl Into<String>, bytes: Vec<u8>) -> Self {
+        Self { name: name.into(), bytes, title: None }
+    }
+}
 
 /// The web open picker's answers in order: the picked file, or `None` when it was canceled.
 pub type PickedInbox = Arc<Mutex<Vec<Option<(String, Vec<u8>)>>>>;
@@ -101,7 +118,7 @@ pub struct Services {
     /// before a save or export replaces a file it writes beside that one (a file per artboard, a
     /// linked image). Without it, no file counts as there.
     pub exists: Option<ExistsFn>,
-    /// Files that arrived asynchronously (web drops): (name, bytes).
+    /// Files that arrived asynchronously (web drops, an embedding page's files).
     pub inbox: Option<Inbox>,
     /// Web: the open picker's answers (`open_async`). A file opens as automation's when automation
     /// opened a picker that has not answered yet.
