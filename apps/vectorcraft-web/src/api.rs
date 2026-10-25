@@ -10,6 +10,7 @@
 //! await vectorcraft.commands()                                 // command list
 //! const {base64} = await vectorcraft.screenshot()              // the canvas as PNG (base64)
 //! await vectorcraft.openFile("logo.svg", bytes)               // opened as a dropped file is
+//! vectorcraft.openFile("logo v2.svg", bytes, {title: "Logo"})  // …its tab showing the title
 //! vectorcraft.captureDownloads(true)                           // saves stay in the page…
 //! vectorcraft.files(); await vectorcraft.readFile("logo.png")  // …to be read back
 //! ```
@@ -25,7 +26,8 @@ use wasm_bindgen::prelude::*;
 
 use crate::saved_files::SavedFiles;
 
-use crate::web::Inbox;
+use crate::protocol;
+use crate::web::{Inbox, OpenArrival};
 
 type Waiting = (Receiver<Value>, js_sys::Function, js_sys::Function);
 
@@ -144,16 +146,29 @@ pub fn install() -> Result<(), JsValue> {
     set_fn(
         &obj,
         "openFile",
-        Closure::<dyn Fn(String, js_sys::Uint8Array) -> JsValue>::new(|name: String, bytes: js_sys::Uint8Array| {
-            let queued = INBOX.with(|i| {
-                i.borrow().as_ref().is_some_and(|inbox| {
-                    inbox.lock().unwrap_or_else(|e| e.into_inner()).push((name, bytes.to_vec()));
-                    true
-                })
-            });
-            repaint();
-            JsValue::from_bool(queued)
-        })
+        Closure::<dyn Fn(String, js_sys::Uint8Array, JsValue) -> Result<JsValue, JsValue>>::new(
+            |name: String, bytes: js_sys::Uint8Array, options: JsValue| {
+                // `{title}`: what the tab shows in place of the name (protocol::title).
+                let title = if options.is_undefined() || options.is_null() {
+                    protocol::Field::Absent
+                } else {
+                    match js_sys::Reflect::get(&options, &"title".into()) {
+                        Ok(t) if t.is_undefined() || t.is_null() => protocol::Field::Absent,
+                        Ok(t) => t.as_string().map_or(protocol::Field::Wrong, protocol::Field::Given),
+                        Err(_) => protocol::Field::Wrong,
+                    }
+                };
+                let title = protocol::title(title).map_err(|e| JsValue::from(js_sys::Error::new(&format!("openFile of {name}: {e}"))))?;
+                let queued = INBOX.with(|i| {
+                    i.borrow().as_ref().is_some_and(|inbox| {
+                        inbox.lock().unwrap_or_else(|e| e.into_inner()).push(OpenArrival { name, bytes: bytes.to_vec(), title });
+                        true
+                    })
+                });
+                repaint();
+                Ok(JsValue::from_bool(queued))
+            },
+        )
         .into_js_value(),
     )?;
     set_fn(&obj, "captureDownloads", Closure::<dyn Fn(bool)>::new(|on: bool| CAPTURE.with(|c| c.set(on))).into_js_value())?;
