@@ -13,14 +13,29 @@ impl VectorcraftApp {
         self.services.dialogs_are_sheets && self.file_dialog_open()
     }
 
-    pub(super) fn drain_inbox(&mut self) {
-        let arrived: Vec<(String, Vec<u8>)> =
+    pub(crate) fn drain_inbox(&mut self) {
+        let arrived: Vec<OpenArrival> =
             self.services.inbox.as_ref().map(|q| std::mem::take(&mut *q.lock().unwrap_or_else(|e| e.into_inner()))).unwrap_or_default();
-        for (name, bytes) in arrived {
-            if let Err(e) = io::open_bytes(self, &name, &bytes, None) {
-                io::report_open_error(self, &name, &e);
+        for OpenArrival { name, bytes, title } in arrived {
+            match io::open_bytes(self, &name, &bytes, None) {
+                Ok(_) => {
+                    if let Some(title) = title {
+                        self.title_active(title);
+                    }
+                }
+                Err(e) => io::report_open_error(self, &name, &e),
             }
         }
         place::drain(self);
+    }
+
+    /// Show `title` on the active document's tab in place of its name, while the name stays what
+    /// it is now ([`state::HostTitle`]).
+    fn title_active(&mut self, title: String) {
+        let Some(d) = self.session.active() else { return };
+        let (uid, name) = (d.uid, d.title());
+        let open: Vec<u64> = self.session.documents().iter().map(|d| d.uid).collect();
+        self.ui.host_titles.retain(|t| t.uid != uid && open.contains(&t.uid));
+        self.ui.host_titles.push(state::HostTitle { uid, name, title });
     }
 }
