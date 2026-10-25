@@ -23,7 +23,15 @@ pub fn specs() -> Vec<CommandSpec> {
             always,
             super::newdoc::file_new
         ),
-        cmd!("file.close", "Close", ["File"], Some("Cmd+W"), "{index?}", has_doc, file_close),
+        cmd!(
+            "file.close",
+            "Close",
+            ["File"],
+            Some("Cmd+W"),
+            "{index?, discard?: bool (the app closes a modified document without asking Save Changes, unsaved; the menu item and shortcut never pass it)}",
+            has_doc,
+            file_close
+        ),
         cmd!("document.activate", "Activate Document", [], None, "{index}", always, doc_activate),
         cmd!(query "document.inspect", "Inspect Document", [], None, "{depth?, childLimit?, ids?: [id…] (list just these nodes, of any level, in this order, under `nodes` in place of `layers`; an unknown id is an error; at most 10000), kind?: panel label such as Layer; Group; Path; Type or Image (exact, ignoring case; list every such node under `nodes`, each with `path`, its ancestor ids with the layer first, searching the subtrees of `ids` when given), limit?: at most this many entries of the list, offset?: entries skipped first (default 0; with `ids`, `kind`, `limit` or `offset` the reply adds `total`, the entries before paging)} → layer tree (each node: id, name, kind, visible, locked, bounds, opacity (0–1) and opacityPct (0–100 %, the scale object.setProps takes) when below 1, blend when not Normal, fill, stroke and strokeWidth of objects and compound paths; a compound path's members have compoundMember: true instead of paint, which is the compound's), artboards, selection, history (a sliced tree reports childCount); without the scope options the reply is the whole layer tree", has_doc, doc_inspect),
         cmd!(query "document.node", "Inspect Object", [], None, "{id, summary?: compact summary, depth?: child levels in the summary (default all), childLimit?: children shown per node (default all; a level that shows fewer reports childCount)} → one object", has_doc, doc_node),
@@ -191,6 +199,7 @@ pub fn specs() -> Vec<CommandSpec> {
     ]
 }
 
+/// `discard` is the app's: the engine closes without asking anyway.
 fn file_close(s: &mut Session, p: &Value) -> Result<Value> {
     let i = p.get("index").and_then(Value::as_u64).map(index).or(s.active_index()).ok_or(EngineError::NoDocument)?;
     if !s.close_document(i) {

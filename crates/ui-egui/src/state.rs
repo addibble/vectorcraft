@@ -585,6 +585,14 @@ pub struct UiState {
     /// An embedding page hid the application bar's brand mark (`vectorcraft:configure`).
     #[serde(skip)]
     pub host_hide_mark: bool,
+    /// An embedding page stores what VectorCraft saves and says when it has (`vectorcraft:configure`'s
+    /// `saveOnClose`): closing a modified document saves it and closes it once the page answers
+    /// that the save was stored, in place of asking Save Changes ([`crate::unsaved`]).
+    #[serde(skip)]
+    pub host_save_on_close: bool,
+    /// The close waiting for the embedding page to store a document's save (`saveOnClose`).
+    #[serde(skip)]
+    pub host_closing: Option<crate::unsaved::HostClose>,
     /// Layers panel › Panel Options… (row size, thumbnails, Show Layers Only, Locate Selected Objects).
     #[serde(default)]
     pub layers_panel: crate::panels::layers::PanelOptions,
@@ -903,6 +911,8 @@ impl Default for UiState {
             host_empty_link_clicked: false,
             host_hidden_menus: Vec::new(),
             host_hide_mark: false,
+            host_save_on_close: false,
+            host_closing: None,
             layers_panel: Default::default(),
             layers_filter: Default::default(),
             image_trace_advanced: true,
