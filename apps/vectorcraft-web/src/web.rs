@@ -55,6 +55,8 @@ struct Host {
     locks: Option<WebLocks>,
     /// Graphics restarts so far.
     restarts: u32,
+    /// The page embedding VectorCraft (`?host=parent`).
+    bridge: Option<crate::host::Bridge>,
 }
 
 pub fn start() {
@@ -79,8 +81,19 @@ pub fn start() {
             pointers: SharedPointers::default(),
             locks,
             restarts: 0,
+            // `?host=parent`: a same-origin page framing VectorCraft (such as a Nextcloud app)
+            // opens files in it and stores what it saves (`host`).
+            bridge: if query_param("host").as_deref() == Some("parent") { crate::host::Bridge::new() } else { None },
         };
         track_paste(&host.pasted);
+        if let Some(bridge) = &host.bridge {
+            let pasted = host.pasted.clone();
+            bridge.listen(host.inbox.clone(), move || {
+                if let Some(ctx) = &pasted.borrow().ctx {
+                    ctx.request_repaint();
+                }
+            });
+        }
         run(host, canvas, None).await;
     });
 }
@@ -101,6 +114,7 @@ async fn run(host: Host, canvas: web_sys::HtmlCanvasElement, moving: Option<Movi
     let slot = Rc::new(RefCell::new(moving.map(|m| m.app)));
     let (runner, taken, page) = (host.runner.clone(), slot.clone(), canvas.clone());
     let (pointers, pen_canvas) = (host.pointers.clone(), canvas.clone());
+    let bridge = host.bridge.clone();
     let result = runner
         .start(
             canvas,
@@ -116,7 +130,10 @@ async fn run(host: Host, canvas: web_sys::HtmlCanvasElement, moving: Option<Movi
                     rs.device.set_device_lost_callback(move |reason, msg| loss.report(&ctx, format!("{reason:?}: {msg}")));
                 }
                 host.pasted.borrow_mut().ctx = Some(ctx.clone());
-                let services = services(host.inbox.clone(), host.place_inbox.clone(), ctx.clone(), host.locks.clone());
+                let mut services = services(host.inbox.clone(), host.place_inbox.clone(), ctx.clone(), host.locks.clone());
+                if let Some(bridge) = &host.bridge {
+                    bridge.connect(&mut services);
+                }
                 let app = match taken.borrow_mut().take() {
                     Some(mut app) => {
                         // The old services asked the old context for frames.
@@ -126,6 +143,9 @@ async fn run(host: Host, canvas: web_sys::HtmlCanvasElement, moving: Option<Movi
                         app
                     }
                     None => {
+                        if let Some(bridge) = &host.bridge {
+                            bridge.post_ready();
+                        }
                         // `window.vectorcraft`: the page's control channel (crate::api).
                         let (control_tx, control_rx) = std::sync::mpsc::channel();
                         crate::api::connect(Some(control_tx), host.inbox.clone(), ctx.clone());
@@ -148,7 +168,13 @@ async fn run(host: Host, canvas: web_sys::HtmlCanvasElement, moving: Option<Movi
                 el.remove();
             }
         }
-        (Err(e), None) => notice(&[&format!("VectorCraft failed to start: {}", js_err(e)), "A browser with WebGPU or WebGL2 is required."]),
+        (Err(e), None) => {
+            let error = js_err(e);
+            if let Some(bridge) = &bridge {
+                bridge.post_failed(&error);
+            }
+            notice(&[&format!("VectorCraft failed to start: {error}"), "A browser with WebGPU or WebGL2 is required."]);
+        }
         (Err(e), Some(kept)) => {
             log::error!("vectorcraft-web: couldn't restart the graphics: {}", js_err(e));
             give_up(slot.borrow_mut().take(), kept);
@@ -431,6 +457,9 @@ impl eframe::App for WebShell {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         if let Some(app) = &mut self.app {
             app.ui(ui);
+            if let Some(bridge) = &self.host.bridge {
+                bridge.report_dirty(app);
+            }
         }
         // Type laid out in this frame may have asked for font sources: the next frame's logic
         // fetches them, so it is asked for now rather than at the next input.
