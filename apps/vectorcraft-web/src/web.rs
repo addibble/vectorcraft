@@ -17,6 +17,7 @@ use vectorcraft_ui_egui::{Services, VectorcraftApp};
 use wasm_bindgen::JsCast as _;
 
 use crate::locks::WebLocks;
+use crate::parent_store::ParentStore;
 use crate::pencil::SharedPointers;
 
 pub(crate) use vectorcraft_ui_egui::{Inbox, OpenArrival};
@@ -50,9 +51,10 @@ struct Host {
     pasted: Rc<RefCell<Pasted>>,
     /// Pen and finger input read from the page's Pointer Events (`crate::pencil`).
     pointers: SharedPointers,
-    /// The page's Web Locks for Data Recovery, started once before the first frame: a graphics
-    /// restart keeps them, so the tab stays the owner of its recovery area.
-    locks: Option<WebLocks>,
+    /// Data Recovery's store, with the page's Web Locks started once before the first frame: a
+    /// graphics restart keeps both, so the tab stays the owner of its recovery area and keeps the
+    /// entries the parent gave it.
+    recovery: Arc<dyn RecoveryStore>,
     /// Graphics restarts so far.
     restarts: u32,
     /// The page embedding VectorCraft (`?host=parent`).
@@ -69,6 +71,18 @@ pub fn start() {
     wasm_bindgen_futures::spawn_local(async move {
         // Before the first frame, which looks for copies a crash left behind.
         let locks = WebLocks::start(RECOVERY_PREFIX).await;
+        // `?host=parent`: a same-origin page framing VectorCraft (such as a Nextcloud app) opens
+        // files in it and stores what it saves (`host`).
+        let mut bridge = if query_param("host").as_deref() == Some("parent") { crate::host::Bridge::new() } else { None };
+        // `&recovery=parent`: it keeps Data Recovery's copies too, in place of local storage.
+        let recovery: Arc<dyn RecoveryStore> = match bridge.as_mut().filter(|_| query_param("recovery").as_deref() == Some("parent")) {
+            Some(bridge) => {
+                let store = Arc::new(ParentStore::new(Box::new(crate::host::post_recovery), Box::new(browser_now)));
+                bridge.keep_recovery(store.clone());
+                Arc::new(ParentRecovery { store, locks })
+            }
+            None => Arc::new(BrowserStore { locks }),
+        };
         // Fallback fonts the first frame needs (Noto Sans Arabic), fetched while the loading text
         // shows; the rest load in the background once the app runs.
         crate::fonts::load_startup_fonts().await;
@@ -79,11 +93,9 @@ pub fn start() {
             drag: DragPos::default(),
             pasted: Rc::default(),
             pointers: SharedPointers::default(),
-            locks,
+            recovery,
             restarts: 0,
-            // `?host=parent`: a same-origin page framing VectorCraft (such as a Nextcloud app)
-            // opens files in it and stores what it saves (`host`).
-            bridge: if query_param("host").as_deref() == Some("parent") { crate::host::Bridge::new() } else { None },
+            bridge,
         };
         track_paste(&host.pasted);
         if let Some(bridge) = &host.bridge {
@@ -131,7 +143,7 @@ async fn run(host: Host, canvas: web_sys::HtmlCanvasElement, moving: Option<Movi
                     rs.device.set_device_lost_callback(move |reason, msg| loss.report(&ctx, format!("{reason:?}: {msg}")));
                 }
                 host.pasted.borrow_mut().ctx = Some(ctx.clone());
-                let mut services = services(host.inbox.clone(), host.place_inbox.clone(), ctx.clone(), host.locks.clone());
+                let mut services = services(host.inbox.clone(), host.place_inbox.clone(), ctx.clone(), host.recovery.clone());
                 if let Some(bridge) = &host.bridge {
                     bridge.connect(&mut services);
                 }
@@ -482,7 +494,7 @@ impl eframe::App for WebShell {
     }
 }
 
-fn services(inbox: Inbox, place_inbox: PlaceInbox, ctx: egui::Context, locks: Option<WebLocks>) -> Services {
+fn services(inbox: Inbox, place_inbox: PlaceInbox, ctx: egui::Context, recovery: Arc<dyn RecoveryStore>) -> Services {
     let open_inbox = inbox.clone();
     let picked = place_inbox.clone();
     let place_ctx = ctx.clone();
@@ -529,7 +541,7 @@ fn services(inbox: Inbox, place_inbox: PlaceInbox, ctx: egui::Context, locks: Op
         // A download that couldn't be started fails the save or export it is for (#1693).
         download: Some(Box::new(|name: &str, bytes: &[u8]| download(name, bytes).inspect_err(|e| log::error!("download of {name} failed: {e}")))),
         inbox: Some(inbox),
-        recovery_store: Some(Arc::new(BrowserStore { locks })),
+        recovery_store: Some(recovery),
         // File → Print: the browser's print dialog.
         print: Some(Box::new(BrowserPrint)),
         ..Default::default()
@@ -612,12 +624,54 @@ impl RecoveryStore for BrowserStore {
         "browser storage".into()
     }
     fn now(&self) -> Option<i64> {
-        Some((js_sys::Date::now() / 1000.0) as i64)
+        browser_now()
     }
     fn announce(&self, area: &str) -> Option<Hold> {
         self.locks.as_ref()?.hold(area)
     }
     fn announced(&self, area: &str) -> Option<bool> {
+        self.locks.as_ref().map(|l| l.held(area))
+    }
+}
+
+/// The browser's clock, in Unix seconds.
+fn browser_now() -> Option<i64> {
+    Some((js_sys::Date::now() / 1000.0) as i64)
+}
+
+/// Data Recovery's store when the parent page keeps the copies (`&recovery=parent`): the entries
+/// it holds and posts ([`ParentStore`]), with this browser's Web Locks. A tab of this browser that
+/// still runs holds its lock; one elsewhere (another device the parent gave entries from) is told
+/// apart by its heartbeat alone, since its lock isn't held here.
+struct ParentRecovery {
+    store: Arc<ParentStore>,
+    locks: Option<WebLocks>,
+}
+
+impl RecoveryStore for ParentRecovery {
+    fn list(&self) -> Result<Vec<String>, String> {
+        self.store.list()
+    }
+    fn read(&self, name: &str) -> Result<Vec<u8>, String> {
+        self.store.read(name)
+    }
+    fn write(&self, name: &str, bytes: &[u8]) -> Result<(), String> {
+        self.store.write(name, bytes)
+    }
+    fn remove(&self, name: &str) -> Result<(), String> {
+        self.store.remove(name)
+    }
+    fn location(&self) -> String {
+        self.store.location()
+    }
+    fn now(&self) -> Option<i64> {
+        self.store.now()
+    }
+    fn announce(&self, area: &str) -> Option<Hold> {
+        self.locks.as_ref()?.hold(area)
+    }
+    fn announced(&self, area: &str) -> Option<bool> {
+        // Not held here is no word on a tab elsewhere: the heartbeat decides (`unwrap_or(false)`).
         self.locks.as_ref().map(|l| l.held(area))
     }
 }
