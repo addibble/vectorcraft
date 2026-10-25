@@ -26,7 +26,9 @@
 //!   a path, or with `data: true`, as `pngBase64`)
 //! - `app.open {path}` (any readable format) / `app.save {path?, svg?: {…SVG options}}` / `app.quit`
 //!   (`file.close`, `file.closeAll` and `app.quit` first open a `saveChanges` dialog for each
-//!   modified document: `ui.dialog.confirm` saves, set `discard: true` then confirm to discard)
+//!   modified document: `ui.dialog.confirm` saves, set `discard: true` then confirm to discard;
+//!   `file.close {discard: true}` closes unsaved without asking; with an embedding page's
+//!   `saveOnClose` they save instead and answer `{pending: "hostSave"}`, `crate::unsaved`)
 //! - `app.export {path?, format?, …document.export options}`: encoded by the engine, written through
 //!   the host; the document keeps its path. No path → `{dataBase64, format, bytes}` (as headless)
 //! - `wait: true` on `app.save` and `app.export`: the file is written before the reply, even with
