@@ -17,6 +17,7 @@ What changes in host mode:
 - Everything VectorCraft would download goes to the parent as `vectorcraft:save` instead: Save, Save As, Save a Copy and the exports. There is still no save panel, so the parent decides where each file goes.
 - The parent is told when unsaved changes appear or go away (`vectorcraft:dirty`). VectorCraft doesn't ask before the page is left; guarding that is the parent's job.
 - With `saveOnClose` (see `vectorcraft:configure`), closing a modified document saves it to the parent instead of asking Save Changes, and it closes once the parent says the save was stored (`vectorcraft:saved`).
+- With `&recovery=parent` as well (`?host=parent&recovery=parent`), Data Recovery keeps its copies with the parent instead of the browser's local storage. See [Data Recovery kept by the page](#data-recovery-kept-by-the-page).
 
 ## Messages
 
@@ -31,7 +32,10 @@ Every message is a plain object with a string `type`. VectorCraft posts only to 
 | `vectorcraft:dirty` | to the parent | `dirty` (boolean) | Unsaved changes appeared (`true`) or went away (`false`). |
 | `vectorcraft:configure` | from the parent | `hide`, `hideMenus` (arrays of strings), `hideMark`, `saveOnClose` (booleans), `emptyMessage`, `emptyLink` (strings) | Hide commands, menus and the brand mark the host has no use for, say what the window shows with no document open, and save on closing instead of asking. |
 | `vectorcraft:emptyLink` | to the parent | none | The user clicked the empty window's link (`emptyLink`). |
-| `vectorcraft:failed` | to the parent | `error` (string) | Before `ready`: the app couldn't start. After `ready`: the last `vectorcraft:open`, `vectorcraft:configure` or `vectorcraft:saved` was refused; the app keeps running. |
+| `vectorcraft:recoveryWrite` | to the parent | `name` (string), `bytes` (`ArrayBuffer`, transferred) | With `&recovery=parent`: keep Data Recovery entry `name`, replacing any of that name. |
+| `vectorcraft:recoveryRemove` | to the parent | `name` (string) | With `&recovery=parent`: delete entry `name` (one that isn't there is no error). |
+| `vectorcraft:recoveryEntries` | from the parent | `entries` (array of `{name, bytes}`) | With `&recovery=parent`: the entries the parent keeps; recovery copies a crash left among them are offered. |
+| `vectorcraft:failed` | to the parent | `error` (string) | Before `ready`: the app couldn't start. After `ready`: the last `vectorcraft:open`, `vectorcraft:configure`, `vectorcraft:saved` or `vectorcraft:recoveryEntries` was refused; the app keeps running. |
 
 **`vectorcraft:ready`** comes once, when the app has started. `version` is the app's version (`CARGO_PKG_VERSION`). A host that has heard neither `ready` nor `failed` after a reasonable time should assume the app couldn't start. The commonest reason is a browser without WebGPU or WebGL2.
 
@@ -71,6 +75,17 @@ While a close waits, the document can't be closed again (nor can Close All or Qu
 
 The host itself can still close a document and throw its changes away without any question, such as when it replaces the document with a newer copy: the command `file.close` with `discard: true` (`window.vectorcraft.execute("file.close", {index, discard: true})`, `index` defaulting to the active document) closes it unsaved, with or without `saveOnClose`, ending any close or question waiting for it. No menu item or shortcut passes `discard`, so the user is never offered it. A build without this answers the command with an error (an unknown parameter), and the host can fall back to answering the Save Changes question with Don't Save (`ui.dialog.set {field: "discard", value: true}`, then `ui.dialog.confirm`).
 
+### Data Recovery kept by the page
+
+On the web Data Recovery (Preferences › File Handling › Data Recovery) keeps its copies of modified documents in the browser's local storage, which holds a few megabytes per site: a large document's copy doesn't fit, and the status line says "Couldn't save recovery data". A host that stores files itself can keep the copies instead, wherever it likes (its own server, say, so they outlast the browser): load the build with `?host=parent&recovery=parent`.
+
+1. Every change to the copies is posted: `vectorcraft:recoveryWrite` creates or replaces an entry and `vectorcraft:recoveryRemove` deletes one. The parent keeps each entry's bytes under its `name` exactly. A write that can't be posted fails the recovery save, which the status line reports; the parent reports its own failures to store one.
+2. Names are `<area>/<entry>`: each running app keeps its entries in an area of its own (`1793284512-1`), and an entry is a copy's document (`<copy>.vectorcraft`), its details (`<copy>.json`, JSON: the document's `title` and `path`, the name it was opened under, its `images` and when it was written), an image the area's copies share (`img-….blob`, named by its content, so it never changes), or the area's `heartbeat` (Unix seconds, as text, refreshed every minute while the app runs). The parent may read the details, to keep each copy with the file it is of, say; the rest is VectorCraft's own.
+3. A page that frames VectorCraft later gives the entries back, after `ready`: `vectorcraft:recoveryEntries` with `entries`, each `{name, bytes}` (bytes an `ArrayBuffer` or `Uint8Array`). They join the entries held (a later message adds to them; an entry of a name already held is replaced), and VectorCraft offers the copies among them that a crash left behind, with the Recover Documents question, as the desktop app does at launch. The copies of an app that still runs (its heartbeat fresh, or its tab holding its Web Lock in this browser) are never offered, so entries from other pages and other devices may be given too. Restoring a copy moves it into this app's area, and discarding deletes it: both are posted as above.
+4. VectorCraft holds the entries in memory while it runs, so a recovery save, a restore and the question answer at once without waiting for the parent; the entries it holds are only those it wrote and was given.
+
+At most 100,000 entries per message, each name up to 300 characters with a single `/` between non-blank parts. A message of any other shape, or one sent without `&recovery=parent`, is refused with `vectorcraft:failed`, and none of it is taken. Without `&recovery=parent` nothing changes: the copies stay in local storage and the recovery messages are never sent.
+
 **`vectorcraft:dirty`** is sent after the first frame and then whenever the answer changes, so the first one is usually `dirty: false`. `true` means at least one open document has unsaved changes.
 
 ## Who is heard
@@ -79,7 +94,7 @@ The bridge reads a message only when all of these hold:
 
 1. it comes from `window.parent` (`event.source`), not from another window or frame on the site;
 2. its origin (`event.origin`) is exactly the page's own: same scheme, host and port;
-3. its `type` is `vectorcraft:open`, `vectorcraft:configure` or `vectorcraft:saved`.
+3. its `type` is `vectorcraft:open`, `vectorcraft:configure`, `vectorcraft:saved` or `vectorcraft:recoveryEntries`.
 
 Anything else is ignored without a reply, so a page on another origin can neither open files in VectorCraft nor learn that it is there. Saves and other replies go only to `window.parent`, with the page's own origin as the target, so the browser delivers them to no other site. A same-origin parent can already script the frame directly, so the bridge gives it nothing it couldn't otherwise do; it only spares it reaching into the app's internals.
 
