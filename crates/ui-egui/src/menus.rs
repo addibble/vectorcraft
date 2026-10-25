@@ -1728,10 +1728,15 @@ pub fn run_ui_command(app: &mut VectorcraftApp, id: &str, p: &Value) -> Option<R
             app.ui.palette_query.clear();
             Ok(Value::Null)
         }
-        // Closing asks Save / Don't Save / Cancel for modified documents first (`unsaved`).
+        // Closing asks Save / Don't Save / Cancel for modified documents first (`unsaved`), unless
+        // the caller said to discard them.
         "file.close" => {
             let i = p.get("index").and_then(Value::as_u64).map(|i| i as usize).or(app.session.active_index())?;
-            crate::unsaved::close(app, i)
+            match p.get("discard") {
+                None | Some(Value::Null | Value::Bool(false)) => crate::unsaved::close(app, i),
+                Some(Value::Bool(true)) => crate::unsaved::discard(app, i),
+                Some(_) => Err("`discard` must be true or false".into()),
+            }
         }
         "file.closeAll" => crate::unsaved::close_all(app, "closeAll"),
         "app.quit" => crate::unsaved::close_all(app, "quit"),

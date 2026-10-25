@@ -392,7 +392,8 @@ impl eframe::App for WebShell {
             self.restart(&why);
         }
         let Some(app) = &mut self.app else { return };
-        // The embedding page's hidden commands, menus and mark, and empty-window message and link (`host`).
+        // The embedding page's hidden commands, menus and mark, empty-window message and link, and
+        // its answers to saves (`host`).
         if let Some(bridge) = &self.host.bridge {
             bridge.configure(app);
         }
@@ -467,6 +468,7 @@ impl eframe::App for WebShell {
             }
             app.ui(ui);
             if let Some(bridge) = &self.host.bridge {
+                bridge.follow_saves(app);
                 bridge.report_dirty(app);
                 bridge.report_link(app);
             }
