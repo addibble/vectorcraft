@@ -1,15 +1,17 @@
 use super::{Sense, Stroke, Tokens, Ui, VectorcraftApp, icons, json, theme, vec2, widgets, zoom_label};
 
 /// A document tab's title: "Name* @ 66.67 % (RGB/Preview)", or while an opacity mask is edited
-/// "Name* @ 66.67 % (<Opacity Mask>/Opacity Mask)".
-pub(super) fn tab_title(d: &vectorcraft_engine::DocState, zoom: f64, outline: bool, display_print_size: bool) -> String {
+/// "Name* @ 66.67 % (<Opacity Mask>/Opacity Mask)". `host` is a title the host gave the document
+/// ([`crate::state::HostTitle`]), shown in place of its name.
+pub(super) fn tab_title(d: &vectorcraft_engine::DocState, host: Option<&str>, zoom: f64, outline: bool, display_print_size: bool) -> String {
     let mode = if d.doc.mask_edit.is_some() {
         format!("<{0}>/{0}", tl!("Opacity Mask"))
     } else {
         let color = if d.doc.color_mode == vectorcraft_doc::ColorMode::Cmyk { "CMYK" } else { "RGB" };
         format!("{color}/{}", if outline { tl!("Outline") } else { tl!("Preview") })
     };
-    format!("{}{} @ {} ({mode})", d.title(), if d.is_dirty() { "*" } else { "" }, zoom_label(zoom, display_print_size).replace('%', " %"))
+    let name = host.map_or_else(|| d.title(), str::to_string);
+    format!("{name}{} @ {} ({mode})", if d.is_dirty() { "*" } else { "" }, zoom_label(zoom, display_print_size).replace('%', " %"))
 }
 
 /// Whether a document tab's × comes before its title (macOS) rather than after it (Windows,
@@ -47,7 +49,8 @@ pub fn doc_tabs(app: &mut VectorcraftApp, ui: &mut Ui) {
         .enumerate()
         .map(|(i, d)| {
             let zoom = app.views.get(i).map(|v| v.zoom).unwrap_or(1.0);
-            let title = tab_title(d, zoom, app.ui.view.outline, app.session.prefs.display_print_size);
+            let host = crate::state::host_title(&app.ui.host_titles, d);
+            let title = tab_title(d, host, zoom, app.ui.view.outline, app.session.prefs.display_print_size);
             let color = if Some(i) == active { t.text_strong } else { t.text_dim };
             (title.clone(), ui.painter().layout_no_wrap(title, theme::semibold(title_size), color))
         })
