@@ -704,3 +704,21 @@ fn a_crash_between_a_copys_document_and_its_details_keeps_every_image() {
         assert_eq!(images_of(&s), images, "first copy: {first}");
     }
 }
+
+/// A host that stores its saves and merges them (the web build's embedding bridge) has Save write
+/// a restored copy to its own file, as any document, instead of asking where.
+#[test]
+fn a_host_that_merges_its_saves_saves_a_restored_copy_in_place() {
+    use crate::cmd::fileio::{SaveMode, save_plan};
+    let (mut s, store) = session();
+    s.doc_mut().unwrap().path = Some("Deck v3.vectorcraft".into());
+    s.execute("file.recovery.save", &json!({})).unwrap();
+    drop(s);
+    let mut s = relaunch(&store);
+    s.execute("file.recovery.restore", &json!({})).unwrap();
+    assert_eq!(save_plan(&s, SaveMode::Save, &json!({})).unwrap().path, None, "asked where, by default");
+    s.save_recovered_in_place = true;
+    assert_eq!(save_plan(&s, SaveMode::Save, &json!({})).unwrap().path.as_deref(), Some("Deck v3.vectorcraft"));
+    // Save As still asks.
+    assert_eq!(save_plan(&s, SaveMode::SaveAs, &json!({})).unwrap().path, None);
+}
