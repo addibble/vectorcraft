@@ -27,8 +27,8 @@ impl VectorcraftApp {
             arrived.extend(answer.map(|(name, bytes)| (OpenArrival::file(name, bytes), automated)));
         }
         arrived.extend(take(self.services.page_inbox.as_ref()).into_iter().map(|f| (f, true)));
-        for (OpenArrival { name, bytes, title }, automated) in arrived {
-            crate::picks::as_automated(self, automated, |app| match io::open_bytes(app, &name, &bytes, None) {
+        for (OpenArrival { name, bytes, title, path }, automated) in arrived {
+            crate::picks::as_automated(self, automated, |app| match io::open_bytes(app, &name, &bytes, path) {
                 Ok(_) => {
                     if let Some(title) = title {
                         app.title_active(title);
