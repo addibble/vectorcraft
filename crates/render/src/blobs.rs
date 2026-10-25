@@ -1,5 +1,33 @@
 use super::*;
 
+/// Pixels `src` (under `src_key` in the shared image store) recoloured by `map` (its hash `hash`),
+/// made once and kept in the store beside them.
+pub(crate) fn adjusted_pixmap(
+    src_key: images::ImageKey,
+    src: &Pixmap,
+    hash: u64,
+    map: &vectorcraft_effects::ColorMap,
+    touch: bool,
+) -> (images::ImageKey, Arc<Pixmap>) {
+    let key = images::ImageKey { adjust: Some(hash), ..src_key };
+    if let Some(pm) = lookup(&key, touch) {
+        return (key, pm);
+    }
+    let mut pm = src.clone();
+    let mut memo: HashMap<[u8; 4], [u8; 3]> = HashMap::new();
+    for px in pm.data_mut().iter_mut().filter(|p| p.a > 0) {
+        let a = px.a as u32;
+        let [r, g, b] = *memo.entry([px.r, px.g, px.b, px.a]).or_insert_with(|| {
+            // Premultiplied to straight, adjusted, then premultiplied again.
+            let straight = [px.r, px.g, px.b].map(|v| ((v as u32 * 255 + a / 2) / a).min(255) as u8);
+            map.apply_rgb8(straight).map(|v| ((v as u32 * a + 127) / 255) as u8)
+        });
+        (px.r, px.g, px.b) = (r, g, b);
+    }
+    let pm = images::store().insert(key.clone(), Arc::new(pm));
+    (key, pm)
+}
+
 /// `key`'s pixels in the shared image store; `touch` marks them used.
 pub(crate) fn lookup(key: &images::ImageKey, touch: bool) -> Option<Arc<Pixmap>> {
     let mut s = images::store();

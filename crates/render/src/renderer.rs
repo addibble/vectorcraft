@@ -1,4 +1,4 @@
-use super::blobs::{blob_key, blob_pixmap, image_mip, lookup, mask_value, mip_level, plain_image};
+use super::blobs::{adjusted_pixmap, blob_key, blob_pixmap, image_mip, lookup, mask_value, mip_level, plain_image};
 use super::clock::now;
 use super::frame::{
     ClipEntry, ClipPaintEntry, Frame, FrameStats, GeomEntry, MAX_INLINE_DEPTH, MISSING_INLINE_LOGGED, PlacedEntry, PlacedKey, PtrMap, SliceEntry,

@@ -93,3 +93,53 @@ fn the_image_caches_budgets_are_told_and_set() {
 fn s_cache(p: &serde_json::Value) -> serde_json::Value {
     Session::new().execute("view.imageCache", p).unwrap()
 }
+
+/// Colour adjustment effects recolour a linked image live: its preview, the pixels a source
+/// supplied over it, and the supplied pixels for output; Edit Colors, an edit, leaves its file be.
+#[test]
+fn a_colour_adjustment_recolours_a_sourced_link_live_and_for_output() {
+    // Colours no other test links, so the shared pixels are this test's alone.
+    const FILE: [u8; 3] = [30, 60, 220];
+    const SUPPLIED: [u8; 3] = [220, 40, 40];
+    let dir = Folder::new("sources-adjust");
+    let pic = dir.file("adjusted.png");
+    write(&pic, &png(600, 300, FILE));
+    let mut s = session();
+    let id = place(&mut s, &pic);
+    let saved = vectorcraft_format::save(&s.doc().unwrap().doc, false);
+    std::fs::remove_file(&pic).unwrap();
+    s.execute("document.open", &json!({"name": "adjusted.vectorcraft", "dataBase64": vectorcraft_format::base64_encode(&saved)})).unwrap();
+    let im = image(&s, id);
+    let (key, path) = (im.key.clone(), im.link.as_ref().unwrap().path.clone());
+    s.execute("links.addSources", &json!({"sources": [{"path": path, "url": "pictures/adjusted.png?side={side}"}]})).unwrap();
+    s.execute("select.set", &json!({"ids": [id.0]})).unwrap();
+
+    // Edit Colors would write the file's pixels into the document: a linked image is left alone.
+    assert_eq!(s.execute("edit.colors.invert", &json!({})).unwrap(), json!({"changed": 0}));
+    assert_eq!(image(&s, id).key, key);
+
+    let effect = vectorcraft_doc::Effect { id: "adjust.hueSaturation".into(), params: json!({"hue": 120}), visible: true };
+    let map = vectorcraft_render::effects::color_map(std::slice::from_ref(&effect)).unwrap();
+    s.execute("effect.apply", &json!({"effect": effect.id, "params": effect.params})).unwrap();
+    assert!(near(centre_colour(&s.doc().unwrap().doc), map.apply_rgb8(FILE)), "the preview, recoloured");
+    let r = s.execute("links.supplySource", &json!({"path": path, "dataBase64": vectorcraft_format::base64_encode(&png(600, 300, SUPPLIED))}));
+    assert_eq!(r.unwrap()["images"], json!(1));
+    assert!(near(centre_colour(&s.doc().unwrap().doc), map.apply_rgb8(SUPPLIED)), "the supplied pixels, recoloured");
+
+    // Output recolours the supplied pixels at their size, into a new image; the link stays.
+    let st = s.doc().unwrap();
+    let node = st.doc.node(id).unwrap().clone();
+    let mut out = link_sources::for_output(&st.doc).into_owned();
+    let NodeKind::Image(baked) = vectorcraft_render::effects::adjust_in_document(&mut out, &node).unwrap().kind else { panic!("an image") };
+    assert!(baked.key != key && baked.link.is_some());
+    let blob = &out.images[&baked.key];
+    assert!(!blob.is_proxy());
+    let rgba = image::load_from_memory(&blob.bytes).unwrap().to_rgba8();
+    assert_eq!(rgba.dimensions(), (600, 300));
+    let [r, g, b, _] = rgba.get_pixel(300, 150).0;
+    assert!(near([r, g, b], map.apply_rgb8(SUPPLIED)));
+    // Without supplied pixels the preview is never baked in its file's place.
+    let mut doc = (*st.doc).clone();
+    let kept = vectorcraft_render::effects::adjust_in_document(&mut doc, &node);
+    assert!(kept.is_none_or(|n| matches!(&n.kind, NodeKind::Image(im) if im.key == key)));
+}
