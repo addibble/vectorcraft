@@ -27,6 +27,13 @@
 //!   instead of asking Save Changes, closing it once the parent answers `vectorcraft:saved`. Each
 //!   replaces the last whole; a malformed one is refused with `vectorcraft:failed`.
 //! - `vectorcraft:emptyLink` (to the parent): `{}`, the user clicked the empty window's link.
+//! - With `&recovery=parent`, Data Recovery keeps its copies with the parent (`parent_store`):
+//!   `vectorcraft:recoveryWrite` (to the parent) `{ name, bytes }` (a transferred `ArrayBuffer`)
+//!   creates or replaces an entry and `vectorcraft:recoveryRemove` `{ name }` deletes one;
+//!   `vectorcraft:recoveryEntries` (from the parent) `{ entries: [{ name, bytes }] }` gives the
+//!   entries it keeps (those of earlier pages), which join the ones held, and the copies a crash
+//!   left behind among them are offered (Recover Documents). A malformed one is refused with
+//!   `vectorcraft:failed`, and none of it is taken.
 //! - `vectorcraft:failed` (to the parent): `{ error }`. Before `ready`, the app couldn't start;
 //!   after it, the last message from the parent was refused (the app keeps running).
 //!
@@ -35,12 +42,14 @@
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::sync::Arc;
 
 use vectorcraft_ui_egui::{Services, VectorcraftApp};
 use wasm_bindgen::JsCast as _;
 use wasm_bindgen::JsValue;
 use wasm_bindgen::closure::Closure;
 
+use crate::parent_store::{Change, ParentStore};
 use crate::protocol;
 
 use vectorcraft_ui_egui::{Inbox, OpenArrival};
@@ -60,6 +69,10 @@ pub struct Bridge {
     posted: Rc<RefCell<Vec<(u64, String)>>>,
     /// The `vectorcraft:saved` answers heard, until the next frame applies them.
     answers: Rc<RefCell<Vec<protocol::Saved>>>,
+    /// Data Recovery's store when the parent keeps the copies (`&recovery=parent`).
+    recovery: Option<Arc<ParentStore>>,
+    /// The parent gave recovery entries the app hasn't offered yet.
+    offer: Rc<Cell<bool>>,
 }
 
 impl Bridge {
@@ -80,7 +93,14 @@ impl Bridge {
             last_save: Rc::default(),
             posted: Rc::default(),
             answers: Rc::default(),
+            recovery: None,
+            offer: Rc::default(),
         })
+    }
+
+    /// Data Recovery keeps its copies with the parent in `store`, which takes the entries it gives.
+    pub fn keep_recovery(&mut self, store: Arc<ParentStore>) {
+        self.recovery = Some(store);
     }
 
     /// Send what VectorCraft would download to the parent instead (each time the services are
@@ -115,6 +135,11 @@ impl Bridge {
         let answers = std::mem::take(&mut *self.answers.borrow_mut());
         for a in answers {
             vectorcraft_ui_egui::unsaved::host_saved(app, a.id, &a.name, a.ok, a.error.as_deref());
+        }
+        // The copies a crash left behind among the entries given, once no other dialog is up.
+        if self.offer.get() && app.ui.dialog.is_none() {
+            self.offer.set(false);
+            vectorcraft_ui_egui::recovery::offer(app);
         }
     }
 
@@ -189,6 +214,24 @@ impl Bridge {
                     }
                     Err(error) => {
                         log::warn!("refused the page's configuration: {error}");
+                        bridge.post_failed(&error);
+                    }
+                }
+                return;
+            }
+            if string(&data, "type").as_deref() == Some("vectorcraft:recoveryEntries") {
+                let Some(store) = &bridge.recovery else {
+                    bridge.post_failed("vectorcraft:recoveryEntries needs Data Recovery kept by the page (`&recovery=parent`)");
+                    return;
+                };
+                match protocol::recovery_entries(entries(&data)) {
+                    Ok(entries) => {
+                        store.give(entries);
+                        bridge.offer.set(true);
+                        wake();
+                    }
+                    Err(error) => {
+                        log::warn!("refused the page's recovery entries: {error}");
                         bridge.post_failed(&error);
                     }
                 }
@@ -287,6 +330,41 @@ fn strings(data: &JsValue, key: &str) -> protocol::Field<Vec<String>> {
         out.push(s);
     }
     protocol::Field::Given(out)
+}
+
+/// Post a change to Data Recovery's entries to the parent (`ParentStore`'s post): from the
+/// window itself, since the store holds no browser objects.
+pub fn post_recovery(change: Change) -> Result<(), String> {
+    let js = |e: JsValue| e.as_string().unwrap_or_else(|| format!("{e:?}"));
+    let window = web_sys::window().ok_or("no window")?;
+    let parent = window.parent().map_err(js)?.ok_or("no parent page")?;
+    let origin = window.location().origin().map_err(js)?;
+    match change {
+        Change::Write { name, bytes } => {
+            let buffer = js_sys::Uint8Array::from(bytes).buffer();
+            let m = message(&[("type", "vectorcraft:recoveryWrite".into()), ("name", name.into()), ("bytes", buffer.clone().into())])
+                .ok_or("couldn't build the message")?;
+            parent.post_message_with_transfer(&m, &origin, &js_sys::Array::of1(&buffer)).map_err(js)
+        }
+        Change::Remove { name } => {
+            let m = message(&[("type", "vectorcraft:recoveryRemove".into()), ("name", name.into())]).ok_or("couldn't build the message")?;
+            parent.post_message(&m, &origin).map_err(js)
+        }
+    }
+}
+
+/// A `vectorcraft:recoveryEntries`' `entries`: each `{ name, bytes }` as far as it reads (`None`:
+/// not an array, or one too long to read: `protocol::recovery_entries` refuses it).
+fn entries(data: &JsValue) -> Option<Vec<protocol::EntryFields>> {
+    let v = js_sys::Reflect::get(data, &JsValue::from_str("entries")).ok()?;
+    if !js_sys::Array::is_array(&v) {
+        return None;
+    }
+    let array = js_sys::Array::from(&v);
+    if array.length() as usize > protocol::MAX_RECOVERY_ENTRIES {
+        return None;
+    }
+    Some(array.iter().map(|e| (string(&e, "name"), bytes(&e))).collect())
 }
 
 /// `bytes` as an `ArrayBuffer` or `Uint8Array`.
