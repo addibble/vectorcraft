@@ -31,6 +31,8 @@ mod keys;
 #[cfg(target_arch = "wasm32")]
 mod host;
 #[cfg(target_arch = "wasm32")]
+mod link_sources;
+#[cfg(target_arch = "wasm32")]
 mod locks;
 #[cfg(any(target_arch = "wasm32", test))]
 mod parent_store;

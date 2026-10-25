@@ -433,6 +433,18 @@ impl eframe::App for WebShell {
             db.source_settled(&src, false);
             app.font_source_failed(&src.family, &reason);
         }
+        // Link sources: the linked files drawn larger than their previews are fetched; those
+        // fetched are drawn over the previews (not an edit).
+        crate::link_sources::fetch_requested(ctx, &app.session);
+        for (path, bytes) in crate::link_sources::take_fetched() {
+            if let Err(e) = vectorcraft_engine::link_sources::supply(&mut app.session, &path, bytes) {
+                log::warn!("link source {path}: {e}");
+            }
+        }
+        for (path, reason) in crate::link_sources::take_failed() {
+            vectorcraft_engine::link_sources::failed(&path, &reason);
+            app.status(format!("{path} couldn't be loaded ({reason}): it shows its preview"));
+        }
         app.tick(ctx);
         crate::api::poll_replies();
         app.finish_ime_logic(ctx);
@@ -489,6 +501,11 @@ impl eframe::App for WebShell {
         // Type laid out in this frame may have asked for font sources: the next frame's logic
         // fetches them, so it is asked for now rather than at the next input.
         if vectorcraft_text::FontDb::global().has_source_requests() {
+            ui.ctx().request_repaint();
+        }
+        // Linked images drawn in this frame may want their files: the next frame's logic fetches
+        // them, so it is asked for now rather than at the next input.
+        if vectorcraft_engine::link_sources::drawn_since() {
             ui.ctx().request_repaint();
         }
         crate::api::poll_replies();
