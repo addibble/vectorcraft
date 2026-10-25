@@ -1,22 +1,26 @@
 use super::{Sense, Stroke, Tokens, Ui, VectorcraftApp, icons, json, theme, vec2, widgets, zoom_label};
 
 /// A document tab's title: "Name* @ 66.67 % (RGB/Preview)", or while an opacity mask is edited
-/// "Name* @ 66.67 % (<Opacity Mask>/Opacity Mask)".
-pub(super) fn tab_title(d: &vectorcraft_engine::DocState, zoom: f64, outline: bool, display_print_size: bool) -> String {
+/// "Name* @ 66.67 % (<Opacity Mask>/Opacity Mask)". `host` is a title the host gave the document
+/// ([`crate::state::HostTitle`]), shown in place of its name.
+pub(super) fn tab_title(d: &vectorcraft_engine::DocState, host: Option<&str>, zoom: f64, outline: bool, display_print_size: bool) -> String {
     let mode = if d.doc.mask_edit.is_some() {
         format!("<{0}>/{0}", tl!("Opacity Mask"))
     } else {
         let color = if d.doc.color_mode == vectorcraft_doc::ColorMode::Cmyk { "CMYK" } else { "RGB" };
         format!("{color}/{}", if outline { tl!("Outline") } else { tl!("Preview") })
     };
-    format!("{}{} @ {} ({mode})", d.title(), if d.is_dirty() { "*" } else { "" }, zoom_label(zoom, display_print_size).replace('%', " %"))
+    let name = host.map_or_else(|| d.title(), str::to_string);
+    format!("{name}{} @ {} ({mode})", if d.is_dirty() { "*" } else { "" }, zoom_label(zoom, display_print_size).replace('%', " %"))
 }
 
-/// The title of open document `i`'s tab, with its own view's zoom and Outline or Preview.
+/// The title of open document `i`'s tab, with its own view's zoom and Outline or Preview, and the
+/// title a host page gave it when it gave one.
 pub(super) fn doc_tab_title(app: &VectorcraftApp, i: usize, d: &vectorcraft_engine::DocState) -> String {
     let view = app.views.get(i);
     let zoom = view.map_or(1.0, |v| v.zoom);
-    tab_title(d, zoom, view.is_some_and(|v| v.outline), app.session.prefs.display_print_size)
+    let host = crate::state::host_title(&app.ui.host_titles, d);
+    tab_title(d, host, zoom, view.is_some_and(|v| v.outline), app.session.prefs.display_print_size)
 }
 
 /// Whether a document tab's × comes before its title (macOS) rather than after it (Windows,
