@@ -266,9 +266,11 @@ pub fn save_plan(s: &Session, mode: SaveMode, p: &Value) -> Result<SavePlan> {
     }
     // None given: the ones the document was last saved with in this format.
     let options = if given.is_empty() && format.id == st.format { remembered_save_options(st) } else { given };
-    // Save writes the document's own file; the other modes only where they are told to.
-    let path =
-        path.or_else(|| (mode == SaveMode::Save && !st.converted && !st.recovered && format.id == st.format).then(|| st.path.clone()).flatten());
+    // Save writes the document's own file; the other modes only where they are told to. A
+    // recovered copy is saved as (its file may have moved on since), unless the host stores its
+    // saves and merges them itself ([`Session::save_recovered_in_place`]).
+    let in_place = !st.recovered || s.save_recovered_in_place;
+    let path = path.or_else(|| (mode == SaveMode::Save && !st.converted && in_place && format.id == st.format).then(|| st.path.clone()).flatten());
     let stem = file_stem(st.path.as_deref().unwrap_or(&st.doc.title));
     let ext = format.extensions[0];
     let name = match mode {
