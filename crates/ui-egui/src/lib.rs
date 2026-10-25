@@ -235,7 +235,24 @@ pub type PickSave = Box<dyn FnMut(&FilePick) -> Option<String>>;
 pub type ReadFn = Box<dyn Fn(&str) -> Result<Vec<u8>, String>>;
 pub type WriteFn = Box<dyn FnMut(&str, &[u8]) -> Result<(), String>>;
 pub type ExistsFn = Box<dyn Fn(&str) -> bool>;
-pub type Inbox = Arc<Mutex<Vec<(String, Vec<u8>)>>>;
+pub type Inbox = Arc<Mutex<Vec<OpenArrival>>>;
+
+/// A file that arrived to be opened ([`Services::inbox`]): its name (which decides how it is read,
+/// and which the document is saved under), its bytes, and the title its document tab shows in
+/// place of the name, when the host gave one ([`UiState::host_titles`]).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct OpenArrival {
+    pub name: String,
+    pub bytes: Vec<u8>,
+    pub title: Option<String>,
+}
+
+impl OpenArrival {
+    /// A file to open under its own name.
+    pub fn file(name: impl Into<String>, bytes: Vec<u8>) -> Self {
+        Self { name: name.into(), bytes, title: None }
+    }
+}
 /// Starts a browser download of the bytes under a file name; an error when it couldn't be started
 /// (the save or export then fails as a refused write does: #1693).
 pub type DownloadFn = Box<dyn FnMut(&str, &[u8]) -> Result<(), String>>;
@@ -271,7 +288,7 @@ pub struct Services {
     /// save panel's name names once the app gives it an extension ([`picks::ask_to_replace`]).
     /// Without it, no file counts as there.
     pub exists: Option<ExistsFn>,
-    /// Files that arrived asynchronously (web open / drops): (name, bytes).
+    /// Files that arrived asynchronously (web open / drops, an embedding page's files).
     pub inbox: Option<Inbox>,
     /// Web: trigger a browser download instead of writing a path.
     pub download: Option<DownloadFn>,
@@ -1575,14 +1592,29 @@ impl VectorcraftApp {
     }
 
     fn drain_inbox(&mut self) {
-        let arrived: Vec<(String, Vec<u8>)> =
+        let arrived: Vec<OpenArrival> =
             self.services.inbox.as_ref().map(|q| std::mem::take(&mut *q.lock().unwrap_or_else(|e| e.into_inner()))).unwrap_or_default();
-        for (name, bytes) in arrived {
-            if let Err(e) = io::open_bytes(self, &name, &bytes, None) {
-                io::report_open_error(self, &name, &e);
+        for OpenArrival { name, bytes, title } in arrived {
+            match io::open_bytes(self, &name, &bytes, None) {
+                Ok(_) => {
+                    if let Some(title) = title {
+                        self.title_active(title);
+                    }
+                }
+                Err(e) => io::report_open_error(self, &name, &e),
             }
         }
         place::drain(self);
+    }
+
+    /// Show `title` on the active document's tab in place of its name, while the name stays what
+    /// it is now ([`state::HostTitle`]).
+    fn title_active(&mut self, title: String) {
+        let Some(d) = self.session.active() else { return };
+        let (uid, name) = (d.uid, d.title());
+        let open: Vec<u64> = self.session.documents().iter().map(|d| d.uid).collect();
+        self.ui.host_titles.retain(|t| t.uid != uid && open.contains(&t.uid));
+        self.ui.host_titles.push(state::HostTitle { uid, name, title });
     }
 }
 
