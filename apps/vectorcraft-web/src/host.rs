@@ -18,7 +18,7 @@
 //!   answer changes nothing. A malformed one is refused with `vectorcraft:failed`.
 //! - `vectorcraft:dirty` (to the parent): `{ dirty }` whenever unsaved changes appear or go away.
 //! - `vectorcraft:configure` (from the parent): `{ hide, hideMenus, hideMark, emptyMessage,
-//!   emptyLink, saveOnClose }`. `hide` lists command ids (or prefixes ending in `*`) the user isn't offered: they
+//!   emptyLink, saveOnClose, saveRecoveredInPlace }`. `hide` lists command ids (or prefixes ending in `*`) the user isn't offered: they
 //!   leave the menus, the command palette and their buttons, and their shortcuts do nothing; the
 //!   parent's own control requests still run them. `hideMenus` lists menu bar menus (English
 //!   titles) to leave out, their commands still running; `hideMark` hides the brand mark.
@@ -131,6 +131,7 @@ impl Bridge {
             app.ui.host_empty_message = c.empty_message;
             app.ui.host_empty_link = c.empty_link;
             app.ui.host_save_on_close = c.save_on_close;
+            app.session.save_recovered_in_place = c.save_recovered_in_place;
         }
         let answers = std::mem::take(&mut *self.answers.borrow_mut());
         for a in answers {
@@ -206,6 +207,7 @@ impl Bridge {
                     empty_message: field(&data, "emptyMessage"),
                     empty_link: field(&data, "emptyLink"),
                     save_on_close: boolean(&data, "saveOnClose"),
+                    save_recovered_in_place: boolean(&data, "saveRecoveredInPlace"),
                 };
                 match protocol::configure(fields) {
                     Ok(configure) => {
