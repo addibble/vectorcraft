@@ -246,7 +246,9 @@ impl<'a> Recolor<'a> {
     fn subtree(&mut self, d: &Document, n: &Node) -> Option<Node> {
         let Scope { fill, stroke, images, .. } = self.scope;
         let mut m = n.clone();
-        let changed = recolor_node(&mut m, Reach { fill, stroke, images }, &mut Visit { pass: self, d });
+        // A linked image's pixels are its file's: an edit can't recolour them without embedding
+        // them (Effect → Color Adjustments recolours them live).
+        let changed = recolor_node(&mut m, Reach { fill, stroke, images, linked: false }, &mut Visit { pass: self, d });
         self.changed += changed;
         (changed > 0).then_some(m)
     }
