@@ -167,6 +167,11 @@ pub struct Session {
     /// What a [`cmd::TraceRun`] traced, until the next `imageTrace.make` or
     /// `imageTrace.makeAndExpand` takes it ([`cmd::Traced::hand_in`]).
     pub(crate) trace_hand_off: Option<cmd::Traced>,
+    /// Save writes a copy Data Recovery restored to the file it was a copy of, as it writes any
+    /// document, rather than asking where (Save As): for a host that stores every save itself and
+    /// merges it with what changed since (the web build's embedding bridge, `saveRecoveredInPlace`).
+    /// False: a recovered copy is saved as, since its file may have changed since it was copied.
+    pub save_recovered_in_place: bool,
     /// Whether a click or drag of the place cursor asks the frontend to place its file
     /// ([`UiRequest::Place`]) instead of running `file.place`: the desktop app sets it to read the
     /// file off the UI thread. False: the file is placed at once.
