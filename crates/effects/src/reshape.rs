@@ -313,10 +313,14 @@ pub fn reshape(doc: Option<&Document>, n: &Node, symbol_art: Option<&Node>) -> O
 }
 
 /// `n` (see [`needs_outline`], or a path with [`has_transform_art`]) as plain art for Expand
-/// Appearance: [`reshape`]d when it has
+/// Appearance: its 3D art ([`crate::solid_art_with`]) when it has a 3D effect, [`reshape`]d when it has
 /// geometry effects, else type with fills or strokes of its own outlined, or an image with fills
 /// or strokes of its own that paint a shape, in the same form. `None` when it has none of these.
 pub fn expand_outlined(doc: Option<&Document>, n: &Node, symbol_art: Option<&Node>) -> Option<Node> {
+    // Type and a symbol instance with a 3D effect: its shaded faces.
+    if let Some(art) = crate::solid_art_with(doc, n, symbol_art) {
+        return Some(art);
+    }
     // A path whose Transform effect copies it with a gradient, or scales its strokes or moves its
     // patterns: each copy an object of its own.
     if has_transform_art(n) {

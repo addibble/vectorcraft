@@ -4,7 +4,7 @@ The other three 3D types of **Effect › 3D and Materials** next to [Revolve](re
 live effect: the source path stays editable, the effect draws shaded vector faces, and SVG/PDF export, native
 saves and **Object › Expand Appearance** use the same evaluator.
 
-Select a path or compound path, then choose **Effect › 3D and Materials › Extrude & Bevel…**, **Inflate…** or
+Select a path, compound path, type object or symbol instance (below), then choose **Effect › 3D and Materials › Extrude & Bevel…**, **Inflate…** or
 **Rotate…**. The options dialog opens beside the artboard with tabs:
 
 - **Object** (Extrude & Bevel and Inflate): the shape's own options, below.
@@ -69,6 +69,25 @@ The rest is our reading:
   those bounds, and with Perspective one eye sees every solid. A stroke too narrow to hold a point of Inflate's
   grid stays flat.
 - A stroke whose outline takes more than 2,048 points is left out, and the fill's solid still draws.
+
+## Type and symbol instances
+
+Public tutorials apply 3D to live type straight from the Effect menu, the type still editable with the Type
+tool afterwards (font, size and color included:
+[Medialoot](https://medialoot.com/blog/how-to-make-an-editable-3d-isometric-text-in-illustrator/)).
+Here type and symbol instances take Extrude & Bevel, Inflate and Rotate on the object itself (not on one of its
+fills or strokes), built from their art as outlines are:
+
+- **Type**: each run's glyph outlines with the run's fill and stroke, and the type's own fills and strokes on
+  the whole outline, as Type › Create Outlines would give them. Editing the text, its font or its size reshapes
+  the solid.
+- **A symbol instance**: the symbol's art, placed by the instance. Editing the symbol changes every instance's
+  solid.
+
+Every path in the art is a shape of its own, with its own fills and strokes (Fills and strokes, below), and the
+shapes turn, twist and taper together about the center of the bounds of the whole art, so a word or a symbol is
+one object in 3D. Geometry effects before the 3D effect reshape the art as one piece first. Clipping paths,
+guides, and images or symbol instances inside the art are left out. Revolve still takes only paths.
 
 ## Rotate
 
@@ -176,7 +195,9 @@ out, perspective). No Adobe software, assets, presets or bevel shapes were used.
   drawn in pieces about as long as a wall slice is wide (fewer near the limit of 32,768 facets). The piece drawn
   on top can still lie a few points behind another nearby piece.
 - Extrude & Bevel and Rotate retain planar shading. Colored Inflate uses smooth vector lighting; white-light Inflate keeps its original polygon shading; bounded cell triangulation leaves a cell flat when it contains a complete hole or an unusually complex/degenerate contour. Its geometric silhouette is still a polygon approximation.
-- Paths and compound paths only: convert type, images and groups to outlines first. One 3D effect per object.
+- Paths, compound paths, type and symbol instances ([Type and symbol instances](#type-and-symbol-instances));
+  convert images and groups to outlines first, and type and symbol instances take the effect on the object
+  itself, not on one of their fills or strokes. One 3D effect per object.
 - Curves are followed within 1/2000 of the shape's size (at least 0.05 pt), so a small curve takes a few points
   and a large one up to 32. Extrude & Bevel and Inflate take up to 2,048 outline points (a stroke's outline is
   counted on its own), Rotate (which only turns the outline) 65,536.
@@ -189,5 +210,6 @@ Release measurements and a repeatable CLI scene are in [3D lighting performance]
 
 | Date | Change |
 |---|---|
+| 2026-10-26 | Extrude & Bevel, Inflate and Rotate on type (its glyph outlines, still live) and symbol instances (the symbol's art), as one object in 3D. |
 | 2026-10-21 | Four original lighting presets, shared by all four 3D effects and commands, with effective-setting recognition and existing preview/history behavior. |
 | 2026-10-17 | Smooth colored Inflate lighting and surface batching; legacy white-light appearance and the 0.05 seam minimum preserved; shared light Color and multiple lights remain vector output. |

@@ -174,8 +174,9 @@ pub(crate) fn apply(s: &mut Session, p: &Value) -> Result<Value> {
     let item = item_target(s, p, C)?;
     if effects::is_three_d(id) {
         for target in appearance_targets(s, p)? {
-            let n = s.doc()?.doc.node(target).ok_or(EngineError::NoNode(target))?;
-            effects::validate_three_d(n, id, &effect.params).map_err(|e| bad(C, e))?;
+            let d = &s.doc()?.doc;
+            let n = d.node(target).ok_or(EngineError::NoNode(target))?;
+            effects::validate_three_d(Some(d), n, id, &effect.params).map_err(|e| bad(C, e))?;
             if id == effects::REVOLVE && effects::has_revolve(n) {
                 return Err(bad(C, "A profile supports one Revolve effect. Edit the existing effect's options instead."));
             }
@@ -360,7 +361,8 @@ fn set_params(s: &mut Session, p: &Value) -> Result<Value> {
         load_texture(&mut params, C)?;
     }
     for id in appearance_targets(s, p)? {
-        let n = s.doc()?.doc.node(id).ok_or(EngineError::NoNode(id))?;
+        let d = &s.doc()?.doc;
+        let n = d.node(id).ok_or(EngineError::NoNode(id))?;
         let target = item.effects_item(&n.appearance, C)?;
         let effect = n.appearance.effects_at(target).and_then(|fx| fx.get(index));
         if warp_id.is_some() && effect.is_some_and(|e| e.id.strip_prefix("warp.").and_then(effects::WarpStyle::from_id).is_none()) {
@@ -374,7 +376,7 @@ fn set_params(s: &mut Session, p: &Value) -> Result<Value> {
             if let (Some(cur), Value::Object(new)) = (prospective.as_object_mut(), effects::upgrade_params(&e.id, &params)) {
                 cur.extend(new);
             }
-            effects::validate_three_d(n, &e.id, &prospective).map_err(|e| bad(C, e))?;
+            effects::validate_three_d(Some(d), n, &e.id, &prospective).map_err(|e| bad(C, e))?;
         }
     }
     let ids = edit_effects(s, p, item, C, "Effect Options", &format!("{C}: no effect at index {index}"), |fx| {
@@ -797,12 +799,44 @@ mod tests {
             s.execute("edit.undo", &json!({})).unwrap();
             assert_eq!(node(&s, id).appearance.effects.len(), 0, "{effect}: back to the plain rectangle");
         }
-        // Type has no outline to extrude.
-        let mut s = Session::new();
-        s.execute("file.new", &json!({"width": 400, "height": 400})).unwrap();
-        let t = s.execute("text.create", &json!({"x": 50, "y": 50, "text": "3D"})).unwrap();
-        let err = s.execute("effect.apply", &json!({"effect": "threeD.extrude", "ids": [t["id"]], "item": null})).unwrap_err();
+        // A group has no outline of its own to build from.
+        let (mut s, id) = session_with_rect();
+        let g = s.execute("object.group", &json!({"ids": [id.0]})).unwrap();
+        let g = g["id"].as_u64().or_else(|| g["ids"][0].as_u64()).unwrap();
+        let err = s.execute("effect.apply", &json!({"effect": "threeD.extrude", "ids": [g], "item": null})).unwrap_err();
         assert!(err.to_string().contains("requires a path"), "{err}");
+    }
+
+    /// Type and symbol instances take Extrude & Bevel, Inflate and Rotate on the object itself,
+    /// built from their outlines and their symbol's art, exported as vector faces.
+    #[test]
+    fn solid_effects_apply_to_type_and_symbol_instances() {
+        for effect in effects::SOLIDS {
+            let (mut s, id) = session_with_rect();
+            let instance = s.execute("symbol.new", &json!({"name": "Box", "ids": [id.0]})).unwrap();
+            let instance = NodeId(instance["id"].as_u64().unwrap());
+            assert!(matches!(node(&s, instance).kind, NodeKind::SymbolInstance { .. }));
+            s.execute("effect.apply", &json!({"effect": effect, "ids": [instance.0], "item": null})).unwrap();
+            assert!(effects::has_solid(&node(&s, instance)), "{effect}");
+            let svg = s.execute("document.serialize", &json!({"format": "svg"})).unwrap();
+            let svg = svg["data"].as_str().or_else(|| svg["text"].as_str()).map(str::to_string).unwrap_or_else(|| svg.to_string());
+            assert!(svg.matches("<path").count() >= 2, "{effect}: the instance exported as vector faces");
+            s.execute("effect.expandAppearance", &json!({"ids": [instance.0]})).unwrap();
+            assert!(!effects::has_solid(&node(&s, instance)), "{effect}: expanded");
+        }
+        if vectorcraft_text::CRAFT_FONTS.is_empty() {
+            eprintln!("skipped type: built without craft-fonts (set CRAFT_FONTS_DIR to a craft-fonts checkout to run it)");
+            return;
+        }
+        for effect in effects::SOLIDS {
+            let mut s = Session::new();
+            s.execute("file.new", &json!({"width": 400, "height": 400})).unwrap();
+            let t = s.execute("text.create", &json!({"x": 50, "y": 50, "text": "3D"})).unwrap();
+            let t = NodeId(t["id"].as_u64().unwrap());
+            s.execute("effect.apply", &json!({"effect": effect, "ids": [t.0], "item": null})).unwrap();
+            assert!(matches!(node(&s, t).kind, NodeKind::Text(_)), "{effect}: the type stays type");
+            assert!(effects::solid_art(&node(&s, t)).is_some(), "{effect}");
+        }
     }
 
     /// Scripts from before the Perspective angle give `perspective` as a 0–100 % strength: it is

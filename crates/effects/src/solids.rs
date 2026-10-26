@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use serde_json::Value;
 use vectorcraft_doc::color::{BlendMode, Paint};
-use vectorcraft_doc::{Appearance, AppearanceItem, Effect, Node, NodeKind, StrokeLayer};
+use vectorcraft_doc::{Appearance, AppearanceItem, Document, Effect, Node, NodeKind, StrokeLayer};
 use vectorcraft_geom::{FillRule, PathData, Rect};
 use vectorcraft_three_d::{Bevel, BevelShape, Extrude, Facet, Inflate, View};
 
@@ -118,6 +118,61 @@ fn profile(n: &Node) -> Option<(PathData, FillRule)> {
     }
 }
 
+/// One shape of a solid: an outline and the fills and strokes that paint it, bottom first.
+struct Shape {
+    path: PathData,
+    rule: FillRule,
+    items: Vec<AppearanceItem>,
+}
+
+/// Can a 3D effect on `n` itself be built from its art ([`shapes`]): type, from its glyph
+/// outlines, and a symbol instance, from its symbol's art?
+fn through_art(n: &Node) -> bool {
+    matches!(n.kind, NodeKind::Text(_) | NodeKind::SymbolInstance { .. })
+}
+
+/// The shapes a 3D effect on `n` itself is made from, after `before` (the geometry effects ahead of
+/// it): a path or compound path as one shape painted by its own fills and strokes; type and a
+/// symbol instance through their art ([`crate::outline_art`]: type's glyph outlines, each run in its
+/// own paint, and the type's own fills and strokes; the symbol's art, `symbol_art`, placed by the
+/// instance), reshaped as one piece by `before`, each visible path or compound path in it a shape
+/// painted as it is, after its own geometry effects. Clipping paths and guides are left out, and so
+/// are the images and symbol instances inside the art (they have no outline to build from). `None`
+/// for other objects, or when nothing in the art paints.
+fn shapes(doc: Option<&Document>, n: &Node, symbol_art: Option<&Node>, before: &[Effect]) -> Option<Vec<Shape>> {
+    let ctx = GeomContext::of(n);
+    if !through_art(n) {
+        let (path, rule) = profile(n)?;
+        let items = n.appearance.items.iter().filter(|i| crate::paints(i)).cloned().collect();
+        return Some(vec![Shape { path: geometry(&path, before, &ctx), rule, items }]);
+    }
+    let mut art = crate::outline_art(doc, n, symbol_art)?;
+    let fx: Vec<&Effect> = before.iter().filter(|e| e.visible && is_geometry(&e.id)).collect();
+    crate::reshape::reshape_leaves(&mut art, &fx);
+    let mut out = vec![];
+    collect_shapes(&art, &mut out);
+    (!out.is_empty()).then_some(out)
+}
+
+/// The visible paths and compound paths under `n` as [`Shape`]s, in paint order.
+fn collect_shapes(n: &Node, out: &mut Vec<Shape>) {
+    if !n.visible {
+        return;
+    }
+    match &n.kind {
+        NodeKind::Path { guide: false, clipping: false, .. } | NodeKind::Compound { .. } => {
+            let items: Vec<AppearanceItem> = n.appearance.items.iter().filter(|i| crate::paints(i)).cloned().collect();
+            if let Some((path, rule)) = profile(n)
+                && !items.is_empty()
+            {
+                out.push(Shape { path: geometry(&path, &n.appearance.effects, &GeomContext::of(n)), rule, items });
+            }
+        }
+        NodeKind::Group { children, .. } | NodeKind::Layer { children, .. } => children.iter().for_each(|c| collect_shapes(c, out)),
+        _ => {}
+    }
+}
+
 fn facets(id: &str, path: &PathData, rule: FillRule, bounds: Rect, p: &Value) -> Result<Vec<Facet>, String> {
     let view = view_options(p);
     match id {
@@ -128,26 +183,36 @@ fn facets(id: &str, path: &PathData, rule: FillRule, bounds: Rect, p: &Value) ->
 }
 
 /// Validate before a command changes the document; the evaluator bounds loaded files too.
-pub fn validate_solid(n: &Node, id: &str, p: &Value) -> Result<(), String> {
+/// A symbol instance is checked against its symbol's art in `doc`.
+pub fn validate_solid(doc: Option<&Document>, n: &Node, id: &str, p: &Value) -> Result<(), String> {
     crate::lighting::validate(p)?;
     let label = crate::effect_info(id).map_or("This effect", |e| e.label.trim_end_matches('…'));
-    let (path, rule) =
-        profile(n).ok_or_else(|| format!("{label} currently requires a path or compound path. Convert type, images and groups to paths first."))?;
-    let b = path.bounds().ok_or_else(|| format!("{label} requires a shape with at least two anchors"))?;
     if let Some(v) = p.get("bevel")
         && !v.as_str().is_some_and(|s| s == "none" || BevelShape::parse(s).is_some())
     {
         let names: Vec<_> = BevelShape::ALL.iter().map(|b| b.id()).collect();
         return Err(format!("bevel must be none or one of {}", names.join(", ")));
     }
-    facets(id, &path, rule, b, p).map(|_| ())
+    let art = symbol_art(doc, n);
+    let shapes = shapes(doc, n, art, &[]).ok_or_else(|| {
+        format!("{label} currently requires a path, compound path, type or symbol instance. Convert images and groups to paths first.")
+    })?;
+    let bounds = shapes.iter().filter_map(|s| s.path.bounds()).reduce(|a, b| a.union(b));
+    let b = bounds.ok_or_else(|| format!("{label} requires a shape with at least two anchors"))?;
+    shapes.iter().try_for_each(|s| facets(id, &s.path, s.rule, b, p).map(|_| ()))
+}
+
+/// The art of the symbol `n` is an instance of, in `doc`.
+fn symbol_art<'a>(doc: Option<&'a Document>, n: &Node) -> Option<&'a Node> {
+    let NodeKind::SymbolInstance { symbol, .. } = &n.kind else { return None };
+    doc?.symbols.iter().find(|s| s.name == *symbol).map(|s| &*s.art)
 }
 
 /// Can 3D effect `id` (Revolve included, [`is_three_d`]) with parameters `p` draw `n`? Checked
 /// before a command changes the document: Revolve by [`crate::validate_revolve`], the others by
 /// [`validate_solid`].
-pub fn validate_three_d(n: &Node, id: &str, p: &Value) -> Result<(), String> {
-    if id == crate::REVOLVE { crate::validate_revolve(n, p) } else { validate_solid(n, id, p) }
+pub fn validate_three_d(doc: Option<&Document>, n: &Node, id: &str, p: &Value) -> Result<(), String> {
+    if id == crate::REVOLVE { crate::validate_revolve(n, p) } else { validate_solid(doc, n, id, p) }
 }
 
 /// One surface: each facet a path shaded from `paint`, as a group with the paint's opacity and
@@ -218,38 +283,39 @@ fn region(path: &PathData, rule: FillRule, item: &AppearanceItem) -> (PathData, 
     }
 }
 
-/// The 3D art of one effect `fx` on `path` (already through the effects before it).
+/// The 3D art of one effect `fx` on `shapes` (already through the effects before it), which turn,
+/// twist and taper together about the center of their bounds.
 /// Rotate turns every fill and stroke, each in its own paint. Extrude & Bevel and Inflate build a
-/// solid from the path for the top visible fill and one from the outline of each visible stroke,
+/// solid from each shape for its top visible fill and one from the outline of each visible stroke,
 /// each in its own paint. When every one is opaque with normal blending and no colored light makes
 /// a surface one composite or masks it, their faces are drawn in one back-to-front order (where
 /// depths tie, as for the caps turned toward the viewer, in the order of the appearance);
 /// otherwise each solid is a surface of its own, in that order.
-fn art_for(n: &Node, fx: &Effect, path: &PathData, rule: FillRule, items: &[&AppearanceItem]) -> Option<Vec<Arc<Node>>> {
-    let b = path.bounds()?;
+fn art_for(n: &Node, fx: &Effect, shapes: &[Shape]) -> Option<Vec<Arc<Node>>> {
+    let b = shapes.iter().filter_map(|s| s.path.bounds()).reduce(|a, c| a.union(c))?;
     let p = crate::merged_params(&fx.id, &fx.params);
     let colored = view_options(&p).has_colored_lights();
     if fx.id == ROTATE {
         // Every part turns about the centre of the object's own bounds, so they stay together.
         let mut out = vec![];
-        for item in items {
-            let (paint, opacity, blend) = paint_of(item);
-            let (area, rule) = region(path, rule, item);
-            let f = facets(ROTATE, &area, rule, b, &p).ok()?;
-            out.push(Arc::new(surface(n, f, &paint, opacity, blend, colored)));
+        for shape in shapes {
+            for item in &shape.items {
+                let (paint, opacity, blend) = paint_of(item);
+                let (area, rule) = region(&shape.path, shape.rule, item);
+                let f = facets(ROTATE, &area, rule, b, &p).ok()?;
+                out.push(Arc::new(surface(n, f, &paint, opacity, blend, colored)));
+            }
         }
         return Some(out);
     }
-    let top_fill = items.iter().rposition(|i| matches!(i, AppearanceItem::Fill(_)));
-    let parts: Vec<(&AppearanceItem, PathData, FillRule)> = items
-        .iter()
-        .enumerate()
-        .filter(|(k, i)| Some(*k) == top_fill || matches!(i, AppearanceItem::Stroke(_)))
-        .map(|(_, i)| {
-            let (area, rule) = region(path, rule, i);
-            (*i, area, rule)
-        })
-        .collect();
+    let mut parts: Vec<(&AppearanceItem, PathData, FillRule)> = vec![];
+    for shape in shapes {
+        let top_fill = shape.items.iter().rposition(|i| matches!(i, AppearanceItem::Fill(_)));
+        parts.extend(shape.items.iter().enumerate().filter(|(k, i)| Some(*k) == top_fill || matches!(i, AppearanceItem::Stroke(_))).map(|(_, i)| {
+            let (area, rule) = region(&shape.path, shape.rule, i);
+            (i, area, rule)
+        }));
+    }
     // The solids share the bounds of all their shapes: one center to turn, twist and taper about,
     // and Inflate's grid reaches over the strokes' outlines.
     let bounds = parts.iter().filter_map(|(_, area, _)| area.bounds()).reduce(|a, c| a.union(c)).unwrap_or(b);
@@ -314,18 +380,24 @@ fn geometry(path: &PathData, fx: &[Effect], ctx: &GeomContext) -> PathData {
 
 /// `n` drawn with its Extrude & Bevel, Inflate or Rotate effect: a group of shaded faces keeping
 /// the object's id and transparency, the source path untouched. `None` without such an effect.
+/// A symbol instance is drawn by [`solid_art_with`] from its symbol's art.
 pub fn solid_art(n: &Node) -> Option<Node> {
+    solid_art_with(None, n, None)
+}
+
+/// [`solid_art`] for any object the effect can be built from ([`shapes`]): a symbol instance from
+/// `symbol_art`, the art of its symbol in `doc`. Type and symbol instances take the effect on the
+/// object itself, not on one of their fills or strokes.
+pub fn solid_art_with(doc: Option<&Document>, n: &Node, symbol_art: Option<&Node>) -> Option<Node> {
     if !has_solid(n) {
         return None;
     }
-    let (path, rule) = profile(n)?;
     let ctx = GeomContext::of(n);
     let painted: Vec<&AppearanceItem> = n.appearance.items.iter().filter(|i| crate::paints(i)).collect();
     let mut children = vec![];
     let remaining: Vec<Effect>;
     if let Some((index, fx)) = solid(&n.appearance.effects) {
-        let path = geometry(&path, n.appearance.effects.get(..index)?, &ctx);
-        children.extend(art_for(n, fx, &path, rule, &painted)?);
+        children.extend(art_for(n, fx, &shapes(doc, n, symbol_art, n.appearance.effects.get(..index)?)?)?);
         // Later geometry effects act on the projected art as a whole.
         remaining = n
             .appearance
@@ -336,12 +408,13 @@ pub fn solid_art(n: &Node) -> Option<Node> {
             .map(|(_, e)| e.clone())
             .collect();
     } else {
+        let (path, rule) = profile(n)?;
         let path = geometry(&path, &n.appearance.effects, &ctx);
         remaining = n.appearance.effects.iter().filter(|e| !is_geometry(&e.id)).cloned().collect();
         for item in &painted {
             if let Some((index, fx)) = solid(item.effects()) {
                 let p = geometry(&path, item.effects().get(..index)?, &ctx.item(item));
-                for mut art in art_for(n, fx, &p, rule, &[*item])? {
+                for mut art in art_for(n, fx, &[Shape { path: p, rule, items: vec![(*item).clone()] }])? {
                     Arc::make_mut(&mut art).appearance.effects =
                         item.effects().iter().skip(index + 1).filter(|e| !is_three_d(&e.id)).cloned().collect();
                     children.push(art);

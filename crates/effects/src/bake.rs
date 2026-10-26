@@ -45,6 +45,15 @@ fn clear_item_effects(item: &mut AppearanceItem) {
     }
 }
 
+/// `n` drawn with its 3D effect, a symbol instance from its symbol's art in `d`.
+fn solid_art_in(d: &Document, n: &Node) -> Option<Node> {
+    let symbol = match &n.kind {
+        NodeKind::SymbolInstance { symbol, .. } => d.symbols.iter().find(|s| s.name == *symbol).map(|s| s.art.clone()),
+        _ => None,
+    };
+    crate::solid_art_with(Some(d), n, symbol.as_deref())
+}
+
 /// Does anything in `n`'s subtree need baking?
 pub fn needs_bake(n: &Node) -> bool {
     crate::has_revolve(n)
@@ -103,7 +112,7 @@ fn bake_node(d: &mut Document, n: &Node) -> Option<Node> {
     if let Some(m) = crop_marks_art(n) {
         return Some(bake_pieces(d, m));
     }
-    if let Some(m) = crate::revolve_art(n).or_else(|| crate::solid_art(n)) {
+    if let Some(m) = crate::revolve_art(n).or_else(|| solid_art_in(d, n)) {
         let m = evaluate_container(Some(d), &m).unwrap_or(m);
         return Some(bake_pieces(d, m));
     }
@@ -453,7 +462,7 @@ pub type StrokeArt<'a> = &'a mut dyn FnMut(&mut Document, &PathData, FillRule, &
 /// without transparency or effects of its own takes `n`'s place itself. Hidden fills, strokes and
 /// effects are dropped. `None` for other kinds of objects.
 pub fn expand_leaf(d: &mut Document, n: &Node, stroke_art: StrokeArt) -> Option<Node> {
-    if let Some(m) = crate::revolve::expand_revolve_art(n).or_else(|| crate::solid_art(n)) {
+    if let Some(m) = crate::revolve::expand_revolve_art(n).or_else(|| solid_art_in(d, n)) {
         let m = evaluate_container(Some(d), &m).unwrap_or(m);
         return Some(bake_pieces(d, m));
     }

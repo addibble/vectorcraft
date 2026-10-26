@@ -244,7 +244,8 @@ fn admit_effects(fx: &[Effect], n: &Node) -> std::result::Result<Vec<Effect>, St
         }
         let mut admitted = effects::new_effect(&e.id, &params).ok_or_else(|| refuse("no such effect".into()))?;
         if effects::is_three_d(&e.id) {
-            effects::validate_three_d(n, &e.id, &admitted.params).map_err(refuse)?;
+            // Without the document a symbol instance has no art to check, and is refused.
+            effects::validate_three_d(None, n, &e.id, &admitted.params).map_err(refuse)?;
         }
         admitted.visible = e.visible;
         out.push(admitted);

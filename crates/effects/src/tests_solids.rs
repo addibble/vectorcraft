@@ -460,10 +460,10 @@ fn effects_before_it_shape_the_solid_and_effects_after_it_bend_the_result() {
 #[test]
 fn parameters_are_validated_and_lengths_scale_with_the_object() {
     let n = square_node();
-    assert!(validate_solid(&n, EXTRUDE, &json!({"bevel": "rounded", "depth": 80})).is_ok());
-    assert!(validate_solid(&n, EXTRUDE, &json!({"bevel": "fancy"})).unwrap_err().contains("bevel must be"));
-    let text = Node::group(NodeId(2), vec![]);
-    assert!(validate_solid(&text, INFLATE, &json!({})).unwrap_err().contains("requires a path"));
+    assert!(validate_solid(None, &n, EXTRUDE, &json!({"bevel": "fancy"})).unwrap_err().contains("bevel must be"));
+    assert!(validate_solid(None, &n, EXTRUDE, &json!({"bevel": "rounded", "depth": 80})).is_ok());
+    let group = Node::group(NodeId(2), vec![]);
+    assert!(validate_solid(None, &group, INFLATE, &json!({})).unwrap_err().contains("requires a path"));
     for (id, key) in [(EXTRUDE, "depth"), (EXTRUDE, "bevelWidth"), (EXTRUDE, "bevelHeight"), (INFLATE, "depth")] {
         assert!(crate::is_length(id, key, false), "{id} {key}");
     }
@@ -539,4 +539,109 @@ fn colored_solid_inflate_batches_channels_and_clips_once_per_surface() {
     assert_eq!(surfaces, 2);
     assert_eq!(clips, surfaces);
     assert_eq!(groups, 1 + 6 * surfaces, "group count must not grow with triangle count");
+}
+
+/// A symbol whose art is two squares, red and blue, side by side, and an instance of it moved by
+/// (300, 0) with `effect`.
+fn symbol_with_instance(effect: Effect) -> (Document, Node) {
+    let mut d = Document::new(600.0, 200.0);
+    let square = |x: f64, color: Color| {
+        let mut b = BezPath::new();
+        b.move_to((x, 0.0));
+        b.line_to((x + 50.0, 0.0));
+        b.line_to((x + 50.0, 50.0));
+        b.line_to((x, 50.0));
+        b.close_path();
+        Arc::new(Node::path(NodeId(0), PathData::from_bezpath(&b), Appearance::basic(Paint::solid(color), Paint::None, 0.0)))
+    };
+    let blue = Color::Rgb { r: 0.1, g: 0.2, b: 0.9 };
+    let art = Arc::new(Node::group(NodeId(0), vec![square(0.0, RED), square(60.0, blue)]));
+    d.symbols.push(vectorcraft_doc::Symbol { name: "Pair".into(), art });
+    let mut n = Node::new(NodeId(9), NodeKind::SymbolInstance { symbol: "Pair".into(), xf: Affine::translate((300.0, 0.0)) });
+    n.appearance.effects.push(effect);
+    (d, n)
+}
+
+#[test]
+fn a_symbol_instance_is_built_from_its_symbols_art_as_one_solid() {
+    for id in SOLIDS {
+        let (d, n) = symbol_with_instance(fx(id, json!({})));
+        let art_of = |n: &Node| solid_art_with(Some(&d), n, Some(&d.symbols[0].art));
+        assert!(validate_solid(Some(&d), &n, id, &json!({})).is_ok(), "{id}");
+        let art = art_of(&n).unwrap_or_else(|| panic!("{id}: the instance draws in 3D"));
+        assert_eq!(art.id, n.id, "{id}");
+        let all = faces(&art);
+        // Both squares' paints are shaded on their faces, placed where the instance is.
+        let reddish = all
+            .iter()
+            .filter(|f| {
+                let [r, _, b] = fill_rgb(f);
+                r > b
+            })
+            .count();
+        let bluish = all
+            .iter()
+            .filter(|f| {
+                let [r, _, b] = fill_rgb(f);
+                b > r
+            })
+            .count();
+        assert!(reddish > 0 && bluish > 0, "{id}: {reddish} red faces, {bluish} blue faces");
+        let b = extent(&all);
+        assert!(b.x0 > 250.0 && b.x1 < 450.0, "{id}: {b:?}");
+        if id != ROTATE {
+            assert!(all.len() > 2, "{id}: walls as well as the fronts");
+        }
+        // Without the symbol's art there is nothing to build: the instance is refused.
+        assert!(validate_solid(None, &n, id, &json!({})).unwrap_err().contains("symbol instance"), "{id}");
+        assert!(solid_art(&n).is_none(), "{id}");
+    }
+}
+
+#[test]
+fn the_squares_of_a_symbol_turn_about_one_center() {
+    // Turned half way round in the plane, the pair keeps its place and the red square, on the
+    // left, ends on the right.
+    let (d, n) = symbol_with_instance(fx(ROTATE, json!({"rotationX": 0, "rotationY": 0, "rotationZ": 180})));
+    let art = solid_art_with(Some(&d), &n, Some(&d.symbols[0].art)).unwrap();
+    let all = faces(&art);
+    let center = |red: bool| {
+        let picked: Vec<&Node> = all
+            .iter()
+            .copied()
+            .filter(|f| {
+                let [r, _, b] = fill_rgb(f);
+                (r > b) == red
+            })
+            .collect();
+        extent(&picked).center().x
+    };
+    assert!(center(true) > center(false), "red {} blue {}", center(true), center(false));
+    let b = extent(&all);
+    assert!((b.x0 - 300.0).abs() < 1.0 && (b.x1 - 410.0).abs() < 1.0, "{b:?}");
+}
+
+#[test]
+fn type_is_built_from_its_glyph_outlines() {
+    use vectorcraft_doc::{CharStyle, TextObject};
+    if vectorcraft_text::CRAFT_FONTS.is_empty() {
+        eprintln!("skipped: built without craft-fonts (set CRAFT_FONTS_DIR to a craft-fonts checkout to run it)");
+        return;
+    }
+    let style = CharStyle { size: 48.0, fill: Paint::solid(RED), ..Default::default() };
+    let mut n = Node::new(NodeId(3), NodeKind::Text(Box::new(TextObject::point(Point::new(20.0, 80.0), "Hi", style))));
+    for id in SOLIDS {
+        n.appearance.effects = vec![fx(id, json!({}))];
+        assert!(validate_solid(None, &n, id, &json!({})).is_ok(), "{id}");
+        let art = solid_art(&n).unwrap_or_else(|| panic!("{id}: type draws in 3D"));
+        let all = faces(&art);
+        assert!(
+            all.iter().all(|f| {
+                let [r, g, _] = fill_rgb(f);
+                r > g
+            }),
+            "{id}: in the type's red"
+        );
+        assert!(all.len() > 2, "{id}");
+    }
 }

@@ -87,8 +87,8 @@ pub use reshape::{
 };
 pub use revolve::{REVOLVE, has_revolve, revolve_art, revolve_options, validate_revolve};
 pub use solids::{
-    EXTRUDE, INFLATE, ROTATE, ROTATION_PRESETS, SOLIDS, extrude_options, has_solid, inflate_options, is_three_d, solid_art, validate_solid,
-    validate_three_d, view_options,
+    EXTRUDE, INFLATE, ROTATE, ROTATION_PRESETS, SOLIDS, extrude_options, has_solid, inflate_options, is_three_d, solid_art, solid_art_with,
+    validate_solid, validate_three_d, view_options,
 };
 pub use trap::TRAP;
 pub use warp::{WarpStyle, warp_point};

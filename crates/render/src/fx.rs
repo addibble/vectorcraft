@@ -221,7 +221,7 @@ fn item_effects(item: &AppearanceItem) -> &[Effect] {
 /// Visual bounds including geometry effects, stroke outsets and shadows/glows (symbol instances
 /// measured by their art from `symbols`).
 pub(crate) fn visual_bounds(symbols: &SymbolBoxes, n: &Node) -> Option<Rect> {
-    if let Some(art) = effects::revolve_art(n).or_else(|| effects::solid_art(n)) {
+    if let Some(art) = effects::revolve_art(n).or_else(|| solid_art(symbols, n)) {
         return cull_bounds(symbols, &art).map(|b| {
             let o = outset(symbols, &n.appearance.effects, b);
             b.inflate(o, o)
@@ -249,6 +249,20 @@ pub(crate) fn visual_bounds(symbols: &SymbolBoxes, n: &Node) -> Option<Rect> {
         let o = outset(symbols, &n.appearance.effects, r);
         r.inflate(o, o)
     })
+}
+
+/// `n` drawn with its Extrude & Bevel, Inflate or Rotate effect, a symbol instance from its
+/// symbol's art in `symbols`' document ([`effects::solid_art_with`]).
+fn solid_art(symbols: &SymbolBoxes, n: &Node) -> Option<Node> {
+    if !effects::has_solid(n) {
+        return None;
+    }
+    let doc = symbols.document();
+    let symbol = match &n.kind {
+        NodeKind::SymbolInstance { symbol, .. } => doc.symbols.iter().find(|s| s.name == *symbol).map(|s| s.art.clone()),
+        _ => None,
+    };
+    effects::solid_art_with(Some(doc), n, symbol.as_deref())
 }
 
 /// Does `item` paint (as [`Renderer::paint_items`] draws it)?
@@ -346,6 +360,10 @@ fn shape_bounds(symbols: &SymbolBoxes, n: &Node) -> Option<Rect> {
         // measured one by one with the effects of those fills and strokes), grown by how far the
         // effects in a symbol's art and a live object's content paint past it.
         _ if has_object_fx(n) => {
+            // Type and symbol instances with a 3D effect: its art.
+            if let Some(art) = solid_art(symbols, n) {
+                return drawn_bounds(symbols, &art);
+            }
             let symbol = match &n.kind {
                 NodeKind::SymbolInstance { symbol, .. } => symbols.document().symbols.iter().find(|s| s.name == *symbol).map(|s| s.art.clone()),
                 _ => None,
@@ -443,7 +461,7 @@ fn cull_bounds_in(symbols: &SymbolBoxes, n: &Node, after_reshape: bool) -> Optio
         NodeKind::Layer { children, clip: false, .. } | NodeKind::Group { children, clip: false } => {
             children.iter().fold(None, |acc, c| vectorcraft_geom::union_opt(acc, inner(c)))
         }
-        _ if has_fx(n) => visual_bounds(symbols, n),
+        _ if has_fx(n) || effects::has_solid(n) => visual_bounds(symbols, n),
         // The reshaped art (a symbol instance's reshaped art is made from its symbol's art; type's
         // outlines, and an image and the paths of its own fills and strokes, measured one by one
         // with the geometry effects of those fills and strokes), grown by how far the effects in a
@@ -1496,7 +1514,7 @@ impl Renderer {
         let container = is_container(a);
         let art = match effects::crop_marks_art(a)
             .or_else(|| effects::revolve_art(a))
-            .or_else(|| effects::solid_art(a))
+            .or_else(|| effects::solid_art_with(Some(doc), a, symbol.as_ref()))
             .or_else(|| effects::reshape(Some(doc), a, symbol.as_ref()))
         {
             Some(r) => r,
