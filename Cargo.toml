@@ -52,7 +52,9 @@ vectorcraft-affinity = { path = "crates/affinity" }
 vectorcraft-scriptcheck = { path = "crates/scriptcheck" }
 
 # foundation
-kurbo = { version = "0.13", features = ["serde"] }
+kurbo = { version = "0.13", features = ["serde", "schemars"] }
+# The document model's JSON Schema, derived on its types: 0.8, the line kurbo's `schemars` feature uses.
+schemars = "0.8"
 peniko = "0.6"
 thiserror = "2"
 serde = { version = "1", features = ["derive", "rc"] }
