@@ -14,7 +14,7 @@ pub use profile::{PressureProfile, ProfilePreset, SavedProfile, WidthProfile};
 pub use stroke_style::{ArrowAlign, Arrowhead, Dash, LineCap, LineJoin, StrokeAlign};
 
 /// One entry of the appearance stack.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum AppearanceItem {
     Fill(FillLayer),
@@ -89,7 +89,7 @@ impl AppearanceItem {
 
 /// Appearance attributes. `items` is in paint order: `items[0]` is painted first (the bottom of the
 /// Appearance panel list).
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Appearance {
     #[serde(default)]
     pub items: Vec<AppearanceItem>,
