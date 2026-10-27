@@ -3114,6 +3114,10 @@ theme	Appearance	Udseende
 	Find Objects	Find objekter
 	Compare with Image	Sammenlign med billede
 	Inspect Document	Inspicér dokument
+	Patch Document	Patch dokument
+	Patch	Patch
+	Query Document	Forespørg dokument
+	Document Schema	Dokumentskema
 	Inspect Object	Inspicér objekt
 	Begin Undo Group	Start fortrydelsesgruppe
 	End Undo Group	Afslut fortrydelsesgruppe

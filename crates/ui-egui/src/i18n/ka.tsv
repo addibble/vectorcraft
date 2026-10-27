@@ -2936,6 +2936,10 @@ theme	Appearance	იერსახე
 	Find Objects	ობიექტების ძებნა
 	Compare with Image	გამოსახულებასთან შედარება
 	Inspect Document	დოკუმენტის შემოწმება
+	Patch Document	დოკუმენტზე პატჩის გამოყენება
+	Patch	პატჩი
+	Query Document	დოკუმენტის მოთხოვნა
+	Document Schema	დოკუმენტის სქემა
 	Inspect Object	ობიექტის შემოწმება
 	Begin Undo Group	დაბრუნების ჯგუფის დაწყება
 	End Undo Group	დაბრუნების ჯგუფის დასრულება

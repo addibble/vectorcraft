@@ -3114,6 +3114,10 @@ theme	Appearance	Tampilan
 	Find Objects	Cari objek
 	Compare with Image	Bandingkan dengan gambar
 	Inspect Document	Periksa dokumen
+	Patch Document	Patch dokumen
+	Patch	Patch
+	Query Document	Kueri dokumen
+	Document Schema	Skema dokumen
 	Inspect Object	Periksa objek
 	Begin Undo Group	Mulai grup urungkan
 	End Undo Group	Akhiri grup urungkan

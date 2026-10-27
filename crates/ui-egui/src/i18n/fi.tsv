@@ -3315,6 +3315,10 @@ theme	Appearance	Ulkoasu
 	Find Objects	Etsi objekteja
 	Compare with Image	Vertaa kuvaan
 	Inspect Document	Tarkastele asiakirjaa
+	Patch Document	Paikkaa asiakirja
+	Patch	Paikkaus
+	Query Document	Tee kysely asiakirjaan
+	Document Schema	Asiakirjan skeema
 	Inspect Object	Tarkastele objektia
 	Begin Undo Group	Aloita kumoamisryhmä
 	End Undo Group	Lopeta kumoamisryhmä
