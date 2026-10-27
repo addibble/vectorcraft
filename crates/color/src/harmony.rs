@@ -232,7 +232,7 @@ pub fn move_on_wheel(colors: &mut [Color], i: usize, hsb: [f32; 3], linked: bool
 
 /// What the variation grid varies: towards black and white, towards cool and warm, or towards
 /// grey and full saturation.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum Variation {
     #[default]
@@ -265,7 +265,7 @@ impl Variation {
 }
 
 /// The Color Guide's options: variation kind, steps on each side and how far they reach.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct GuideOptions {
     pub variation: Variation,

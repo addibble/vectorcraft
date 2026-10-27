@@ -1,6 +1,6 @@
 use super::{Deserialize, NodeId, Serialize, Vec2};
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Guide {
     /// true = vertical guide at `pos` (x), false = horizontal at `pos` (y).
     pub vertical: bool,
@@ -28,7 +28,7 @@ impl Guide {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GridPrefs {
     pub spacing: f64,
     pub subdivisions: u32,
@@ -42,7 +42,7 @@ impl Default for GridPrefs {
 
 /// What the rulers measure from (View › Rulers): the active artboard's origin, the default of a
 /// new document, or one origin for the whole document.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum RulerMode {
     #[default]

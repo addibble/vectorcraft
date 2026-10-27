@@ -38,14 +38,14 @@ impl std::fmt::Debug for NewArtIds {
 }
 
 /// Opacity-mask editing mode: `object`'s mask art lives on the temporary `layer` while editing.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct MaskEdit {
     pub object: NodeId,
     pub layer: NodeId,
 }
 
 /// A saved view (View → New View…): zoom, centre and rotation, listed at the bottom of the View menu.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct SavedView {
     pub name: String,
     pub center: Point,
@@ -79,7 +79,7 @@ impl SavedView {
 
 /// A saved selection (Select → Save Selection…): the objects that were selected, listed by name at
 /// the bottom of the Select menu.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct SavedSelection {
     pub name: String,
     pub objects: Vec<NodeId>,
@@ -104,14 +104,14 @@ impl SavedSelection {
 }
 
 /// A symbol definition.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Symbol {
     pub name: String,
     pub art: Arc<Node>,
 }
 
 /// Encoded image bytes (PNG/JPEG/WebP…) shared by image objects.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ImageBlob {
     pub mime: String,
     #[serde(skip)]

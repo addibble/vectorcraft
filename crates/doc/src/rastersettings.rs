@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::setup::Background;
 
 /// The colour model raster effect images are made in.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum RasterColorModel {
     /// The document's colour mode (RGB or CMYK).
@@ -34,7 +34,7 @@ impl RasterColorModel {
 pub const MAX_ADD_AROUND: f64 = 1000.0;
 
 /// Document Raster Effects Settings (resolution aside).
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct RasterEffectsSettings {
     pub color_model: RasterColorModel,

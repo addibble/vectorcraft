@@ -2,7 +2,7 @@ use super::kind::NodeKind;
 use super::{Arc, Color, Deserialize, Node, Paint, Serialize, yes};
 
 /// Opacity mask: the luminance of the mask art sets the object's opacity (white = opaque).
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct OpacityMask {
     /// Mask art in document coordinates.
     pub art: Arc<Node>,

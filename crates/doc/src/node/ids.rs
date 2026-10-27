@@ -1,7 +1,7 @@
 use super::{Deserialize, Serialize};
 
 /// Stable per-document object id. Never reused.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(transparent)]
 pub struct NodeId(pub u64);
 
@@ -12,7 +12,7 @@ impl std::fmt::Display for NodeId {
 }
 
 /// Layer colours used for selection highlighting (index into [`LAYER_COLORS`]) or a custom RGB.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub enum LayerColor {
     Preset(u8),
     Custom([u8; 3]),
