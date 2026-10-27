@@ -203,7 +203,7 @@ font-technology	Variable	Variables
 	Appearance of Black	Aspect du noir
 	Appearance Panel	Panneau Aspect
 	Appearance panel	Panneau Aspect
-	Applies when the linked file is relinked or updated.	S’applique lorsque le fichier lié est de nouveau lié ou mis à jour.
+	Applies to linked files now, and when they are relinked or updated.	S’applique dès maintenant aux fichiers liés, et lorsqu’ils sont de nouveau liés ou mis à jour.
 	Applies the next time VectorCraft starts.	S’applique au prochain démarrage de VectorCraft.
 	Apply	Appliquer
 	Apply Brush	Appliquer la forme
