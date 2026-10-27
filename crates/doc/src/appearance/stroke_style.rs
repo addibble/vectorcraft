@@ -1,6 +1,6 @@
 use super::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 pub enum LineCap {
     #[default]
     Butt,
@@ -8,7 +8,7 @@ pub enum LineCap {
     Square,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 pub enum LineJoin {
     #[default]
     Miter,
@@ -16,7 +16,7 @@ pub enum LineJoin {
     Bevel,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 pub enum StrokeAlign {
     #[default]
     Center,
@@ -24,7 +24,7 @@ pub enum StrokeAlign {
     Outside,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Dash {
     /// Dash, gap, dash, gap… (up to 6 values in the Stroke panel).
     pub pattern: Vec<f64>,
@@ -50,7 +50,7 @@ impl Dash {
 }
 
 /// An arrowhead shape. Saved by variant name: new shapes are appended, never renamed or reordered.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 pub enum Arrowhead {
     Triangle,
     TriangleOpen,
@@ -190,7 +190,7 @@ impl Arrowhead {
 
 /// Where an arrowhead sits relative to the end of its path. In both modes the stroke stops under
 /// the head, so the line never shows through a hollow head or past its tip.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 pub enum ArrowAlign {
     /// The tip extends past the end point (the path keeps its length).
     #[default]
