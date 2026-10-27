@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::cms::Model;
 use crate::{Color, Gradient, GradientKind, GradientStop, Paint};
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Swatch {
     pub name: String,
     pub paint: Paint,
@@ -41,7 +41,7 @@ impl Swatch {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct SwatchGroup {
     pub name: String,
     pub swatches: Vec<Swatch>,
