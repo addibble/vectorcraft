@@ -27,6 +27,9 @@ fn conventions_catalog_and_strict_keys() {
         "ui_screenshot",
         "list_commands",
         "run_command",
+        "query_document",
+        "document_schema",
+        "patch_document",
     ] {
         assert!(tools.iter().any(|t| t["name"] == name), "missing {name}");
     }
