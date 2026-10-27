@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::node::{LAYER_COLORS, Node};
 
 /// Paint Stops At: the widest gap Gap Detection closes.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum GapSize {
     /// Small Gaps: [`GapSize::SMALL`] points.
@@ -60,7 +60,7 @@ impl GapSize {
 pub const DEFAULT_GAP_COLOR: [u8; 3] = LAYER_COLORS[1].1;
 
 /// A Live Paint group's Gap Options.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct GapOptions {
     /// Gap Detection: paint stops at gaps up to `size` wide.

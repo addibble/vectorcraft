@@ -30,7 +30,7 @@ fn center() -> u8 {
 }
 
 /// What makes a group an Objects on Path group (see the module docs).
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ObjectsOnPath {
     /// The child of the group that is the path.
     pub path: NodeId,
@@ -61,12 +61,26 @@ pub struct Member {
 }
 
 /// A [`Member`] as read from a file: without `angle`, the angle of the frame's x axis.
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 struct MemberWire {
     id: NodeId,
     frame: Affine,
     #[serde(default)]
     angle: Option<f64>,
+}
+
+/// The schema of a [`Member`] is its file form's ([`MemberWire`]).
+impl schemars::JsonSchema for Member {
+    fn schema_name() -> String {
+        "Member".into()
+    }
+    fn json_schema(g: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
+        let mut s = MemberWire::json_schema(g);
+        if let schemars::schema::Schema::Object(o) = &mut s {
+            o.metadata().description = Some("An object attached to the path of an Objects on Path group.".into());
+        }
+        s
+    }
 }
 
 impl From<MemberWire> for Member {
