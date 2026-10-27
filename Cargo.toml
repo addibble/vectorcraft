@@ -17,6 +17,9 @@ craft-docpath = { version = "0.1.0", git = "https://github.com/storytold/craft-l
 craft-ui = { git = "https://github.com/storytold/craft-libs", rev = "bb8320f5fa5d20fa78a026d0de06fe4e2f08a099", features = ["serde"] }
 craft-keymap = { git = "https://github.com/storytold/craft-libs", rev = "9be9a63782298ab59cd9b7a42ee9cba4f42a5ccb" }
 craft-proof = { git = "https://github.com/storytold/craft-libs", rev = "9be9a63782298ab59cd9b7a42ee9cba4f42a5ccb" }
+# JSONPath queries, JSON Patch and the schema read a type at a time over the document model's JSON
+# (document.query, document.patch, document.schema and their MCP tools).
+craft-jsonquery = { git = "https://github.com/addibble/craft-libs", rev = "db07f605ce9765db5bdfdf711461133331af9712" }
 # Decides who draws the window frame (desktop vs. app) so the suite shares one native titlebar per
 # desktop. The `egui` feature adds `craft_window::decorate`. (craft-libs#217.)
 craft-window = { git = "https://github.com/storytold/craft-libs", rev = "9be9a63782298ab59cd9b7a42ee9cba4f42a5ccb", features = ["egui"] }
