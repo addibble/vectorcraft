@@ -10,7 +10,7 @@ use vectorcraft_geom::{Homography, Rect};
 use crate::{Node, NodeKind};
 
 /// The plane an object in perspective lies on.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PerspectiveAttachment {
     /// `left`, `right` or `ground`.
