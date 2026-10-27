@@ -5,7 +5,7 @@ use super::{Deserialize, Serialize};
 /// Variable-width profile: (position 0..1 along the path, left width factor, right width factor),
 /// in order along the path. Two points at the same position make a discontinuous point: the
 /// first is the width just before it, the second the width just after it (a step).
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct WidthProfile {
     pub points: Vec<(f64, f64, f64)>,
 }
@@ -126,7 +126,7 @@ impl WidthProfile {
 /// along the path, pressure 0..1) samples in order, positions measured as a [`WidthProfile`]'s
 /// are. The pen's tilt is kept the same way ([`StrokeLayer::tilt`]). Calligraphic and Scatter
 /// brushes with Pressure or Tilt variation read them; everything else ignores them.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct PressureProfile {
     pub points: Vec<(f64, f64)>,
 }
@@ -385,7 +385,7 @@ fn simplify_1d(pts: &[(f64, f64)], tol: f64) -> Vec<bool> {
 
 /// A width profile saved to the Profile list under a name (Add to Profiles), kept with the
 /// preferences.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct SavedProfile {
     pub name: String,
     pub profile: WidthProfile,

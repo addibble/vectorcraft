@@ -3,7 +3,7 @@ use super::mesh::{GradientMesh, MeshPoint, grid_len, grid_points, nodes_bounds, 
 use super::{Affine, Arc, Color, Deserialize, Node, NodeId, NodeKind, PathData, Point, Rect, Serialize, Vec2, yes};
 
 /// How an envelope distorts its content.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum EnvelopeKind {
     /// One of the 15 warp styles (`arc`, `arcLower`, … — see [`WarpStyle::from_id`]); bend and
@@ -35,7 +35,7 @@ pub enum EnvelopeKind {
 }
 
 /// Envelope Options → Preserve Shape Using: how a distorted raster keeps the envelope's shape.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum PreserveShape {
     #[default]
@@ -62,7 +62,7 @@ impl PreserveShape {
 /// Envelope Options besides Fidelity. `Default` is what envelopes saved before these options
 /// existed do (their appearance applies after the distortion); new envelopes start from
 /// [`EnvelopeOptions::NEW`], as in the reference app.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", default)]
 pub struct EnvelopeOptions {
     /// Rasters: Anti-Alias.

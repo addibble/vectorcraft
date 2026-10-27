@@ -2,7 +2,7 @@ use super::char_style::CharStyle;
 use super::tabs_lists::{ParaList, TabStop};
 use super::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub enum Justify {
     /// Align to the start of each paragraph's direction ([`ParaStyle::direction`]): left for
     /// left-to-right paragraphs, right for right-to-left ones. New type's alignment.
@@ -18,7 +18,7 @@ pub enum Justify {
 }
 
 /// Paragraph composer (Paragraph panel menu): how lines are broken.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum Composer {
     /// Break each line as soon as it is full.
@@ -39,7 +39,7 @@ impl Composer {
 /// hyphenation may break, where, and on how many lines in a row. Saved only when they differ from
 /// the defaults: words longer than 5 letters, 3 letters on each side of the hyphen, no hyphen
 /// limit, no hyphenation zone, and capitalized words hyphenated.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default)]
 pub struct HyphenationOptions {
     /// Words Longer Than: only words with more letters than this are hyphenated.
@@ -67,7 +67,7 @@ impl Default for HyphenationOptions {
 }
 
 /// How a justified line holding a single word is set ([`JustificationOptions::single_word`]).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum SingleWordJustify {
     /// Spread across the line, between its letters.
@@ -86,7 +86,7 @@ pub enum SingleWordJustify {
 /// wide. Justified lines may vary them between Minimum and Maximum to fill the measure. Saved only
 /// when they differ from the defaults: word spacing 80/100/133, letter spacing 0/0/0, glyph
 /// scaling 100/100/100, Auto Leading 120 and Full Justify.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default)]
 pub struct JustificationOptions {
     /// Word Spacing, percent of the font's word space (0..1000).
@@ -163,7 +163,7 @@ impl Default for JustificationOptions {
 /// of joined letters, at most one in each word. Short, Medium and Long kashidas are at most a quarter
 /// of an em, half an em and an em long; a Stylistic kashida is a row of whole tatweels as the font
 /// draws them, at most an em long.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum Kashida {
     /// No kashidas: justified lines widen their word spaces.
@@ -274,7 +274,7 @@ impl ParaStyle {
 /// [`ParaStyle`] as saved. [`Justify::Auto`] is written as the alignment it has in the paragraph
 /// direction (`Right` for right to left, else `Left`) with `justify_auto` set: builds without Auto
 /// read the alignment and ignore the flag, and builds with it read Auto back.
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, schemars::JsonSchema)]
 struct ParaStyleFile {
     #[serde(default)]
     justify: Justify,
@@ -376,6 +376,20 @@ impl From<ParaStyle> for ParaStyleFile {
     }
 }
 
+/// The schema of a [`ParaStyle`] is its file form's ([`ParaStyleFile`]).
+impl schemars::JsonSchema for ParaStyle {
+    fn schema_name() -> String {
+        "ParaStyle".into()
+    }
+    fn json_schema(g: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
+        let mut s = ParaStyleFile::json_schema(g);
+        if let schemars::schema::Schema::Object(o) = &mut s {
+            o.metadata().description = Some("Paragraph attributes (the Paragraph panel).".into());
+        }
+        s
+    }
+}
+
 impl From<ParaStyleFile> for ParaStyle {
     fn from(f: ParaStyleFile) -> Self {
         let justify = if f.justify_auto { Justify::Auto } else { f.justify };
@@ -429,7 +443,7 @@ impl From<ParaStyleFile> for ParaStyle {
 
 /// A paragraph's base direction ([`ParaStyle::direction`]), or the direction characters are set
 /// in ([`CharStyle::char_direction`]).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum ParaDirection {
     LeftToRight,
@@ -437,7 +451,7 @@ pub enum ParaDirection {
 }
 
 /// How a paragraph's leading is measured.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum LeadingModel {
     /// From one line's baseline to the next's: a line's leading is the space above it, and area
@@ -453,7 +467,7 @@ pub enum LeadingModel {
 /// How Japanese punctuation is spaced (JLREQ 3.1). Full-width punctuation is half a glyph and half
 /// a space: an opening bracket's space before it, a closing bracket's, a comma's or a full stop's
 /// after it.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum Mojikumi {
     /// Every character takes its full advance.
@@ -471,7 +485,7 @@ impl Mojikumi {
 }
 
 /// Which Japanese characters may not start or end a line (kinsoku shori).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum Kinsoku {
     /// No kinsoku: a line may break between any two characters that allow a break.
@@ -489,7 +503,7 @@ pub enum Kinsoku {
 /// stands outside the line's measure, in the space its punctuation spacing gives it (half width
 /// with Line-end Punctuation Half Width). Closing brackets and Latin punctuation don't hang. Shown
 /// as None / Regular / Force.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum Burasagari {
     /// A comma or full stop that doesn't fit goes to the next line with the character before it.
@@ -502,7 +516,7 @@ pub enum Burasagari {
 }
 
 /// Area Type Options "First Baseline" offset.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum FirstBaseline {
     /// The tallest glyph ascent touches the frame top (Illustrator's default).
