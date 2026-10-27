@@ -65,7 +65,8 @@ pub use context::{context_items, context_menu_body, ruler_menu_body, ruler_unit_
 pub use entries::{MenuEntry, Row, context_entries, entry, menu_entries, pretty_shortcut};
 pub(crate) use invoke::graph_dialog;
 pub use invoke::{click_target, invoke, invoke_from_system_menu};
-#[cfg(test)]
+// Used only by the tests that read catalogs other than English.
+#[cfg(all(test, feature = "translations"))]
 pub(crate) use labels::lists_plugin;
 #[cfg(test)]
 use labels::shows_a_name;

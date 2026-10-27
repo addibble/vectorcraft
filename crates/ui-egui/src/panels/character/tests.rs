@@ -132,6 +132,8 @@ fn kerning_at_a_caret_sets_the_pair_not_the_whole_text() {
 
 /// A variable font gets the Variable Font button, which opens one slider per axis named as the
 /// font names it; a drag along one sets that axis of the selected type in one undo step.
+// Reads catalogs other than English.
+#[cfg(feature = "translations")]
 #[test]
 fn variable_fonts_get_a_slider_per_axis() {
     use vectorcraft_text::test_fonts::{TWO_AXIS_FAMILY, two_axis_font};

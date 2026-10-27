@@ -59,10 +59,13 @@ mod thumbs;
 
 use controls::{bottom_bar, filter_button};
 pub use controls::{expand, menu, set_filter};
+// Used only by the tests that read catalogs other than English.
+#[cfg(all(test, feature = "translations"))]
+use model::painted_name;
 pub(crate) use model::shown_name;
 pub use model::{Filter, ObjectKind, RowState};
 #[cfg(test)]
-use model::{Row, list_rows, painted_name};
+use model::{Row, list_rows};
 use model::{push_rows, rows_of_doc};
 use rows::{drag_ghost, key, rename_id, resolve_click, row};
 #[cfg(test)]
