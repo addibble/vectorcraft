@@ -141,6 +141,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "aho-corasick"
+version = "1.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c982642fa9e8606056828ee9a8505737230110bb1099153c79efe865c59d12ba"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
 name = "alloc-no-stdlib"
 version = "2.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -987,6 +996,17 @@ dependencies = [
  "unicode-bidi",
  "windows-registry",
  "writeable",
+]
+
+[[package]]
+name = "craft-jsonquery"
+version = "0.1.0"
+source = "git+https://github.com/addibble/craft-libs?rev=db07f605ce9765db5bdfdf711461133331af9712#db07f605ce9765db5bdfdf711461133331af9712"
+dependencies = [
+ "json-patch",
+ "serde",
+ "serde_json",
+ "serde_json_path",
 ]
 
 [[package]]
@@ -2673,6 +2693,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "inventory"
+version = "0.3.25"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6928282826c822ad91bf1c9a1cb90a30ba1c26770749929b4656cd6be829cd7c"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
 name = "ipnet"
 version = "2.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2795,6 +2824,28 @@ dependencies = [
  "cfg-if",
  "futures-util",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "json-patch"
+version = "4.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7421438de105a0827e44fadd05377727847d717c80ce29a229f85fd04c427b72"
+dependencies = [
+ "jsonptr",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "jsonptr"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5a3cc660ba5d72bce0b3bb295bf20847ccbb40fd423f3f05b61273672e561fe"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -3040,6 +3091,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6877bb514081ee2a7ff5ef9de3281f14a4dd4bceac4c09388074a6b5df8a139a"
 
 [[package]]
+name = "minimal-lexical"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
+
+[[package]]
 name = "miniz_oxide"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3189,6 +3246,16 @@ name = "nohash-hasher"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2bf50223579dc7cdcfb3bfcacf7069ff68243f8c363f62ffa99cf000a6b9c451"
+
+[[package]]
+name = "nom"
+version = "7.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d273983c5a657a70a3e8f2a01329822f3b8c8172b73826411a55751e404a0a4a"
+dependencies = [
+ "memchr",
+ "minimal-lexical",
+]
 
 [[package]]
 name = "nom"
@@ -4326,6 +4393,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "regex"
+version = "1.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f020237b6c8eed93db2e2cb53c00c60a8e1bc73da7d073199a1180401450218d"
+dependencies = [
+ "aho-corasick",
+ "memchr",
+ "regex-automata",
+ "regex-syntax",
+]
+
+[[package]]
+name = "regex-automata"
+version = "0.4.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ad8553b9b26413251cbf30e620595c7a41b3887f03da04579c0e6b0d6a06b4b2"
+dependencies = [
+ "aho-corasick",
+ "memchr",
+ "regex-syntax",
+]
+
+[[package]]
 name = "regex-syntax"
 version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4814,6 +4904,56 @@ dependencies = [
  "ryu-js",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "serde_json_path"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b992cea3194eea663ba99a042d61cea4bd1872da37021af56f6a37e0359b9d33"
+dependencies = [
+ "inventory",
+ "nom 7.1.3",
+ "regex",
+ "serde",
+ "serde_json",
+ "serde_json_path_core",
+ "serde_json_path_macros",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "serde_json_path_core"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dde67d8dfe7d4967b5a95e247d4148368ddd1e753e500adb34b3ffe40c6bc1bc"
+dependencies = [
+ "inventory",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "serde_json_path_macros"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "517acfa7f77ddaf5c43d5f119c44a683774e130b4247b7d3210f8924506cfac8"
+dependencies = [
+ "inventory",
+ "serde_json_path_core",
+ "serde_json_path_macros_internal",
+]
+
+[[package]]
+name = "serde_json_path_macros_internal"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aafbefbe175fa9bf03ca83ef89beecff7d2a95aaacd5732325b90ac8c3bd7b90"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -5813,7 +5953,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8765b90061cba6c22b5831f675da109ae5561588290f9fa2317adab2714d5a6"
 dependencies = [
  "memchr",
- "nom",
+ "nom 8.0.0",
  "petgraph",
 ]
 
@@ -6233,6 +6373,7 @@ name = "vectorcraft-engine"
 version = "0.17.0"
 dependencies = [
  "craft-docpath",
+ "craft-jsonquery",
  "crc32fast",
  "flate2",
  "image",
@@ -6242,6 +6383,7 @@ dependencies = [
  "roxmltree 0.21.1",
  "rustix 1.1.5",
  "ruzstd",
+ "schemars",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
@@ -6323,6 +6465,7 @@ dependencies = [
 name = "vectorcraft-mcp"
 version = "0.17.0"
 dependencies = [
+ "craft-jsonquery",
  "image",
  "log",
  "proptest",

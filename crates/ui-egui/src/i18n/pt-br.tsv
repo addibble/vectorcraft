@@ -1347,6 +1347,10 @@
 	Insert Special Character	Inserir Caractere Especial
 	Insert Whitespace Character	Inserir Caractere de Espaço em Branco
 	Inspect Document	Inspecionar Documento
+	Patch Document	Aplicar Patch ao Documento
+	Patch	Patch
+	Query Document	Consultar Documento
+	Document Schema	Esquema do Documento
 	Inspect Object	Inspecionar Objeto
 	Install Plug-in	Instalar Plug-in
 	Install Plug-in…	Instalar Plug-in…

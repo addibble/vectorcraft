@@ -44,6 +44,10 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 log = { workspace = true }
+# document.query, document.patch and document.schema over the model's JSON; the schema itself is
+# schemars' on the model's types.
+craft-jsonquery = { workspace = true }
+schemars = { workspace = true }
 
 # Whether a recovery area folder is this account's own (`FolderStore::own_area`). Already in
 # Cargo.lock (tempfile, ui-egui), so this adds no new crate.
