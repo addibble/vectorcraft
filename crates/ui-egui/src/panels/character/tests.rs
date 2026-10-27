@@ -136,6 +136,8 @@ fn kerning_at_a_caret_sets_the_pair_not_the_whole_text() {
 #[cfg(feature = "translations")]
 #[test]
 fn variable_fonts_get_a_slider_per_axis() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
     use vectorcraft_text::test_fonts::{TWO_AXIS_FAMILY, two_axis_font};
     let db = vectorcraft_text::FontDb::global();
     db.add_font(two_axis_font().unwrap());

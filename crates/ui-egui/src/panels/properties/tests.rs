@@ -451,6 +451,8 @@ fn type_paragraph_section_hyphenates() {
 /// Variable fonts get the same Variable Font button in Properties as in the Character panel.
 #[test]
 fn properties_variable_font_button_for_variable_type() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
     use vectorcraft_text::test_fonts::{TWO_AXIS_FAMILY, two_axis_font};
     vectorcraft_text::FontDb::global().add_font(two_axis_font().unwrap());
     let mut app = VectorcraftApp::new(Session::new(), Default::default());
