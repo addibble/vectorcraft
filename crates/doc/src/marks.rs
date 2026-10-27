@@ -11,7 +11,7 @@ use vectorcraft_geom::{Point, Rect, shapes};
 use crate::{Appearance, CharStyle, Node, NodeId, NodeKind, TextObject};
 
 /// Trim mark style (the preference `japaneseCropMarks` picks Japanese).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum MarkStyle {
     /// One line per edge at each corner, set off from the trim box.

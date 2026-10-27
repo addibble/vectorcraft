@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use vectorcraft_geom::{Affine, Anchor, PathData, Point, Vec2};
 
 /// What a dimension measures.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum DimensionMode {
     #[default]
@@ -37,7 +37,7 @@ pub enum Orientation {
 }
 
 /// The unit a length is labelled in.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum LengthUnit {
     #[default]
@@ -93,7 +93,7 @@ impl LengthUnit {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum LineType {
     #[default]
@@ -102,7 +102,7 @@ pub enum LineType {
     Dotted,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ArrowStyle {
     #[default]
@@ -113,7 +113,7 @@ pub enum ArrowStyle {
 }
 
 /// Where the label sits across the dimension line.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum TextPosition {
     /// On the side of the dimension line away from the measured object.
@@ -124,7 +124,7 @@ pub enum TextPosition {
 }
 
 /// Where the label sits along the dimension line.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum TextAlignment {
     Left,
@@ -133,7 +133,7 @@ pub enum TextAlignment {
     Right,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct DimensionOptions {
     pub units: LengthUnit,
@@ -258,7 +258,7 @@ impl DimensionOptions {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SegmentRef {
     pub node: NodeId,
@@ -285,7 +285,7 @@ impl SegmentRef {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum DimensionSource {
     Segment {
@@ -372,7 +372,7 @@ impl DimensionSource {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PointRef {
     pub node: NodeId,
@@ -387,7 +387,7 @@ impl PointRef {
 }
 
 /// The point of an anchor that an [`AnchorWeight`] names: the anchor, or one of its handles.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum AnchorPart {
     #[default]
@@ -407,7 +407,7 @@ impl AnchorPart {
 }
 
 /// One anchor's share of a [`FreePoint`].
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AnchorWeight {
     pub subpath: usize,
@@ -420,7 +420,7 @@ pub struct AnchorWeight {
 
 /// A measured point that is not an anchor (a point on a segment, or a point a Smart Guide gave),
 /// linked to one path so that it moves with it.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum FreePoint {
     /// A point on a segment at curve parameter `t`, 0 at the segment's first anchor and 1 at its
@@ -615,7 +615,7 @@ impl FreePoint {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Dimension {
     pub mode: DimensionMode,
