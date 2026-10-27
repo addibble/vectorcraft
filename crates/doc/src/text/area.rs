@@ -2,7 +2,7 @@ use super::para_style::FirstBaseline;
 use super::{Deserialize, PathData, Serialize};
 
 /// Area Type Options "Align" (vertical): where the lines of each row/column sit in it.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum VerticalAlign {
     /// Lines start at the top of the cell (the default).
@@ -30,7 +30,7 @@ impl VerticalAlign {
 }
 
 /// Text Wrap Options of a wrap object (Object → Text Wrap).
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default)]
 pub struct TextWrap {
     /// Distance kept between the text and the object, in points (Illustrator's default 6 pt).
@@ -46,7 +46,7 @@ impl Default for TextWrap {
 }
 
 /// A resolved wrap shape on an area text object: the outline of a wrap object in text space.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct WrapShape {
     pub path: PathData,
     #[serde(flatten)]
@@ -54,7 +54,7 @@ pub struct WrapShape {
 }
 
 /// Type on a Path effect: how each glyph is oriented on the path (Type → Type on a Path).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum PathEffect {
     /// Glyphs rotate with the path (the default).
@@ -89,7 +89,7 @@ impl PathEffect {
 }
 
 /// Type on a Path Options › Align to Path: which height of the type runs along the path.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum PathAlign {
     /// The font's top edge: the type hangs below the path.
@@ -119,7 +119,7 @@ impl PathAlign {
 }
 
 /// Area Type Options: rows and columns, gutters, inset and first baseline of area type.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct AreaOptions {
     #[serde(deserialize_with = "de_rows_or_columns")]
@@ -169,7 +169,7 @@ fn de_rows_or_columns<'de, D: serde::Deserializer<'de>>(d: D) -> Result<usize, D
 
 /// How area type and its frame fit each other. Serialized as `"none"`, `"autoHeight"` or
 /// `{"shrinkText": {"minPercent": 50}}`.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum AreaFit {
     /// The frame keeps its size; text that doesn't fit overflows.

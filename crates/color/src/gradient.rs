@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::Color;
 use crate::freeform::Freeform;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub enum GradientKind {
     #[default]
     Linear,
@@ -32,7 +32,7 @@ impl GradientKind {
 }
 
 /// How a gradient mixes the colours between its stops (the Gradient panel's Method).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub enum GradientMethod {
     /// Mixed in display RGB, as gradients always were.
     #[default]
@@ -100,7 +100,7 @@ fn perceptual_steps(a: &Color, b: &Color, (v0, v1): (f32, f32), depth: u32, out:
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GradientStop {
     /// 0..=1 along the gradient.
     pub offset: f32,
@@ -150,7 +150,7 @@ fn half() -> f32 {
     0.5
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Gradient {
     pub kind: GradientKind,
     pub stops: Vec<GradientStop>,
@@ -419,7 +419,7 @@ pub fn midpoint_from_pos(stops: &[GradientStop], i: usize, pos: f32) -> Option<f
 }
 
 /// Where the gradient sits on an object, in document coordinates.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GradientGeom {
     pub start: Point,
     pub end: Point,
@@ -602,7 +602,7 @@ fn rebase_point(p: Point, from: Rect, to: Rect) -> Point {
 }
 
 /// A gradient applied to a fill or stroke.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GradientPaint {
     pub gradient: Gradient,
     /// None = fit to the object's bounds at `angle` each render (fresh gradients behave like this).
