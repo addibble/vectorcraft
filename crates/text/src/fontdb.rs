@@ -95,6 +95,10 @@ pub struct FontDb {
     family_cache: Mutex<Option<Arc<[String]>>>,
     menu_cache: Mutex<Option<MenuFamilies>>,
     generation: AtomicU64,
+    /// Fonts a host can supply on request ([`FontDb::add_sources`]), and those requested and not
+    /// yet taken ([`FontDb::take_source_requests`]).
+    sources: RwLock<Vec<FontSource>>,
+    source_requests: Mutex<SourceRequests>,
     /// System fallback state: characters no system font covers.
     #[cfg(not(target_arch = "wasm32"))]
     sys: Mutex<SysFallback>,
@@ -149,6 +153,45 @@ const CANONICAL_CACHE_MAX: usize = 4_096;
 
 /// [`FontDb::menu_family_list`], with the [`FontDb::family_list`] it was built from.
 type MenuFamilies = (Arc<[String]>, Arc<[String]>);
+
+/// A font a host can supply when type needs it, as a font provider's fonts are activated on
+/// demand: listed in the font menus before it is loaded, and fetched by the host from `url` when
+/// type names it (the web build does so, checking the bytes against `integrity`); until then the
+/// type draws in the fallback face.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FontSource {
+    pub family: String,
+    pub style: String,
+    /// Where the host gets the file: for the web build, a URL relative to the page.
+    pub url: String,
+    /// The file's Subresource Integrity value, `sha256-<base64>`.
+    pub integrity: String,
+}
+
+/// The sources requested ([`FontDb::face`] met their family missing): each requested once.
+#[derive(Debug, Default)]
+struct SourceRequests {
+    asked: std::collections::HashSet<(String, String)>,
+    queue: Vec<FontSource>,
+    /// How each source the host took on ended ([`FontDb::source_settled`]): `true` when its file was
+    /// added, `false` when it couldn't be fetched or added. Keyed as `asked` is.
+    settled: HashMap<(String, String), bool>,
+}
+
+/// A source's key in [`SourceRequests`]: its family and style, in lowercase.
+fn source_key(src: &FontSource) -> (String, String) {
+    (src.family.to_ascii_lowercase(), src.style.to_ascii_lowercase())
+}
+
+/// What [`FontDb::add_font_reporting`] did with a font file's bytes.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct FontsAdded {
+    /// The faces the file holds: 0 when it is no TrueType, OpenType or collection font.
+    pub found: usize,
+    /// The faces it added, as (family, style); a face already loaded (the same family, style and
+    /// version) is not added again.
+    pub added: Vec<(String, String)>,
+}
 
 #[cfg(test)]
 mod alias_tests {
