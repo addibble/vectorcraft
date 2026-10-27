@@ -4891,7 +4891,9 @@ is not an edit: nothing is saved, journaled or undone. `text.addFontSources {fon
 registers fonts the host can supply, as a font provider's fonts are activated on demand: they are listed in the font
 menus and `text.fontList` from then on (a menu shows a source not loaded yet by name, without a sample, and `text.fontList` gives no axes for it; listing a source asks for nothing), and type set in
 one asks for it. The web build fetches what type asks for from `url` (relative to the page), four at a time and at most 64 MB each, checks it against its
-SHA-256, and adds it as `text.addFont` does; until then the type draws in the fallback face. `text.replaceFont` takes a
+SHA-256, and adds it as `text.addFont` does; until then the type draws in the fallback face. Desktop and
+`vectorcraft-cli` fetch no source: their host adds its file with `text.addFont`, and until it does the family stays
+listed, its type draws in the fallback face and `text.fonts` reports it `missing`. `text.replaceFont` takes a
 source's family. A family and style already a source is kept, unless it failed to load (it is then
 asked for again); the answer is `{added, sources}`; not an edit either.
 
