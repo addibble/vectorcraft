@@ -2,7 +2,7 @@ use super::{Affine, CornerKind, Deserialize, PathData, Point, Rect, Serialize, c
 
 /// Live shape parameters (Illustrator's "Live Shapes"). The node's path is regenerated from these
 /// while the shape stays live; editing anchors directly converts it to a plain path.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "shape", rename_all = "lowercase")]
 pub enum LiveShape {
     Rectangle {
