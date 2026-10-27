@@ -1,3 +1,5 @@
+use craft_jsonquery::ModelText;
+
 use super::dispatch::{BRIEF, MAX_SIDE_WINDOW, MENU_FILTER, TRACE_VIEWS};
 use super::handlers::MAX_DIALOG_FIELDS;
 use super::{FORMATS, OPEN_EXTS, SAVE_FORMATS, Value, format, json};
@@ -94,7 +96,7 @@ fn tool(name: &str, title: &str, desc: &str, schema: Value, read_only: bool) -> 
 /// All tools, in `tools/list` order.
 pub fn tool_definitions() -> Vec<Value> {
     let empty = || obj(json!({}), &[]);
-    vec![
+    let mut tools = vec![
         tool(
             "command_list",
             "List commands",
@@ -510,5 +512,29 @@ pub fn tool_definitions() -> Vec<Value> {
         ),
         tool("undo", "Undo", "Undo the last change (Edit → Undo). redo reapplies it.", empty(), false),
         tool("redo", "Redo", "Redo the last undone change (Edit → Redo): the change the last undo took back.", empty(), false),
-    ]
+    ];
+    // The document model read and changed a part at a time, listed before inspect_ui.
+    let at = tools.iter().position(|t| t["name"] == "inspect_ui").unwrap_or(tools.len());
+    tools.splice(at..at, document_tools());
+    tools
+}
+
+/// query_document, document_schema and patch_document: craft-jsonquery's tools over the document
+/// model, run by document.query, document.schema and document.patch.
+fn document_tools() -> Vec<Value> {
+    let text = ModelText {
+        model: "document model".into(),
+        source: "as document.json gives it".into(),
+        query_examples: ["$.artboards[*].name", "$.layers[0].kind.children[?@.kind.type == 'path'].id", "$..[?@.name == 'logo']"]
+            .map(String::from)
+            .to_vec(),
+        root: vectorcraft_engine::schema::ROOT.into(),
+        type_examples: ["Artboard", "Node", "Appearance"].map(String::from).to_vec(),
+        pointer_example: "/layers/0/kind/children/2/opacity".into(),
+        patch_note: "It is one journal entry, and an object added without an id, or a copy, gets a fresh id.".into(),
+    };
+    craft_jsonquery::tools::all(&text, vectorcraft_engine::query::MAX_BYTES)
+        .into_iter()
+        .map(|t| tool(t.name, t.title, &t.description, t.input_schema, t.read_only))
+        .collect()
 }

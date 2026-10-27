@@ -102,13 +102,22 @@ fn dispatch(b: &mut dyn Backend, name: &str, a: &Args) -> Result<ToolResult, Str
                 Some(_) => return Err("`params` must be an object".into()),
             };
             let method = if name == "invoke_menu" && b.has_ui() { "ui.menu.invoke" } else { "engine.execute" };
-            j(b.call(method, json!({"command": cmd, "params": params}))?)
+            j(b.call(method, json!({"command": cmd, "params": pretty_queries(cmd, params)}))?)
         }
         "doc_inspect" | "inspect_document" => {
             // Only the slicing and scope options reach the command, which validates them.
             let slice: Map<String, Value> =
                 a.iter().filter(|(k, _)| INSPECT_KEYS.contains(&k.as_str())).map(|(k, v)| (k.clone(), v.clone())).collect();
             j(b.call("document.inspect", Value::Object(slice))?)
+        }
+        "query_document" | "document_schema" | "patch_document" => {
+            // The command checks its own arguments; the tool's schema already refused unknown keys.
+            let command = match name {
+                "query_document" => "document.query",
+                "document_schema" => "document.schema",
+                _ => "document.patch",
+            };
+            j(b.call("engine.execute", json!({"command": command, "params": pretty_queries(command, Value::Object(a.clone()))}))?)
         }
         "ui_inspect" | "inspect_ui" => {
             need_ui(b, name)?;
@@ -382,7 +391,7 @@ fn command_batch(b: &mut dyn Backend, a: &Args) -> Result<ToolResult, String> {
                     }
                     Ok(made)
                 }
-                _ => b.call("engine.execute", json!({"command":id,"params":params})),
+                _ => b.call("engine.execute", json!({"command":id,"params":pretty_queries(id, params)})),
             }
         })
         .unwrap_or_else(|e| Err(format!("internal error: {e}")));
@@ -456,4 +465,31 @@ fn render_preview(b: &mut dyn Backend, a: &Args) -> Result<ToolResult, String> {
     let mut out = std::io::Cursor::new(Vec::new());
     img.write_to(&mut out, image::ImageFormat::Png).map_err(|e| format!("encode preview: {e}"))?;
     Ok(image_result(out.get_ref(), json!({"width":img.width(),"height":img.height()})))
+}
+
+/// `params` for `command`, with every document query it runs told that this server writes answers
+/// pretty-printed ([`ToolResult::json`]): a query's byte limit then counts what the agent reads.
+/// The layout is the server's, whatever the agent passed; a batch's queries are told too.
+pub(crate) fn pretty_queries(command: &str, mut params: Value) -> Value {
+    match command {
+        "document.query" => {
+            if let Value::Object(o) = &mut params {
+                o.insert("layout".into(), json!("pretty"));
+            }
+        }
+        "command.batch" => {
+            for step in params.get_mut("commands").and_then(Value::as_array_mut).into_iter().flatten() {
+                let Some(id) = step.get("command").and_then(Value::as_str).map(str::to_string) else { continue };
+                if let Some(p) = step.get_mut("params") {
+                    *p = pretty_queries(&id, p.take());
+                } else if id == "document.query"
+                    && let Value::Object(o) = step
+                {
+                    o.insert("params".into(), json!({"layout": "pretty"}));
+                }
+            }
+        }
+        _ => {}
+    }
+    params
 }

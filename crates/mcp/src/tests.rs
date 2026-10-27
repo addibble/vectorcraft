@@ -501,6 +501,51 @@ fn headless_hover_waits_for_the_shape_builder_map() {
 }
 
 /// inspect_document reads back the paint type's characters show, as add_text and set_paint give it.
+/// A large document is read a part at a time: `query_document` answers a JSONPath over the model
+/// with each match's normalized path, and `document_schema` describes the model one type at a
+/// time, or the type of the value at a path.
+#[test]
+fn query_document_and_document_schema_read_the_model_a_part_at_a_time() {
+    let mut s = server();
+    let r = call(&mut s, 2, "run_command", json!({"command": "shape.rectangle", "params": {"x": 10, "y": 10, "width": 50, "height": 20}}));
+    let id = serde_json::from_str::<Value>(&text_of(&r)).unwrap()["id"].clone();
+    let r = call(&mut s, 3, "query_document", json!({"path": "$.layers[0].kind.children[*].id"}));
+    let v: Value = serde_json::from_str(&text_of(&r)).unwrap();
+    assert_eq!(v["total"], 1, "{v}");
+    assert_eq!(
+        v["matches"][0],
+        json!({"path": "$['layers'][0]['kind']['children'][0]['id']", "pointer": "/layers/0/kind/children/0/id", "value": id})
+    );
+    let r = call(&mut s, 4, "query_document", json!({"path": "$.layers[*]", "depth": 1}));
+    let v: Value = serde_json::from_str(&text_of(&r)).unwrap();
+    assert!(v["matches"][0]["value"]["kind"].as_str().is_some_and(|k| k.starts_with("{…")), "{v}");
+    let r = call(&mut s, 5, "query_document", json!({"path": "layers["}));
+    assert_eq!(r["isError"], true, "{r}");
+
+    let r = call(&mut s, 6, "document_schema", json!({}));
+    let v: Value = serde_json::from_str(&text_of(&r)).unwrap();
+    assert_eq!(v["type"], "Document");
+    assert!(v["properties"].as_array().unwrap().iter().any(|p| p["name"] == "artboards" && p["type"] == "array of Artboard"), "{v}");
+    let r = call(&mut s, 7, "document_schema", json!({"at": "$.layers[0].kind.children[0].kind"}));
+    let v: Value = serde_json::from_str(&text_of(&r)).unwrap();
+    assert_eq!(v["path"], "$['layers'][0]['kind']['children'][0]['kind']");
+    assert!(v["properties"].as_array().unwrap().iter().any(|p| p["name"] == "path"), "{v}");
+    let r = call(&mut s, 8, "document_schema", json!({"index": true}));
+    let v: Value = serde_json::from_str(&text_of(&r)).unwrap();
+    assert!(v["types"].as_array().unwrap().len() > 50, "{v}");
+    let r = call(&mut s, 9, "document_schema", json!({"type": "Nonesuch"}));
+    assert_eq!(r["isError"], true, "{r}");
+
+    let pointer = "/layers/0/kind/children/0/opacity";
+    let r = call(&mut s, 10, "patch_document", json!({"patch": [{"op": "add", "path": pointer, "value": 0.25}], "label": "Fade"}));
+    assert_eq!(r["isError"], false, "{r}");
+    let r = call(&mut s, 11, "query_document", json!({"path": "$.layers[0].kind.children[0].opacity"}));
+    let v: Value = serde_json::from_str(&text_of(&r)).unwrap();
+    assert_eq!(v["matches"][0]["value"], 0.25, "{v}");
+    let r = call(&mut s, 12, "patch_document", json!({"patch": [{"op": "test", "path": pointer, "value": 1}]}));
+    assert_eq!(r["isError"], true, "{r}");
+}
+
 #[test]
 fn inspect_document_reports_the_paint_of_type() {
     let mut s = server();
@@ -1705,4 +1750,38 @@ fn add_text_reports_overflow_and_takes_a_fit() {
     assert!(auto["id"].is_u64() && auto.get("overflow").is_none(), "{auto}");
     let point = made(&call(&mut s, 3, "add_text", json!({"text": "NEON DRIVE", "x": 0, "y": 300, "size": 60})));
     assert!(point.get("overflow").is_none(), "{point}");
+}
+
+/// Every way this server runs a document query tells it the answer is written pretty-printed, so
+/// the query's byte limit counts what the agent reads; an agent's own `layout` is overruled.
+#[test]
+fn every_query_the_server_runs_counts_its_answer_pretty_printed() {
+    let (addr, h) = fake_app();
+    let mut s = Server::new(Box::new(Remote::connect(&addr).unwrap()));
+    call(&mut s, 1, "query_document", json!({"path": "$.artboards"}));
+    call(&mut s, 2, "run_command", json!({"command": "document.query", "params": {"path": "$", "layout": "compact"}}));
+    let batch = json!({"commands": [
+        {"command": "document.query", "params": {"path": "$.layers"}},
+        {"command": "document.query"},
+        {"command": "command.batch", "params": {"commands": [{"command": "document.query", "params": {"path": "$", "layout": "compact"}}]}},
+        {"command": "object.group", "params": {}}
+    ]});
+    call(&mut s, 3, "run_command", json!({"command": "command.batch", "params": batch}));
+    call(&mut s, 4, "command_batch", json!({"steps": [{"id": "document.query", "params": {"path": "$"}}]}));
+    call(&mut s, 5, "run_command", json!({"command": "object.group", "params": {"layout": "compact"}}));
+    drop(s);
+    let sent: Vec<Value> = h.join().unwrap().into_iter().filter(|m| m["method"] == "engine.execute").map(|m| m["params"].clone()).collect();
+    let query = |p: &Value| p["command"] == "document.query";
+    assert_eq!(sent.iter().find(|p| query(p) && p["params"]["path"] == "$.artboards").unwrap()["params"]["layout"], "pretty");
+    assert_eq!(sent.iter().find(|p| query(p) && p["params"]["path"] == "$").unwrap()["params"]["layout"], "pretty");
+    let batched = sent.iter().find(|p| p["command"] == "command.batch").unwrap();
+    let steps = &batched["params"]["commands"];
+    assert_eq!(steps[0]["params"]["layout"], "pretty");
+    assert_eq!(steps[1]["params"], json!({"layout": "pretty"}));
+    assert_eq!(steps[2]["params"]["commands"][0]["params"]["layout"], "pretty");
+    assert_eq!(steps[3]["params"], json!({}), "not a query: left alone");
+    assert!(sent.iter().filter(|p| query(p)).count() >= 3, "{sent:?}");
+    assert!(sent.iter().all(|p| !query(p) || p["params"]["layout"] == "pretty"), "{sent:?}");
+    let group = sent.iter().rfind(|p| p["command"] == "object.group").unwrap();
+    assert_eq!(group["params"], json!({"layout": "compact"}), "another command's params are its own");
 }
