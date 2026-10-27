@@ -195,6 +195,11 @@ impl Headless {
             let ev = PointerEvent { kind, pos: Point::new(x, y), mods, pressure: PointerEvent::json_pressure(e) };
             let reqs = self.session.pointer(&ev, self.view).map_err(|e| e.to_string())?;
             self.apply_ui_requests(reqs, &mut requests)?;
+            // With no frames to show the highlight in later, a hover waits for the work the tool
+            // runs on another thread.
+            if kind == PointerKind::Move && self.session.tool_waiting() {
+                self.session.tool_poll(self.view, true).map_err(|e| e.to_string())?;
+            }
             let hold = PointerEvent::json_hold(e);
             if hold > 0.0 {
                 let reqs = self.session.tool_tick(hold, self.view).map_err(|e| e.to_string())?;
@@ -258,7 +263,9 @@ impl Headless {
         let scale = p.get("scale").and_then(Value::as_f64).unwrap_or(1.0).clamp(0.01, 16.0);
         vectorcraft_render::raster_size(r, scale)?;
         // Rendered with the options of a PNG export on white, so its pixels are the exported file's.
-        let opts = RasterExportOptions { background: Some([255; 3]), ..Default::default() }.render_options(RasterFormat::Png);
+        // `traceViews: true` draws Image Trace objects as their View shows them, as the canvas does.
+        let mut opts = RasterExportOptions { background: Some([255; 3]), ..Default::default() }.render_options(RasterFormat::Png);
+        opts.trace_views = p.get("traceViews").and_then(Value::as_bool) == Some(true);
         let img = self.renderer.render_region_with(&doc, r, scale, &opts);
         // A cancelled render stops drawing: the picture is not whole and is not written.
         vectorcraft_engine::cancel::check().map_err(|e| e.to_string())?;

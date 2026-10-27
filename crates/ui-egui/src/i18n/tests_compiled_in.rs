@@ -91,15 +91,15 @@ const FEATURE_ON: [(&str, bool); 24] = [
 #[test]
 fn each_catalog_has_its_own_feature_and_translations_lists_every_one() {
     let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/src/i18n");
-    let module = std::fs::read_to_string(format!("{dir}/mod.rs")).unwrap();
+    let module = std::fs::read_to_string(format!("{dir}.rs")).unwrap();
     let mut files = Vec::new();
     for call in module.split("catalog_tsv!(").skip(1) {
         let args: Vec<&str> = call.split(')').next().unwrap().split(',').map(|a| a.trim().trim_matches('"')).collect();
         let [file, feature] = args[..] else { panic!("catalog_tsv!({call:.40}…) takes a file and a feature") };
-        if file == "xx.tsv" {
+        if file == "i18n/xx.tsv" {
             continue; // "Adding a language", in the module's documentation
         }
-        let code = file.strip_suffix(".tsv").unwrap();
+        let code = file.strip_prefix("i18n/").and_then(|f| f.strip_suffix(".tsv")).unwrap();
         assert_eq!(feature, format!("lang-{code}"), "{file}'s feature");
         files.push(code);
     }
