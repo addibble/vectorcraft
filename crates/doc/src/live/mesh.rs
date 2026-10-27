@@ -5,7 +5,7 @@ use super::{
     one,
 };
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct MeshPoint {
     pub p: Point,
     pub color: Color,
@@ -17,7 +17,7 @@ pub struct MeshPoint {
 }
 
 /// A gradient mesh: `(rows+1)×(cols+1)` points, row-major.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GradientMesh {
     pub rows: u32,
     pub cols: u32,
