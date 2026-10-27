@@ -1,7 +1,7 @@
 use super::{Appearance, Deserialize, Knockout, Node, Rect, Serialize, skip};
 
 /// A named graphic style (Graphic Styles panel): an appearance plus the object's transparency.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GraphicStyle {
     pub name: String,
     pub appearance: Appearance,

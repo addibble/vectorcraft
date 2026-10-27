@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::{Color, Gradient, GradientKind, GradientPaint, GradientStop, Paint, Swatch, SwatchGroup};
 
 /// A library: its name, its ungrouped swatches and its colour groups.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct SwatchLibrary {
     pub name: String,
     #[serde(default)]

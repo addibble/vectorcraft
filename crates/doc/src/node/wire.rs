@@ -168,7 +168,7 @@ fn counted_list<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>>(d: D) -> 
 
 /// How a [`Node`] is read: the flat field list of the file format. Fields move into the node
 /// (and its extras, allocated only when one is set) without a copy of what they own.
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 #[serde(rename = "Node")]
 pub(super) struct NodeWire {
     #[serde(deserialize_with = "counted_id")]
@@ -240,6 +240,33 @@ pub(super) struct NodeWire {
     envelope_edit_margin: Option<[f32; 4]>,
     #[serde(default)]
     pixel_aligned: bool,
+}
+
+/// A node's schema is its file form's ([`NodeWire`]: the flat field list a node is written as).
+impl schemars::JsonSchema for Node {
+    fn schema_name() -> String {
+        "Node".into()
+    }
+    fn json_schema(g: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
+        let mut s = NodeWire::json_schema(g);
+        if let schemars::schema::Schema::Object(o) = &mut s {
+            o.metadata().description = Some("One object in the tree: a layer, group, path, type, image or another kind (`kind.type`), with its name, visibility, lock, opacity, blend mode and appearance.".into());
+        }
+        s
+    }
+}
+
+impl schemars::JsonSchema for Knockout {
+    fn schema_name() -> String {
+        "Knockout".into()
+    }
+    fn json_schema(_: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
+        let mut o = schemars::schema::SchemaObject { instance_type: Some(schemars::schema::InstanceType::String.into()), ..Default::default() };
+        o.enum_values = Some(Knockout::ALL.into_iter().map(|k| serde_json::Value::String(k.label().into())).collect());
+        o.metadata().description =
+            Some("Knockout Group: whether a container's children knock each other out (`neutral` follows the enclosing group).".into());
+        o.into()
+    }
 }
 
 impl From<NodeWire> for Node {
