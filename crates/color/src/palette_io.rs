@@ -73,7 +73,7 @@ impl PaletteFormat {
 }
 
 /// The native file: a header around the library.
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, schemars::JsonSchema)]
 struct NativeFile {
     format: String,
     version: u32,
