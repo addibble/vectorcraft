@@ -3354,6 +3354,10 @@ theme	Appearance	Wygląd
 	Find Objects	Znajdź obiekty
 	Compare with Image	Porównaj z obrazem
 	Inspect Document	Zbadaj dokument
+	Patch Document	Zastosuj łatkę do dokumentu
+	Patch	Łatka
+	Query Document	Zapytanie do dokumentu
+	Document Schema	Schemat dokumentu
 	Inspect Object	Zbadaj obiekt
 	Begin Undo Group	Rozpocznij grupę cofania
 	End Undo Group	Zakończ grupę cofania
