@@ -599,6 +599,39 @@ fn clip_to_bounding_box_clips_the_filled_image() {
     assert_eq!((clip_group(&s).0, r["applied"].clone()), (group, json!([])), "no second clip group");
 }
 
+/// The rectangle of the clip group holding just image `id` of `s`, as [`corners`].
+fn own_clip(s: &Session, id: NodeId) -> [f64; 4] {
+    let doc = &s.doc().unwrap().doc;
+    let g = doc.node(doc.parent_of(id).unwrap()).unwrap();
+    let NodeKind::Group { children, clip: true } = &g.kind else { panic!("not clipped: {g:?}") };
+    assert_eq!(children.len(), 2);
+    corners(children[0].geometric_bounds().unwrap())
+}
+
+/// Once Clip to Bounding Box clips a filled image, its clip's rectangle is the bounds the options
+/// place it in: a new alignment moves the image within it, and Fit fits it inside.
+#[test]
+fn a_clipped_image_is_placed_in_its_clip() {
+    let (mut s, id, _d) = squeezed("apply-clip-align");
+    apply(&mut s, id, json!({"preserve": "fill", "clip": true}));
+    let (r, b) = apply(&mut s, id, json!({"align": "left"}));
+    assert_eq!((b, r["applied"].clone(), own_clip(&s, id)), ([50.0, 0.0, 650.0, 300.0], json!([id.0]), [50.0, 0.0, 350.0, 300.0]));
+    let (_, b) = apply(&mut s, id, json!({"align": "right"}));
+    assert_eq!((b, own_clip(&s, id)), ([-250.0, 0.0, 350.0, 300.0], [50.0, 0.0, 350.0, 300.0]));
+    let (_, b) = apply(&mut s, id, json!({"preserve": "fit", "align": "center"}));
+    assert_eq!((b, own_clip(&s, id)), ([50.0, 75.0, 350.0, 225.0], [50.0, 0.0, 350.0, 300.0]), "fitted inside the clip");
+}
+
+/// A clipped, filled image whose file changes fills its clip again: the clip keeps its rectangle.
+#[test]
+fn a_clipped_image_updates_in_its_clip() {
+    let (mut s, id, d) = squeezed("apply-clip-update");
+    apply(&mut s, id, json!({"preserve": "fill", "clip": true}));
+    write(&d.file("photo.png"), &png(300, 600, RED));
+    assert_eq!(run(&mut s, "links.update", json!({})), json!({"updated": [id.0], "missing": []}));
+    assert_eq!((corners(bounds(&s, id)), own_clip(&s, id)), ([50.0, -150.0, 350.0, 450.0], [50.0, 0.0, 350.0, 300.0]));
+}
+
 /// An image already inside a clip group isn't reshaped: a mask the user drew stays as drawn and
 /// the image gets a clip group of its own inside it; one already clipped to the rectangle is kept;
 /// without Clip, the mask is left alone.
