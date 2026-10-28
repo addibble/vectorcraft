@@ -502,6 +502,46 @@ fn placement_options_apply_with_the_file_missing() {
     assert_eq!(run(&mut s, "links.info", json!({"id": id.0}))["status"], "missing");
 }
 
+/// A preview doesn't keep its file's resolution, so with the file missing File Dimensions leaves
+/// the image in place (answered as `previewing`) rather than size it at 72 ppi; Fit and Fill, which
+/// need only its proportions, still apply. With the file read, File Dimensions honors its 300 ppi.
+#[test]
+fn file_dimensions_waits_for_a_missing_file() {
+    // 600 × 300 px at 300 ppi: 144 × 72 pt at 100%, placed centred on (200, 150) and squeezed
+    // to a 72 pt square.
+    let squeezed_300 = |name: &str| {
+        let dir = Folder::new(name);
+        let pic = dir.file("photo.png");
+        write(&pic, &crate::cmd::fileio::ppi::with_png_resolution(&png(600, 300, RED), (300.0, 300.0)));
+        let mut s = session();
+        let id = place(&mut s, &pic);
+        run(&mut s, "select.set", json!({"ids": [id.0]}));
+        run(&mut s, "object.scale", json!({"sx": 50, "sy": 100}));
+        assert_eq!(corners(bounds(&s, id)), [164.0, 114.0, 236.0, 186.0]);
+        (s, id, dir)
+    };
+    let (mut s, id, _d) = squeezed_300("apply-file-300");
+    let (r, b) = apply(&mut s, id, json!({"preserve": "fileDimensions"}));
+    assert_eq!((b, r["applied"].clone(), r.get("previewing")), ([128.0, 114.0, 272.0, 186.0], json!([id.0]), None), "{r}");
+
+    let (mut s, id, d) = squeezed_300("apply-file-300-missing");
+    let doc_path = d.file("poster.vectorcraft");
+    save(&mut s, &doc_path);
+    std::fs::remove_file(d.file("photo.png")).unwrap();
+    let opened = open(&mut s, &doc_path);
+    assert_eq!(opened["missingLinks"].as_array().map(Vec::len), Some(1), "{opened}");
+    let xf = image(&s, id).xf;
+    let (r, b) = apply(&mut s, id, json!({"preserve": "fileDimensions"}));
+    assert_eq!((b, r["applied"].clone(), r["previewing"].clone()), ([164.0, 114.0, 236.0, 186.0], json!([]), json!([id.0])), "{r}");
+    assert_eq!(image(&s, id).xf, xf, "exactly where it was");
+    assert_eq!(image(&s, id).placement.preserve.id(), "fileDimensions", "but the option is set");
+    let (r, b) = apply(&mut s, id, json!({"preserve": "fit"}));
+    assert_eq!((b, r["applied"].clone(), r.get("previewing")), ([164.0, 132.0, 236.0, 168.0], json!([id.0]), None), "{r}");
+    run(&mut s, "edit.undo", json!({}));
+    let (r, b) = apply(&mut s, id, json!({"preserve": "fill"}));
+    assert_eq!((b, r["applied"].clone()), ([128.0, 114.0, 272.0, 186.0], json!([id.0])), "{r}");
+}
+
 /// Placement Options are for linked files: an embedded image keeps its place, and its options are
 /// set for when it is relinked.
 #[test]

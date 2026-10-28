@@ -1413,7 +1413,7 @@ fn placement_options(s: &mut Session, p: &Value) -> Result<Value> {
         o.clip = clip.unwrap_or(o.clip);
     };
     let embedded: Vec<NodeId> = ids.iter().copied().filter(|id| image_of(&st.doc, *id).is_some_and(|im| im.link.is_none())).collect();
-    let applied = s.edit("Placement Options", |d, _| {
+    let (applied, previewing) = s.edit("Placement Options", |d, _| {
         for id in &ids {
             if let Some(o) = d.node_mut(*id).and_then(placement_mut) {
                 set(o);
@@ -1427,6 +1427,9 @@ fn placement_options(s: &mut Session, p: &Value) -> Result<Value> {
     if !embedded.is_empty() {
         out["embedded"] = json!(ids_json(&embedded));
     }
+    if !previewing.is_empty() {
+        out["previewing"] = json!(ids_json(&previewing));
+    }
     Ok(out)
 }
 
@@ -1435,23 +1438,33 @@ fn placement_options(s: &mut Session, p: &Value) -> Result<Value> {
 /// show: the "old" art is each one as it is placed and the "new" art is the same file, so a
 /// distorted image fitted or filled into its bounds is in proportion again, and one put at File
 /// Dimensions is at the file's 100% size, unrotated. Nothing is read from disk (the web build has
-/// no files), so it works while the file is missing too.
+/// no files), so Fit, Fill and Clip work while the file is missing too; File Dimensions waits for
+/// the file.
 ///
 /// - Bounds and Transforms move nothing: the same file in the same bounds, at the same scale.
 /// - Embedded images keep their place (Placement Options are for linked files); their options are
 ///   still set, for when they are relinked.
+/// - File Dimensions leaves a linked image showing only its preview in place: the preview doesn't
+///   keep the file's resolution, so its 100% size is unknown.
 /// - Clip to Bounding Box clips art that now overflows its old bounds, in a clip group of its own.
 ///   A clip group already holding it is never reshaped: one whose clipping path is already that
 ///   rectangle is kept as it is, and inside any other (a mask the user drew, a crop) the art gets
 ///   a clip group of its own, so both clip it. Without Clip, an existing clip group is left alone.
 ///
-/// → the objects that moved, changed size or were clipped.
-fn apply_placement(d: &mut Document, ids: &[NodeId]) -> Result<Vec<NodeId>> {
-    let mut applied = vec![];
+/// → the objects that moved, changed size or were clipped, and the images File Dimensions left in
+/// place for want of their file's resolution.
+fn apply_placement(d: &mut Document, ids: &[NodeId]) -> Result<(Vec<NodeId>, Vec<NodeId>)> {
+    let (mut applied, mut previewing) = (vec![], vec![]);
     for id in ids {
         let Some(n) = d.node(*id) else { continue };
         let (xf, size, pt, o) = match &n.kind {
-            NodeKind::Image(im) if im.link.is_some() => (im.xf, (im.width as f64, im.height as f64), file_pt(d, &im.key), im.placement),
+            NodeKind::Image(im) if im.link.is_some() => {
+                if im.placement.preserve == Preserve::FileDimensions && self::previewing(d, &im.key) {
+                    previewing.push(*id);
+                    continue;
+                }
+                (im.xf, (im.width as f64, im.height as f64), file_pt(d, &im.key), im.placement)
+            }
             NodeKind::PlacedDocument(p) => (p.xf, (p.width, p.height), (1.0, 1.0), p.placement),
             _ => continue,
         };
@@ -1476,7 +1489,7 @@ fn apply_placement(d: &mut Document, ids: &[NodeId]) -> Result<Vec<NodeId>> {
             applied.push(*id);
         }
     }
-    Ok(applied)
+    Ok((applied, previewing))
 }
 
 /// Clip object `id` of `d` to `room` in `frame` for [`apply_placement`] → whether it was clipped
