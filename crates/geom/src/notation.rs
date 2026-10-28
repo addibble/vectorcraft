@@ -71,11 +71,128 @@ use kurbo::{Affine, Point};
 
 use crate::path::{Anchor, AnchorKind, PathData, SubPath};
 
-/// The shortest text that parses back to `x` (finite): `{}` or `{:e}`, whichever is shorter.
+/// The shortest text that parses back to `x` (finite): its shortest round-trip digits, as zmij
+/// (serde_json's float writer) finds them, laid out plain (`{}`'s form) or with an exponent
+/// (`{:e}`'s), whichever is shorter, without allocating: a file's every coordinate goes through
+/// here.
 pub fn push_number(out: &mut String, x: f64) {
-    let plain = x.to_string();
-    let exp = format!("{x:e}");
-    out.push_str(if exp.len() < plain.len() { &exp } else { &plain });
+    if x.is_finite() {
+        // zmij writes most numbers plain, as `{}` does but for an integer's `.0`. Plain is the
+        // shorter form unless it ends in zeros or starts `0.0`: those take the layout below.
+        let mut buf = zmij::Buffer::new();
+        let text = buf.format_finite(x);
+        let text = text.strip_suffix(".0").unwrap_or(text);
+        let unsigned = text.strip_prefix('-').unwrap_or(text);
+        if !text.contains('e') && !unsigned.ends_with("00") && !unsigned.starts_with("0.0") {
+            out.push_str(text);
+            return;
+        }
+    }
+    let Some(n) = Shortest::of(x) else {
+        out.push_str(&x.to_string());
+        return;
+    };
+    let digits = n.digits.get(..n.len).unwrap_or_default();
+    let len = digits.len() as i64;
+    let pow_len = if n.pow < 0 { 1 } else { 0 } + decimal_len(n.pow.unsigned_abs());
+    let exp_len = i64::from(n.neg) + len + i64::from(len > 1) + 1 + pow_len;
+    let plain_len = i64::from(n.neg)
+        + if n.pow >= len - 1 {
+            n.pow + 1
+        } else if n.pow >= 0 {
+            len + 1
+        } else {
+            1 - n.pow + len
+        };
+    if n.neg {
+        out.push('-');
+    }
+    let push_digits = |out: &mut String, d: &[u8]| d.iter().for_each(|&b| out.push(char::from(b)));
+    if exp_len < plain_len {
+        let (first, rest) = digits.split_at(1.min(digits.len()));
+        push_digits(out, first);
+        if !rest.is_empty() {
+            out.push('.');
+            push_digits(out, rest);
+        }
+        out.push('e');
+        if n.pow < 0 {
+            out.push('-');
+        }
+        push_decimal(out, n.pow.unsigned_abs());
+    } else if n.pow >= len - 1 {
+        push_digits(out, digits);
+        (0..n.pow - (len - 1)).for_each(|_| out.push('0'));
+    } else if n.pow >= 0 {
+        let (int, frac) = digits.split_at((n.pow as usize + 1).min(digits.len()));
+        push_digits(out, int);
+        out.push('.');
+        push_digits(out, frac);
+    } else {
+        out.push_str("0.");
+        (0..-n.pow - 1).for_each(|_| out.push('0'));
+        push_digits(out, digits);
+    }
+}
+
+/// A finite `f64`'s shortest round-trip decimal digits (ASCII, no leading or trailing zeros,
+/// none for zero) and the power of ten of the first: `x = ±d.ddd × 10^pow`.
+struct Shortest {
+    neg: bool,
+    digits: [u8; 17],
+    len: usize,
+    pow: i64,
+}
+
+impl Shortest {
+    fn of(x: f64) -> Option<Shortest> {
+        if !x.is_finite() {
+            return None;
+        }
+        let mut buf = zmij::Buffer::new();
+        let text = buf.format_finite(x).as_bytes();
+        let (neg, text) = match text.split_first() {
+            Some((b'-', rest)) => (true, rest),
+            _ => (false, text),
+        };
+        let (mantissa, exp) = match text.iter().position(|&b| b == b'e') {
+            Some(i) => (text.get(..i)?, std::str::from_utf8(text.get(i + 1..)?).ok()?.parse::<i64>().ok()?),
+            None => (text, 0),
+        };
+        let int_len = mantissa.iter().position(|&b| b == b'.').unwrap_or(mantissa.len());
+        let mut n = Shortest { neg, digits: [0; 17], len: 0, pow: int_len as i64 + exp - 1 };
+        for &b in mantissa.iter().filter(|b| b.is_ascii_digit()) {
+            if n.len == 0 && b == b'0' {
+                n.pow -= 1;
+                continue;
+            }
+            *n.digits.get_mut(n.len)? = b;
+            n.len += 1;
+        }
+        while n.len > 0 && n.digits.get(n.len - 1) == Some(&b'0') {
+            n.len -= 1;
+        }
+        if n.len == 0 {
+            n.pow = 0;
+        }
+        Some(n)
+    }
+}
+
+fn decimal_len(mut v: u64) -> i64 {
+    let mut len = 1;
+    while v >= 10 {
+        v /= 10;
+        len += 1;
+    }
+    len
+}
+
+fn push_decimal(out: &mut String, v: u64) {
+    if v >= 10 {
+        push_decimal(out, v / 10);
+    }
+    out.push(char::from(b'0' + (v % 10) as u8));
 }
 
 fn push_pair(out: &mut String, p: Point) {
@@ -106,7 +223,8 @@ fn push_segment(out: &mut String, a: &Anchor, b: &Anchor) {
 /// `path` as SVG path data and, when some anchor is smooth, its anchors' kinds (see the module
 /// documentation for both grammars). `None` when the notation cannot hold it exactly.
 pub fn path_data(path: &PathData) -> Option<(String, Option<String>)> {
-    let mut d = String::new();
+    // About a curve's worth of text per anchor, so the string is seldom grown.
+    let mut d = String::with_capacity(48 * path.subpaths.iter().map(|s| s.anchors.len()).sum::<usize>());
     for sp in &path.subpaths {
         let (first, last) = (sp.anchors.first()?, sp.anchors.last()?);
         if !sp.closed && (!same(first.h_in, first.p) || !same(last.h_out, last.p)) {
@@ -670,6 +788,38 @@ mod tests {
         assert_eq!(text(100000.0), "1e5");
         assert_eq!(text(12345.0), "12345");
         assert_eq!(text(1e300).parse::<f64>().unwrap(), 1e300);
+    }
+
+    #[test]
+    fn numbers_read_back_exactly_and_are_as_short_as_rusts_two_forms() {
+        // Where two texts of the shortest length both read back, zmij and Rust may pick either.
+        let shortest = |x: f64| x.to_string().len().min(format!("{x:e}").len());
+        let text = |x: f64| {
+            let mut s = String::new();
+            push_number(&mut s, x);
+            s
+        };
+        let mut seed = 0x9e37_79b9_7f4a_7c15_u64;
+        let mut next = || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        let mut xs = vec![0.0, -0.0, f64::MIN_POSITIVE, f64::MAX, f64::MIN, 5e-324, 0.1, 123.456, 1e21, 1e-5];
+        xs.extend((-30..30).map(|p| 10f64.powi(p)));
+        for _ in 0..100_000 {
+            let r = next();
+            xs.push(f64::from_bits(r));
+            xs.push((r >> 11) as f64 / (1u64 << 40) as f64 * 2000.0 - 1000.0);
+            xs.push(((r % 2_000_001) as f64 - 1_000_000.0) / 1000.0);
+        }
+        for x in xs.into_iter().filter(|x| x.is_finite()) {
+            let t = text(x);
+            assert_eq!(t.parse::<f64>().map(f64::to_bits), Ok(x.to_bits()), "{x:?} as {t}");
+            assert_eq!(t.len(), shortest(x), "{x:?} as {t}");
+            assert!(!t.contains('E') && !t.contains('+'), "{x:?} as {t}");
+        }
     }
 
     #[test]

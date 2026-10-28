@@ -11,6 +11,7 @@ workspace = true
 [dependencies]
 kurbo = { workspace = true }
 serde = { workspace = true }
+zmij = { workspace = true }
 schemars = { workspace = true }
 thiserror = { workspace = true }
 
