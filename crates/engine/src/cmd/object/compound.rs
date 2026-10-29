@@ -154,6 +154,10 @@ pub(in super::super) fn as_clipping_path(c: &mut Node) -> Result<()> {
 pub(in super::super) fn release_clip(d: &mut Document, id: NodeId) {
     let Some(n) = d.node_mut(id).filter(|n| n.clips()) else { return };
     n.set_clips(false);
+    // A clip group Clip to Bounding Box made is the user's once released (and clipping again).
+    if n.extras().placement_clip {
+        n.extras_mut().placement_clip = false;
+    }
     let clip = n.children().and_then(|c| c.first()).map(|c| c.id);
     if let Some(c) = clip.and_then(|c| d.node_mut(c))
         && let NodeKind::Path { clipping, .. } = &mut c.kind
