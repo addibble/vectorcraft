@@ -319,7 +319,11 @@ fn placement_options_read_set_and_round_trip() {
     run(&mut s, "select.set", json!({"ids": [id.0]}));
     assert_eq!(run(&mut s, "links.placementOptions", json!({})), json!({"placement": {"preserve": "bounds", "align": "center", "clip": false}}));
     let r = run(&mut s, "links.placementOptions", json!({"preserve": "fill", "align": "topRight", "clip": true}));
-    assert_eq!(r, json!({"ids": [id.0], "placement": {"preserve": "fill", "align": "topRight", "clip": true}}));
+    assert_eq!(
+        r,
+        json!({"ids": [id.0], "placement": {"preserve": "fill", "align": "topRight", "clip": true}, "applied": []}),
+        "placed unstretched: nothing to apply"
+    );
     assert!(s.execute("links.placementOptions", &json!({"preserve": "stretch"})).is_err());
     assert!(s.execute("links.placementOptions", &json!({"align": "middle"})).is_err());
     // Saved and opened again.
@@ -359,4 +363,602 @@ fn the_links_commands_are_reachable_headless() {
     // Without a document every one says why instead of failing silently.
     let mut s = Session::new();
     assert!(s.execute("links.list", &json!({})).is_err());
+}
+
+/// `r` rounded to a millionth, as `[x0, y0, x1, y1]`.
+fn corners(r: vectorcraft_geom::Rect) -> [f64; 4] {
+    [r.x0, r.y0, r.x1, r.y1].map(|v| (v * 1e6).round() / 1e6 + 0.0)
+}
+
+/// A 600×300 px file placed linked at the centre of the artboard (-100, 0, 500, 300), then
+/// squeezed to half its width (50, 0, 350, 300: a 300×300 pt square) → session, id, its folder.
+fn squeezed(name: &str) -> (Session, NodeId, Folder) {
+    let dir = Folder::new(name);
+    let pic = dir.file("photo.png");
+    write(&pic, &png(600, 300, RED));
+    let mut s = session();
+    let id = place(&mut s, &pic);
+    run(&mut s, "select.set", json!({"ids": [id.0]}));
+    run(&mut s, "object.scale", json!({"sx": 50, "sy": 100}));
+    assert_eq!(corners(bounds(&s, id)), [50.0, 0.0, 350.0, 300.0]);
+    (s, id, dir)
+}
+
+/// Placement Options with `options` for image `id` → its answer and the image's bounds.
+fn apply(s: &mut Session, id: NodeId, options: Value) -> (Value, [f64; 4]) {
+    let mut p = options;
+    p["ids"] = json!([id.0]);
+    let r = run(s, "links.placementOptions", p);
+    (r, corners(bounds(s, id)))
+}
+
+/// The scale Link Info gives image `id` (% of its 100% size, across and down).
+fn scale_of(s: &mut Session, id: NodeId) -> [f64; 2] {
+    let i = run(s, "links.info", json!({"id": id.0}));
+    [0, 1].map(|k| (i["scale"][k].as_f64().unwrap() * 1e6).round() / 1e6)
+}
+
+/// Links panel › Placement Options applies the options at once: choosing Proportions (Fit or
+/// Fill) or File Dimensions resets a distorted placed image's proportions
+/// (https://community.adobe.com/questions-652/how-do-i-reset-a-placed-image-to-the-original-image-s-proportions-768645).
+#[test]
+fn placement_options_put_a_distorted_linked_image_back_in_proportion() {
+    let (mut s, id, _d) = squeezed("apply-fit");
+    let (r, b) = apply(&mut s, id, json!({"preserve": "fit"}));
+    assert_eq!(b, [50.0, 75.0, 350.0, 225.0], "fitted inside the square, centred");
+    assert_eq!(r["applied"], json!([id.0]), "{r}");
+    assert_eq!(r.get("embedded"), None);
+    assert_eq!(scale_of(&mut s, id), [50.0, 50.0], "uniform");
+
+    let (mut s, id, _d) = squeezed("apply-fit-top");
+    assert_eq!(apply(&mut s, id, json!({"preserve": "fit", "align": "top"})).1, [50.0, 0.0, 350.0, 150.0]);
+    let (mut s, id, _d) = squeezed("apply-fit-bottom-right");
+    assert_eq!(apply(&mut s, id, json!({"preserve": "fit", "align": "bottomRight"})).1, [50.0, 150.0, 350.0, 300.0]);
+
+    let (mut s, id, _d) = squeezed("apply-fill");
+    let (r, b) = apply(&mut s, id, json!({"preserve": "fill"}));
+    assert_eq!(b, [-100.0, 0.0, 500.0, 300.0], "covers the square, centred");
+    assert_eq!(scale_of(&mut s, id), [100.0, 100.0]);
+    assert_eq!(r["applied"], json!([id.0]));
+    let doc = &s.doc().unwrap().doc;
+    assert!(matches!(doc.node(doc.parent_of(id).unwrap()).unwrap().kind, NodeKind::Layer { .. }), "not clipped without Clip");
+    let (mut s, id, _d) = squeezed("apply-fill-left");
+    assert_eq!(apply(&mut s, id, json!({"preserve": "fill", "align": "left"})).1, [50.0, 0.0, 650.0, 300.0]);
+
+    let (mut s, id, _d) = squeezed("apply-file");
+    assert_eq!(apply(&mut s, id, json!({"preserve": "fileDimensions"})).1, [-100.0, 0.0, 500.0, 300.0], "the file's 100%, centred");
+    assert_eq!(scale_of(&mut s, id), [100.0, 100.0]);
+    let (mut s, id, _d) = squeezed("apply-file-top-left");
+    assert_eq!(apply(&mut s, id, json!({"preserve": "fileDimensions", "align": "topLeft"})).1, [50.0, 0.0, 650.0, 300.0]);
+}
+
+/// File Dimensions also takes the rotation off, at the art's top left; Fit keeps it and scales
+/// the image uniformly.
+#[test]
+fn placement_options_on_a_rotated_image() {
+    let (mut s, id, _d) = squeezed("apply-rotated-file");
+    run(&mut s, "object.rotate", json!({"angle": 30}));
+    let before = bounds(&s, id);
+    let (_, b) = apply(&mut s, id, json!({"preserve": "fileDimensions", "align": "topLeft"}));
+    let o = |v: f64| (v * 1e6).round() / 1e6 + 0.0;
+    assert_eq!(b, [o(before.x0), o(before.y0), o(before.x0 + 600.0), o(before.y0 + 300.0)]);
+    let i = run(&mut s, "links.info", json!({"id": id.0}));
+    assert!(close(i["rotation"].as_f64().unwrap(), 0.0), "{i}");
+
+    let (mut s, id, _d) = squeezed("apply-rotated-fit");
+    run(&mut s, "object.rotate", json!({"angle": 30}));
+    apply(&mut s, id, json!({"preserve": "fit"}));
+    let i = run(&mut s, "links.info", json!({"id": id.0}));
+    assert!(close(i["rotation"].as_f64().unwrap(), 30.0), "{i}");
+    let [sx, sy] = scale_of(&mut s, id);
+    assert!(close(sx, 50.0) && close(sy, 50.0), "{sx} {sy}");
+}
+
+/// Bounds and Transforms move nothing: the file is the one shown, in the same bounds at the same
+/// scale. Nor does choosing Fit again once the image is in proportion.
+#[test]
+fn placement_options_that_keep_the_art_move_nothing() {
+    for preserve in ["bounds", "transforms"] {
+        let (mut s, id, _d) = squeezed(&format!("apply-{preserve}"));
+        let xf = image(&s, id).xf;
+        let (r, b) = apply(&mut s, id, json!({"preserve": preserve, "align": "topLeft", "clip": true}));
+        assert_eq!((b, r["applied"].clone()), ([50.0, 0.0, 350.0, 300.0], json!([])), "{preserve}");
+        assert_eq!(image(&s, id).xf, xf, "{preserve}: exactly where it was");
+        assert_eq!(image(&s, id).placement.preserve.id(), preserve, "but the option is set");
+    }
+    let (mut s, id, _d) = squeezed("apply-twice");
+    apply(&mut s, id, json!({"preserve": "fit"}));
+    let (r, b) = apply(&mut s, id, json!({"preserve": "fit"}));
+    assert_eq!((b, r["applied"].clone()), ([50.0, 75.0, 350.0, 225.0], json!([])));
+}
+
+/// Applying Placement Options is one undo step: the image's place and its options come back.
+#[test]
+fn applying_placement_options_is_one_undo_step() {
+    let (mut s, id, _d) = squeezed("apply-undo");
+    let before = image(&s, id);
+    apply(&mut s, id, json!({"preserve": "fill", "clip": true}));
+    run(&mut s, "edit.undo", json!({}));
+    assert_eq!(image(&s, id), before);
+    assert_eq!(corners(bounds(&s, id)), [50.0, 0.0, 350.0, 300.0]);
+    let doc = &s.doc().unwrap().doc;
+    assert!(matches!(doc.node(doc.parent_of(id).unwrap()).unwrap().kind, NodeKind::Layer { .. }), "the clip group goes too");
+    run(&mut s, "edit.redo", json!({}));
+    assert_eq!(corners(bounds(&s, id)), [-100.0, 0.0, 500.0, 300.0]);
+}
+
+/// Nothing is read: an image whose file is gone (showing its saved preview) is placed again from
+/// what it holds.
+#[test]
+fn placement_options_apply_with_the_file_missing() {
+    let (mut s, id, d) = squeezed("apply-missing");
+    let doc_path = d.file("poster.vectorcraft");
+    save(&mut s, &doc_path);
+    std::fs::remove_file(d.file("photo.png")).unwrap();
+    let opened = open(&mut s, &doc_path);
+    assert_eq!(opened["missingLinks"].as_array().map(Vec::len), Some(1), "{opened}");
+    let (r, b) = apply(&mut s, id, json!({"preserve": "fit"}));
+    assert_eq!((b, r["applied"].clone()), ([50.0, 75.0, 350.0, 225.0], json!([id.0])));
+    assert_eq!(run(&mut s, "links.info", json!({"id": id.0}))["status"], "missing");
+}
+
+/// A preview doesn't keep its file's resolution, so with the file missing File Dimensions leaves
+/// the image in place (answered as `previewing`) rather than size it at 72 ppi; Fit and Fill, which
+/// need only its proportions, still apply. With the file read, File Dimensions honors its 300 ppi.
+#[test]
+fn file_dimensions_waits_for_a_missing_file() {
+    // 600 × 300 px at 300 ppi: 144 × 72 pt at 100%, placed centred on (200, 150) and squeezed
+    // to a 72 pt square.
+    let squeezed_300 = |name: &str| {
+        let dir = Folder::new(name);
+        let pic = dir.file("photo.png");
+        write(&pic, &crate::cmd::fileio::ppi::with_png_resolution(&png(600, 300, RED), (300.0, 300.0)));
+        let mut s = session();
+        let id = place(&mut s, &pic);
+        run(&mut s, "select.set", json!({"ids": [id.0]}));
+        run(&mut s, "object.scale", json!({"sx": 50, "sy": 100}));
+        assert_eq!(corners(bounds(&s, id)), [164.0, 114.0, 236.0, 186.0]);
+        (s, id, dir)
+    };
+    let (mut s, id, _d) = squeezed_300("apply-file-300");
+    let (r, b) = apply(&mut s, id, json!({"preserve": "fileDimensions"}));
+    assert_eq!((b, r["applied"].clone(), r.get("previewing")), ([128.0, 114.0, 272.0, 186.0], json!([id.0]), None), "{r}");
+
+    let (mut s, id, d) = squeezed_300("apply-file-300-missing");
+    let doc_path = d.file("poster.vectorcraft");
+    save(&mut s, &doc_path);
+    std::fs::remove_file(d.file("photo.png")).unwrap();
+    let opened = open(&mut s, &doc_path);
+    assert_eq!(opened["missingLinks"].as_array().map(Vec::len), Some(1), "{opened}");
+    let xf = image(&s, id).xf;
+    let (r, b) = apply(&mut s, id, json!({"preserve": "fileDimensions"}));
+    assert_eq!((b, r["applied"].clone(), r["previewing"].clone()), ([164.0, 114.0, 236.0, 186.0], json!([]), json!([id.0])), "{r}");
+    assert_eq!(image(&s, id).xf, xf, "exactly where it was");
+    assert_eq!(image(&s, id).placement.preserve.id(), "fileDimensions", "but the option is set");
+    let (r, b) = apply(&mut s, id, json!({"preserve": "fit"}));
+    assert_eq!((b, r["applied"].clone(), r.get("previewing")), ([164.0, 132.0, 236.0, 168.0], json!([id.0]), None), "{r}");
+    run(&mut s, "edit.undo", json!({}));
+    let (r, b) = apply(&mut s, id, json!({"preserve": "fill"}));
+    assert_eq!((b, r["applied"].clone()), ([128.0, 114.0, 272.0, 186.0], json!([id.0])), "{r}");
+}
+
+/// Placement Options are for linked files: an embedded image keeps its place, and its options are
+/// set for when it is relinked.
+#[test]
+fn an_embedded_image_keeps_its_place() {
+    let dir = Folder::new("apply-embedded");
+    let pic = dir.file("photo.png");
+    write(&pic, &png(600, 300, RED));
+    let mut s = session();
+    let id = place_embedded(&mut s, &pic);
+    run(&mut s, "select.set", json!({"ids": [id.0]}));
+    run(&mut s, "object.scale", json!({"sx": 50, "sy": 100}));
+    let before = corners(bounds(&s, id));
+    let (r, b) = apply(&mut s, id, json!({"preserve": "fit"}));
+    assert_eq!((b, r["applied"].clone(), r["embedded"].clone()), (before, json!([]), json!([id.0])));
+    assert_eq!(image(&s, id).placement.preserve, vectorcraft_doc::links::Preserve::Fit);
+}
+
+/// Clip to Bounding Box clips art that now overflows to its old bounds, in a clip group of its
+/// own; applied again it adds nothing.
+#[test]
+fn clip_to_bounding_box_clips_the_filled_image() {
+    let (mut s, id, _d) = squeezed("apply-clip");
+    let (r, b) = apply(&mut s, id, json!({"preserve": "fill", "clip": true}));
+    assert_eq!((b, r["applied"].clone()), ([-100.0, 0.0, 500.0, 300.0], json!([id.0])));
+    let clip_group = |s: &Session| {
+        let doc = &s.doc().unwrap().doc;
+        let g = doc.node(doc.parent_of(id).unwrap()).unwrap();
+        let NodeKind::Group { children, clip: true } = &g.kind else { panic!("not clipped: {g:?}") };
+        (g.id, children.len(), corners(children[0].geometric_bounds().unwrap()))
+    };
+    let (group, n, clip) = clip_group(&s);
+    assert_eq!((n, clip), (2, [50.0, 0.0, 350.0, 300.0]), "clipped to the square it was squeezed into");
+    let (r, _) = apply(&mut s, id, json!({"preserve": "fill", "clip": true}));
+    assert_eq!((clip_group(&s).0, r["applied"].clone()), (group, json!([])), "no second clip group");
+}
+
+/// The rectangle of the clip group holding just image `id` of `s`, as [`corners`].
+fn own_clip(s: &Session, id: NodeId) -> [f64; 4] {
+    let doc = &s.doc().unwrap().doc;
+    let g = doc.node(doc.parent_of(id).unwrap()).unwrap();
+    let NodeKind::Group { children, clip: true } = &g.kind else { panic!("not clipped: {g:?}") };
+    assert_eq!(children.len(), 2);
+    corners(children[0].geometric_bounds().unwrap())
+}
+
+/// Once Clip to Bounding Box clips a filled image, its clip's rectangle is the bounds the options
+/// place it in: a new alignment moves the image within it, and Fit fits it inside.
+#[test]
+fn a_clipped_image_is_placed_in_its_clip() {
+    let (mut s, id, _d) = squeezed("apply-clip-align");
+    apply(&mut s, id, json!({"preserve": "fill", "clip": true}));
+    let (r, b) = apply(&mut s, id, json!({"align": "left"}));
+    assert_eq!((b, r["applied"].clone(), own_clip(&s, id)), ([50.0, 0.0, 650.0, 300.0], json!([id.0]), [50.0, 0.0, 350.0, 300.0]));
+    let (_, b) = apply(&mut s, id, json!({"align": "right"}));
+    assert_eq!((b, own_clip(&s, id)), ([-250.0, 0.0, 350.0, 300.0], [50.0, 0.0, 350.0, 300.0]));
+    let (_, b) = apply(&mut s, id, json!({"preserve": "fit", "align": "center"}));
+    assert_eq!((b, own_clip(&s, id)), ([50.0, 75.0, 350.0, 225.0], [50.0, 0.0, 350.0, 300.0]), "fitted inside the clip");
+}
+
+/// A clipped, filled image whose file changes fills its clip again: the clip keeps its rectangle.
+#[test]
+fn a_clipped_image_updates_in_its_clip() {
+    let (mut s, id, d) = squeezed("apply-clip-update");
+    apply(&mut s, id, json!({"preserve": "fill", "clip": true}));
+    write(&d.file("photo.png"), &png(300, 600, RED));
+    assert_eq!(run(&mut s, "links.update", json!({})), json!({"updated": [id.0], "missing": []}));
+    assert_eq!((corners(bounds(&s, id)), own_clip(&s, id)), ([50.0, -150.0, 350.0, 450.0], [50.0, 0.0, 350.0, 300.0]));
+}
+
+/// Transforms keeps a clipped image where it is when its file changes, and its clip as it was.
+#[test]
+fn a_clipped_image_keeps_its_place_and_clip_with_transforms() {
+    let (mut s, id, d) = squeezed("apply-clip-transforms");
+    apply(&mut s, id, json!({"preserve": "fill", "clip": true}));
+    let (r, b) = apply(&mut s, id, json!({"align": "left"}));
+    assert_eq!((b, r["applied"].clone()), ([50.0, 0.0, 650.0, 300.0], json!([id.0])));
+    let (r, b) = apply(&mut s, id, json!({"preserve": "transforms", "align": "center"}));
+    assert_eq!((b, r["applied"].clone()), ([50.0, 0.0, 650.0, 300.0], json!([])));
+    write(&d.file("photo.png"), &png(600, 300, BLUE));
+    run(&mut s, "links.update", json!({}));
+    assert_eq!((corners(bounds(&s, id)), own_clip(&s, id)), ([50.0, 0.0, 650.0, 300.0], [50.0, 0.0, 350.0, 300.0]), "the same size: unmoved");
+    // A bigger file at the same scale, centred on the art's own bounds: the clip isn't widened.
+    write(&d.file("photo.png"), &png(1200, 600, RED));
+    run(&mut s, "links.update", json!({}));
+    assert_eq!((corners(bounds(&s, id)), own_clip(&s, id)), ([-250.0, -150.0, 950.0, 450.0], [50.0, 0.0, 350.0, 300.0]));
+}
+
+/// The clipping path of the clip group holding image `id` of `s` (with whether Clip to Bounding
+/// Box made it) and the clip groups between it and its layer.
+fn clips_around(s: &Session, id: NodeId) -> (vectorcraft_geom::PathData, bool, usize) {
+    let doc = &s.doc().unwrap().doc;
+    let g = doc.node(doc.parent_of(id).unwrap()).unwrap();
+    let NodeKind::Group { children, clip: true } = &g.kind else { panic!("not clipped: {g:?}") };
+    let NodeKind::Path { path, .. } = &children[0].kind else { panic!("no clipping path") };
+    let mut depth = 0;
+    let mut at = id;
+    while let Some(p) = doc.parent_of(at) {
+        if matches!(doc.node(p).unwrap().kind, NodeKind::Group { clip: true, .. }) {
+            depth += 1;
+        }
+        at = p;
+    }
+    (path.clone(), g.extras().placement_clip, depth)
+}
+
+/// A rectangle the user clips a linked image with is the user's crop, not Clip to Bounding Box's
+/// clip, even with Clip on: Placement Options and an update place the image in its own bounds and
+/// never reshape the crop.
+#[test]
+fn a_rectangular_crop_the_user_made_is_left_alone() {
+    let (mut s, id, d) = squeezed("apply-user-crop");
+    apply(&mut s, id, json!({"preserve": "fit", "clip": true}));
+    assert_eq!(corners(bounds(&s, id)), [50.0, 75.0, 350.0, 225.0], "in proportion, nothing to clip");
+    let crop = run(&mut s, "shape.rectangle", json!({"x": 50, "y": 75, "width": 100, "height": 100}));
+    run(&mut s, "object.clippingMask.make", json!({"ids": [crop["id"], id.0]}));
+    let (path, ours, _) = clips_around(&s, id);
+    assert!(!ours);
+    let (r, b) = apply(&mut s, id, json!({"align": "topLeft"}));
+    assert_eq!((b, r["applied"].clone()), ([50.0, 75.0, 350.0, 225.0], json!([])), "placed in its own bounds, not the crop");
+    write(&d.file("photo.png"), &png(600, 600, RED));
+    run(&mut s, "links.update", json!({}));
+    assert_eq!(corners(bounds(&s, id)), [50.0, 75.0, 200.0, 225.0], "fitted to its own bounds");
+    assert_eq!(clips_around(&s, id), (path, false, 1), "the crop as drawn");
+}
+
+/// An update that clips an image inside a mask the user drew gives it a clip group of its own, as
+/// OK does; the mask keeps its shape, and the next update reshapes only that clip group.
+#[test]
+fn an_update_never_reshapes_a_mask_the_user_drew() {
+    let (mut s, id, d) = squeezed("update-mask");
+    let mask = NodeId(run(&mut s, "shape.ellipse", json!({"x": 100, "y": 50, "width": 200, "height": 200}))["id"].as_u64().unwrap());
+    run(&mut s, "object.clippingMask.make", json!({"ids": [mask.0, id.0]}));
+    let ellipse = |s: &Session| match &s.doc().unwrap().doc.node(mask).unwrap().kind {
+        NodeKind::Path { path, .. } => path.clone(),
+        k => panic!("not a path: {k:?}"),
+    };
+    let drawn = ellipse(&s);
+    // Fill and Clip set without applying them, then a wider file comes in.
+    let o = PlacementOptions { preserve: vectorcraft_doc::links::Preserve::Fill, clip: true, ..Default::default() };
+    s.edit("t", |d, _| {
+        if let NodeKind::Image(im) = &mut d.node_mut(id).unwrap().kind {
+            im.placement = o;
+        }
+        Ok(())
+    })
+    .unwrap();
+    write(&d.file("photo.png"), &png(900, 300, RED));
+    run(&mut s, "links.update", json!({}));
+    let (clip, ours, depth) = clips_around(&s, id);
+    assert_eq!((corners(clip.bounds().unwrap()), ours, depth), ([50.0, 0.0, 350.0, 300.0], true, 2), "a clip group of its own inside the mask");
+    assert_eq!(ellipse(&s), drawn, "the mask keeps its shape");
+    write(&d.file("photo.png"), &png(1200, 300, BLUE));
+    run(&mut s, "links.update", json!({}));
+    let (clip, ours, depth) = clips_around(&s, id);
+    assert_eq!((corners(clip.bounds().unwrap()), ours, depth), ([50.0, 0.0, 350.0, 300.0], true, 2), "no third clip");
+    assert_eq!(ellipse(&s), drawn);
+}
+
+/// Turning Clip off lets the art out of the clip group Clip to Bounding Box made, in one undo step.
+#[test]
+fn clip_off_lets_the_art_go() {
+    let (mut s, id, _d) = squeezed("apply-clip-off");
+    apply(&mut s, id, json!({"preserve": "fill", "clip": true}));
+    let (r, b) = apply(&mut s, id, json!({"clip": false}));
+    assert_eq!((b, r["applied"].clone()), ([-100.0, 0.0, 500.0, 300.0], json!([id.0])));
+    let doc = &s.doc().unwrap().doc;
+    assert!(matches!(doc.node(doc.parent_of(id).unwrap()).unwrap().kind, NodeKind::Layer { .. }), "unclipped");
+    run(&mut s, "edit.undo", json!({}));
+    assert!(clips_around(&s, id).1, "clipped again");
+}
+
+/// OK with the options as they were and nothing to move records no undo step.
+#[test]
+fn placement_options_that_change_nothing_leave_no_undo_step() {
+    let (mut s, id, _d) = squeezed("apply-no-op");
+    apply(&mut s, id, json!({"preserve": "fit"}));
+    let steps = s.doc().unwrap().history.undo.len();
+    let (r, _) = apply(&mut s, id, json!({"preserve": "fit", "align": "center", "clip": false}));
+    assert_eq!(r["applied"], json!([]));
+    assert_eq!(s.doc().unwrap().history.undo.len(), steps, "nothing changed");
+    apply(&mut s, id, json!({"align": "top"}));
+    assert_eq!(s.doc().unwrap().history.undo.len(), steps + 1);
+}
+
+/// File Dimensions on a rotated image Clip to Bounding Box has clipped: the art comes back at 100%,
+/// unrotated, and stays in the same clip group, its rectangle turned with the old bounds.
+#[test]
+fn file_dimensions_keeps_a_rotated_clip() {
+    let (mut s, id, _d) = squeezed("apply-rotated-clip");
+    run(&mut s, "object.rotate", json!({"angle": 30}));
+    apply(&mut s, id, json!({"preserve": "fill", "clip": true}));
+    let (clip, ours, depth) = clips_around(&s, id);
+    assert!(ours && depth == 1);
+    let (r, _) = apply(&mut s, id, json!({"preserve": "fileDimensions"}));
+    assert_eq!(r["applied"], json!([id.0]));
+    let i = run(&mut s, "links.info", json!({"id": id.0}));
+    assert!(close(i["rotation"].as_f64().unwrap(), 0.0), "{i}");
+    assert_eq!(scale_of(&mut s, id), [100.0, 100.0]);
+    assert_eq!(clips_around(&s, id), (clip, true, 1), "the same clip, not a second");
+}
+
+/// Fit takes a shear off as well as a stretch: the image comes back square-cornered, in
+/// proportion.
+#[test]
+fn fit_takes_a_shear_off() {
+    let (mut s, id, _d) = squeezed("apply-shear");
+    let xf = image(&s, id).xf * vectorcraft_geom::Affine::new([1.0, 0.0, 0.5, 1.0, 0.0, 0.0]);
+    s.edit("t", |d, _| {
+        if let NodeKind::Image(im) = &mut d.node_mut(id).unwrap().kind {
+            im.xf = xf;
+        }
+        Ok(())
+    })
+    .unwrap();
+    let (r, _) = apply(&mut s, id, json!({"preserve": "fit"}));
+    assert_eq!(r["applied"], json!([id.0]));
+    let [a, b, c, d, ..] = image(&s, id).xf.as_coeffs();
+    assert!(close(a * c + b * d, 0.0), "square corners: {:?}", image(&s, id).xf);
+    assert!(close(a.hypot(b), c.hypot(d)), "in proportion: {:?}", image(&s, id).xf);
+}
+
+/// Placement Options read for images whose options differ name the differing ones as `mixed`;
+/// ids are checked.
+#[test]
+fn placement_options_read_mixed_and_check_ids() {
+    let (mut s, a, d) = squeezed("apply-mixed");
+    let b = place(&mut s, &d.file("photo.png"));
+    run(&mut s, "links.placementOptions", json!({"ids": [b.0], "preserve": "fit", "clip": true}));
+    let r = run(&mut s, "links.placementOptions", json!({"ids": [a.0, b.0]}));
+    assert_eq!(r, json!({"placement": {"preserve": "bounds", "align": "center", "clip": false}, "mixed": ["preserve", "clip"]}));
+    assert_eq!(run(&mut s, "links.placementOptions", json!({"ids": [a.0, a.0]})).get("mixed"), None);
+    assert!(s.execute("links.placementOptions", &json!({"ids": [a.0, "x"], "preserve": "fit"})).is_err());
+    assert!(s.execute("links.placementOptions", &json!({"ids": "12"})).is_err());
+}
+
+/// The clip group holding image `id` of `s`.
+fn clip_group_of(s: &Session, id: NodeId) -> NodeId {
+    s.doc().unwrap().doc.parent_of(id).unwrap()
+}
+
+/// Clip off keeps what the clip group carries besides the clip: one given an opacity stays, a
+/// plain group without its clipping path.
+#[test]
+fn clip_off_keeps_the_groups_opacity() {
+    let (mut s, id, _d) = squeezed("apply-clip-off-opacity");
+    apply(&mut s, id, json!({"preserve": "fill", "clip": true}));
+    let g = clip_group_of(&s, id);
+    s.edit("t", |d, _| {
+        d.node_mut(g).unwrap().opacity = 0.5;
+        Ok(())
+    })
+    .unwrap();
+    let (r, _) = apply(&mut s, id, json!({"clip": false}));
+    assert_eq!(r["applied"], json!([id.0]));
+    let doc = &s.doc().unwrap().doc;
+    let group = doc.node(g).unwrap();
+    assert!(matches!(&group.kind, NodeKind::Group { children, clip: false } if children.len() == 1), "{group:?}");
+    assert_eq!((group.opacity, group.extras().placement_clip), (0.5, false));
+}
+
+/// A clip group Clip to Bounding Box made is the user's once released: made a clipping mask again
+/// around a shape the user drew, Clip off and an update leave it.
+#[test]
+fn a_released_placement_clip_is_the_users() {
+    let (mut s, id, d) = squeezed("apply-released-clip");
+    apply(&mut s, id, json!({"preserve": "fill", "clip": true}));
+    let g = clip_group_of(&s, id);
+    run(&mut s, "select.set", json!({"ids": [g.0]}));
+    run(&mut s, "object.clippingMask.release", json!({}));
+    assert!(!s.doc().unwrap().doc.node(g).unwrap().extras().placement_clip);
+    // Clipping again, with the user's ellipse for its path (as the Layers panel's clip toggle does).
+    let ellipse = vectorcraft_geom::shapes::ellipse(vectorcraft_geom::Rect::new(100.0, 50.0, 300.0, 250.0));
+    s.edit("t", |doc, _| {
+        let c = doc.node(g).unwrap().children().unwrap()[0].id;
+        if let NodeKind::Path { path, clipping, .. } = &mut doc.node_mut(c).unwrap().kind {
+            (*path, *clipping) = (ellipse.clone(), true);
+        }
+        doc.node_mut(g).unwrap().set_clips(true);
+        Ok(())
+    })
+    .unwrap();
+    apply(&mut s, id, json!({"clip": false}));
+    assert_eq!(clip_group_of(&s, id), g, "the user's mask stays");
+    write(&d.file("photo.png"), &png(900, 300, RED));
+    run(&mut s, "links.update", json!({}));
+    let doc = &s.doc().unwrap().doc;
+    let NodeKind::Path { path, .. } = &doc.node(g).unwrap().children().unwrap()[0].kind else { panic!() };
+    assert_eq!(*path, ellipse, "never reshaped");
+}
+
+/// After File Dimensions has unrotated a clipped image, its clip, still turned with the old bounds,
+/// is still its clip: a new alignment moves the art in it, and a bigger file is clipped by it.
+#[test]
+fn a_rotated_clip_stays_the_images_after_file_dimensions() {
+    let (mut s, id, d) = squeezed("apply-rotated-clip-later");
+    run(&mut s, "object.rotate", json!({"angle": 45}));
+    apply(&mut s, id, json!({"preserve": "fill", "clip": true}));
+    apply(&mut s, id, json!({"preserve": "fileDimensions"}));
+    let (clip, _, _) = clips_around(&s, id);
+    let box_ = clip.bounds().unwrap();
+    let (r, b) = apply(&mut s, id, json!({"align": "topLeft"}));
+    assert_eq!(r["applied"], json!([id.0]));
+    assert_eq!([b[0], b[1]], corners(box_)[..2], "at the clip's bounding box's top left");
+    write(&d.file("photo.png"), &png(1200, 600, RED));
+    run(&mut s, "links.update", json!({}));
+    assert_eq!(clips_around(&s, id), (clip, true, 1), "the rotated clip, not the art's own rectangle");
+}
+
+/// File Dimensions centres a sheared image in the bounding box of the art as it was placed.
+#[test]
+fn file_dimensions_centres_a_sheared_image_in_its_bounding_box() {
+    let (mut s, id, _d) = squeezed("apply-shear-file");
+    let before = bounds(&s, id);
+    let xf = image(&s, id).xf * vectorcraft_geom::Affine::new([1.0, 0.0, 0.5, 1.0, 0.0, 0.0]);
+    s.edit("t", |d, _| {
+        if let NodeKind::Image(im) = &mut d.node_mut(id).unwrap().kind {
+            im.xf = xf;
+        }
+        Ok(())
+    })
+    .unwrap();
+    let sheared = bounds(&s, id);
+    assert!(sheared.width() > before.width());
+    let (_, b) = apply(&mut s, id, json!({"preserve": "fileDimensions"}));
+    let mid = |r: [f64; 4]| [(r[0] + r[2]) / 2.0, (r[1] + r[3]) / 2.0];
+    assert_eq!(mid(b), mid(corners(sheared)));
+}
+
+/// Clip off on the clip group isolation mode is in ends isolation mode.
+#[test]
+fn clip_off_ends_isolating_its_group() {
+    let (mut s, id, _d) = squeezed("apply-clip-off-isolated");
+    apply(&mut s, id, json!({"preserve": "fill", "clip": true}));
+    let g = clip_group_of(&s, id);
+    run(&mut s, "select.set", json!({"ids": [g.0]}));
+    run(&mut s, "object.isolate", json!({}));
+    assert_eq!(s.doc().unwrap().isolation, Some(g));
+    apply(&mut s, id, json!({"clip": false}));
+    assert_eq!(s.doc().unwrap().isolation, None);
+}
+
+/// Far from the origin a clip a little wider than the bounds is still not the bounds' rectangle,
+/// and a thin image's overflow across its short side is still an overflow.
+#[test]
+fn clip_tolerances_follow_the_art_not_its_place() {
+    let (mut s, id, _d) = squeezed("apply-far");
+    run(&mut s, "object.move", json!({"dx": 1_000_000, "dy": 0}));
+    let r = run(&mut s, "shape.rectangle", json!({"x": 1_000_049.5, "y": 0, "width": 301, "height": 300}));
+    run(&mut s, "object.clippingMask.make", json!({"ids": [r["id"], id.0]}));
+    apply(&mut s, id, json!({"preserve": "fill", "clip": true}));
+    let (clip, ours, depth) = clips_around(&s, id);
+    assert_eq!((corners(clip.bounds().unwrap()), ours, depth), ([1_000_050.0, 0.0, 1_000_350.0, 300.0], true, 2), "a clip of its own inside");
+}
+
+/// An image already inside a clip group isn't reshaped: a mask the user drew stays as drawn and
+/// the image gets a clip group of its own inside it; one already clipped to the rectangle is kept;
+/// without Clip, the mask is left alone.
+#[test]
+fn an_existing_clip_group_is_not_reshaped() {
+    let (mut s, id, _d) = squeezed("apply-mask");
+    let mask = NodeId(run(&mut s, "shape.ellipse", json!({"x": 100, "y": 50, "width": 200, "height": 200}))["id"].as_u64().unwrap());
+    let outer = run(&mut s, "object.clippingMask.make", json!({"ids": [mask.0, id.0]}))["id"].as_u64().unwrap();
+    let path_of = |s: &Session, id: NodeId| match &s.doc().unwrap().doc.node(id).unwrap().kind {
+        NodeKind::Path { path, .. } => path.clone(),
+        k => panic!("not a path: {k:?}"),
+    };
+    let ellipse = path_of(&s, mask);
+    // Without Clip: only the image changes.
+    apply(&mut s, id, json!({"preserve": "fill"}));
+    assert_eq!(path_of(&s, mask), ellipse);
+    assert_eq!(s.doc().unwrap().doc.parent_of(id), Some(NodeId(outer)));
+    run(&mut s, "edit.undo", json!({}));
+    // With Clip: the ellipse stays, the image clipped inside it by a rectangle of its own.
+    let (r, _) = apply(&mut s, id, json!({"preserve": "fill", "clip": true}));
+    assert_eq!(r["applied"], json!([id.0]));
+    assert_eq!(path_of(&s, mask), ellipse, "the user's mask isn't reshaped");
+    let doc = &s.doc().unwrap().doc;
+    let inner = doc.parent_of(id).unwrap();
+    assert_ne!(inner, NodeId(outer));
+    assert_eq!(doc.parent_of(inner), Some(NodeId(outer)));
+    let NodeKind::Group { children, clip: true } = &doc.node(inner).unwrap().kind else { panic!("not a clip group") };
+    assert_eq!(corners(children[0].geometric_bounds().unwrap()), [50.0, 0.0, 350.0, 300.0]);
+}
+
+/// A placed document takes its place again the same way, from the artboard it shows.
+#[test]
+fn placement_options_apply_to_a_placed_document() {
+    let dir = Folder::new("apply-placed");
+    let path = dir.file("card.vectorcraft");
+    let mut d = vectorcraft_doc::Document::new(200.0, 100.0);
+    let layer = d.layers[0].id;
+    let rect = vectorcraft_doc::Node::path(
+        d.alloc_id(),
+        vectorcraft_geom::shapes::rectangle(vectorcraft_geom::Rect::new(0.0, 0.0, 200.0, 100.0)),
+        vectorcraft_doc::Appearance::basic(vectorcraft_color::Paint::None, vectorcraft_color::Paint::None, 0.0),
+    );
+    d.insert(Some(layer), 0, rect).unwrap();
+    write(&path, &vectorcraft_format::save_file(&d));
+    let mut s = session();
+    let id = place(&mut s, &path);
+    assert!(matches!(s.doc().unwrap().doc.node(id).unwrap().kind, NodeKind::PlacedDocument(_)));
+    run(&mut s, "select.set", json!({"ids": [id.0]}));
+    run(&mut s, "object.scale", json!({"sx": 50, "sy": 100}));
+    assert_eq!(corners(bounds(&s, id)), [150.0, 100.0, 250.0, 200.0]);
+    std::fs::remove_file(&path).unwrap();
+    let (r, b) = apply(&mut s, id, json!({"preserve": "fit"}));
+    assert_eq!((b, r["applied"].clone()), ([150.0, 125.0, 250.0, 175.0], json!([id.0])));
+}
+
+/// A clip group whose clipping path is already the rectangle of the image's bounds clips it as
+/// Clip to Bounding Box would: it is kept, with no second clip group inside it.
+#[test]
+fn a_clip_to_the_images_own_bounds_is_kept() {
+    let (mut s, id, _d) = squeezed("apply-own-clip");
+    let r = run(&mut s, "shape.rectangle", json!({"x": 50, "y": 0, "width": 300, "height": 300}));
+    let outer = NodeId(run(&mut s, "object.clippingMask.make", json!({"ids": [r["id"], id.0]}))["id"].as_u64().unwrap());
+    let (r, b) = apply(&mut s, id, json!({"preserve": "fill", "clip": true}));
+    assert_eq!((b, r["applied"].clone()), ([-100.0, 0.0, 500.0, 300.0], json!([id.0])), "moved");
+    assert_eq!(s.doc().unwrap().doc.parent_of(id), Some(outer), "already clipped to its bounds");
 }

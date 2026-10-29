@@ -187,7 +187,7 @@ font-technology	Variable	Değişken
 	Appearance of Black	Siyahın Görünümü
 	Appearance Panel	Görünüm Paneli
 	Appearance panel	Görünüm paneli
-	Applies when the linked file is relinked or updated.	Bağlantılı dosya yeniden bağlandığında veya güncellendiğinde geçerlidir.
+	Applies to linked files now, and when they are relinked or updated.	Bağlantılı dosyalara hemen ve yeniden bağlandıklarında veya güncellendiklerinde uygulanır.
 	Applies the next time VectorCraft starts.	VectorCraft'ın bir sonraki başlatılışında uygulanır.
 	Apply	Uygula
 	Apply Brush	Fırça Uygula

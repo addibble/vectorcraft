@@ -286,7 +286,7 @@ font-technology	Variable	Változó
 	Appearance panel	Megjelenés panel
 	Appearance Panel	Megjelenés panel
 	Applies the next time VectorCraft starts.	A VectorCraft következő indításakor lép életbe.
-	Applies when the linked file is relinked or updated.	A csatolt fájl újracsatolásakor vagy frissítésekor érvényes.
+	Applies to linked files now, and when they are relinked or updated.	Azonnal érvényes a csatolt fájlokra, és újracsatoláskor vagy frissítéskor is.
 	Apply	Alkalmaz
 	Apply Brush	Ecset alkalmazása
 	Apply Character Style	Karakterstílus alkalmazása

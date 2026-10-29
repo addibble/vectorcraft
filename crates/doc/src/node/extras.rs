@@ -46,6 +46,10 @@ pub struct NodeExtras {
     /// Object › Objects on Path: the group's path and the objects attached to it (see
     /// [`crate::objects_on_path`]).
     pub objects_on_path: Option<Box<crate::objects_on_path::ObjectsOnPath>>,
+    /// Links › Placement Options › Clip to Bounding Box made this clip group: it holds just an
+    /// image or placed document, clipped to the bounds the options place it in (a clip group the
+    /// user made never has it).
+    pub placement_clip: bool,
 }
 
 /// No extras: what [`Node::extras`] gives for a node without any.
@@ -65,6 +69,7 @@ pub(super) static NO_EXTRAS: NodeExtras = NodeExtras {
     intertwine: None,
     live_paint_gaps: None,
     objects_on_path: None,
+    placement_clip: false,
 };
 
 /// A node's [`NodeExtras`], if it has any ([`Node::extras`]). Extras that are all unset equal
