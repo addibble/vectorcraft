@@ -15,6 +15,8 @@ pub use shading::{LightGradient, RgbGradient, ShadeGradient};
 mod lights;
 pub use lights::{Light, Lights, MAX_LIGHTS};
 mod caps;
+mod material;
+pub use material::{Material, Shade};
 #[cfg(test)]
 mod tests_lighting;
 #[cfg(test)]
@@ -82,6 +84,9 @@ pub struct Revolve {
     pub lights: Option<Lights>,
     /// Ambient Light, 0 to 2.
     pub ambient: f64,
+    /// The base material: Roughness and Metallic ([`Material`]). Extrude & Bevel, Inflate and
+    /// Rotate shade with it; Revolve keeps the plain diffuse lighting.
+    pub material: Material,
     pub shade: bool,
     /// Interpolate profile normals using vector gradients. Enabled by default.
     pub smooth_shading: bool,
@@ -113,6 +118,7 @@ impl Default for Revolve {
             light_softness: 0.0,
             lights: None,
             ambient: 0.25,
+            material: Material::default(),
             shade: true,
             smooth_shading: true,
             cap_ends: true,
@@ -306,6 +312,7 @@ impl Revolve {
             light_softness: finite(self.light_softness, 0.0, 0.0, 1.0),
             light_color: self.light_color.map(|c| finite(c, 1.0, 0.0, 1.0)),
             ambient: finite(self.ambient, 0.25, 0.0, 2.0),
+            material: self.material.sanitized(),
             ..self
         }
     }

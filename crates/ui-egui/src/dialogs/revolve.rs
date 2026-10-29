@@ -140,30 +140,42 @@ fn c3(s: &'static str) -> &'static str {
     crate::i18n::tr_ctx(crate::i18n::current(), "3d", s)
 }
 
-/// Extrude & Bevel and Inflate: Object, Rotation and Lighting tabs (Rotate has no Object tab).
-/// The rotation gizmo shows on the first two, the light gizmo on Lighting.
+/// Extrude & Bevel and Inflate: Object, Rotation, Materials and Lighting tabs (Rotate has no
+/// Object tab). The rotation gizmo shows on the others, the light gizmo on Lighting. The dialog
+/// opens on Materials when `__tab` is `"materials"` (Effect › 3D and Materials › Materials…).
 fn solid_controls(app: &VectorcraftApp, ui: &mut egui::Ui, d: &mut Dialog, id: &str) {
     let object = id == EXTRUDE || id == INFLATE;
     let mut tabs = vec![];
+    let mut keys = vec![];
     if object {
         tabs.push(tl!("Object"));
+        keys.push("object");
     }
-    tabs.extend([tl!("Rotation"), tl!("Lighting")]);
-    let current = if super::revolve_gizmo::lighting(d) {
-        tabs.len() - 1
-    } else if object && d.str("__tab") != "rotation" {
-        0
+    tabs.extend([tl!("Rotation"), tl!("Materials"), tl!("Lighting")]);
+    keys.extend(["rotation", "materials", "light"]);
+    let tab = if super::revolve_gizmo::lighting(d) {
+        "light"
     } else {
-        tabs.len() - 2
+        match d.str("__tab").as_str() {
+            "materials" => "materials",
+            "rotation" => "rotation",
+            _ if object => "object",
+            _ => "rotation",
+        }
     };
-    if let Some(tab) = widgets::tab_bar(ui, &tabs, current) {
-        let light = tab + 1 == tabs.len();
-        d.fields.insert("__gizmo".into(), json!(if light { "light" } else { "rotation" }));
-        d.fields.insert("__tab".into(), json!(if object && tab == 0 { "object" } else { "rotation" }));
+    let current = keys.iter().position(|k| *k == tab).unwrap_or(0);
+    if let Some(picked) = widgets::tab_bar(ui, &tabs, current) {
+        let key = keys.get(picked).copied().unwrap_or("rotation");
+        d.fields.insert("__gizmo".into(), json!(if key == "light" { "light" } else { "rotation" }));
+        if key != "light" {
+            d.fields.insert("__tab".into(), json!(key));
+        }
     }
     ui.add_space(8.0);
     if super::revolve_gizmo::lighting(d) {
         lighting_controls(ui, d);
+    } else if d.str("__tab") == "materials" {
+        material_controls(ui, d);
     } else if object && d.str("__tab") != "rotation" {
         let unit = app.session.general_unit();
         if id == EXTRUDE {
@@ -202,6 +214,14 @@ fn extrude_controls(ui: &mut egui::Ui, d: &mut Dialog, unit: Unit) {
         toggle(ui, d, "bevelInside", tl!("Bevel Inside"), false);
         toggle(ui, d, "bevelBothSides", tl!("Bevel both sides"), false);
     });
+}
+
+/// The base material's properties, Roughness and Metallic (0–1 each), for Extrude & Bevel, Inflate
+/// and Rotate.
+fn material_controls(ui: &mut egui::Ui, d: &mut Dialog) {
+    heading(ui, tl!("Base Properties"));
+    number(ui, d, "roughness", tl!("Roughness"), (0.0, 1.0), "", 2, None);
+    number(ui, d, "metallic", tl!("Metallic"), (0.0, 1.0), "", 2, None);
 }
 
 /// Rotation presets, rotation and perspective for Extrude & Bevel, Inflate and Rotate.
@@ -489,7 +509,13 @@ fn number(ui: &mut egui::Ui, d: &mut Dialog, key: &str, name: &str, range: (f64,
     let typed = unit.map(|u| widgets::typed_unit(ui.ctx(), u));
     let mut value = from(d.f64(key, default)).clamp(from(range.0), from(range.1));
     let suffix = unit.map_or_else(|| suffix.to_string(), |u| format!(" {}", u.suffix()));
-    let speed = if decimals == 0 { 1.0 } else { 0.25 };
+    let speed = if decimals == 0 {
+        1.0
+    } else if range.1 - range.0 <= 1.0 {
+        0.01
+    } else {
+        0.25
+    };
     let mut next = None;
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 6.0;

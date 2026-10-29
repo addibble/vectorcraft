@@ -73,6 +73,7 @@ pub fn view_options(p: &Value) -> View {
         light_intensity: num(p, "lightIntensity", 80.0) / 100.0,
         light_softness: num(p, "lightSoftness", 0.0) / 100.0,
         ambient: num(p, "ambient", 25.0) / 100.0,
+        material: vectorcraft_three_d::Material { roughness: num(p, "roughness", 1.0), metallic: num(p, "metallic", 0.0) },
         shade: flag(p, "shade", true),
     }
 }
@@ -186,6 +187,13 @@ fn facets(id: &str, path: &PathData, rule: FillRule, bounds: Rect, p: &Value) ->
 /// A symbol instance is checked against its symbol's art in `doc`.
 pub fn validate_solid(doc: Option<&Document>, n: &Node, id: &str, p: &Value) -> Result<(), String> {
     crate::lighting::validate(p)?;
+    for key in ["roughness", "metallic"] {
+        if let Some(v) = p.get(key)
+            && !v.as_f64().is_some_and(|v| (0.0..=1.0).contains(&v))
+        {
+            return Err(format!("{key} must be a number from 0 to 1"));
+        }
+    }
     let label = crate::effect_info(id).map_or("This effect", |e| e.label.trim_end_matches('…'));
     if let Some(v) = p.get("bevel")
         && !v.as_str().is_some_and(|s| s == "none" || BevelShape::parse(s).is_some())
@@ -235,6 +243,11 @@ fn surface(n: &Node, facets: Vec<Facet>, paint: &Paint, opacity: f32, blend: Ble
             // at a grazing angle a facet can be thinner than the stroke, and its stroke would then
             // paint over its neighbours.
             let seam = (face.thickness() / 2.0).clamp(0.05, 0.75);
+            if let Some(samples) = &face.material
+                && let Some(art) = crate::lighting::material_art(n.id, &face.path(), paint, samples, seam)
+            {
+                return Arc::new(art);
+            }
             if let Some(g) = face.rgb_gradient
                 && (paint.color().is_some() || matches!(paint, Paint::Gradient(_)))
             {

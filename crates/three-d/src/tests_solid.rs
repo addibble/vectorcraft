@@ -1,6 +1,7 @@
 use vectorcraft_geom::{BezPath, FillRule, PathData, Point, Rect};
 
 use super::*;
+use crate::Material;
 
 fn square(x: f64, y: f64, s: f64) -> BezPath {
     let mut b = BezPath::new();
@@ -731,4 +732,45 @@ fn nonzero_shapes_keep_the_middle_a_same_way_contour_encloses() {
     let caps = |p: &PathData| area(&extrude(p, FillRule::NonZero, outer, Extrude::default(), front()).unwrap());
     assert!(caps(&nested(false)) > caps(&nested(true)) + 1000.0);
     assert!(inflate(&nested(false), FillRule::NonZero, outer, Inflate::default(), front()).is_ok());
+}
+
+/// The default material (Roughness 1, Metallic 0) shades exactly as before materials, with no
+/// samples; any other carries three samples spanning each facet, whose shading varies across a
+/// flat face of a smooth metal and whose sheen is white on a smooth non-metal only.
+#[test]
+fn the_material_shades_each_facet_at_three_samples() {
+    let (p, b) = shape(&square(0.0, 0.0, 100.0));
+    let view = View::default();
+    let plain = extrude(&p, FillRule::NonZero, b, Extrude::default(), view).unwrap();
+    let same = extrude(&p, FillRule::NonZero, b, Extrude::default(), View { material: Material { roughness: 1.0, metallic: 0.0 }, ..view }).unwrap();
+    assert_eq!(plain, same);
+    assert!(plain.iter().all(|f| f.material.is_none()));
+
+    let metal = View { material: Material { roughness: 0.0, metallic: 1.0 }, ..view };
+    let shiny = extrude(&p, FillRule::NonZero, b, Extrude::default(), metal).unwrap();
+    assert_eq!(shiny.len(), plain.len(), "the same faces");
+    for f in &shiny {
+        let samples = f.material.unwrap();
+        assert!(samples.iter().all(|(_, s)| s.sheen.iter().all(|v| v.is_finite()) && s.diffuse.iter().all(|v| v.is_finite())));
+        // Three points of the facet's outline, not on one line.
+        let [(a, _), (b, _), (c, _)] = samples;
+        assert!((b - a).cross(c - a).abs() > 1e-6);
+        assert!(f.contours.iter().flatten().any(|p| *p == a));
+    }
+    // The front face reflects a range of directions across it.
+    let front_face = shiny.iter().max_by(|a, b| a.thickness().total_cmp(&b.thickness())).unwrap();
+    let d = front_face.material.unwrap().map(|(_, s)| s.diffuse[0]);
+    assert!(d.iter().copied().fold(f64::NEG_INFINITY, f64::max) - d.iter().copied().fold(f64::INFINITY, f64::min) > 1e-3, "{d:?}");
+
+    // A matte metal has no white sheen of its own beyond its pale highlights; a smooth plastic
+    // does.
+    let plastic =
+        extrude(&p, FillRule::NonZero, b, Extrude::default(), View { material: Material { roughness: 0.1, metallic: 0.0 }, ..view }).unwrap();
+    assert!(plastic.iter().any(|f| f.material.unwrap().iter().any(|(_, s)| s.sheen[0] > 0.01)));
+    // Out-of-range values read as the nearest in range.
+    let wild =
+        extrude(&p, FillRule::NonZero, b, Extrude::default(), View { material: Material { roughness: f64::NAN, metallic: 7.0 }, ..view }).unwrap();
+    let clamped =
+        extrude(&p, FillRule::NonZero, b, Extrude::default(), View { material: Material { roughness: 1.0, metallic: 1.0 }, ..view }).unwrap();
+    assert_eq!(wild, clamped);
 }

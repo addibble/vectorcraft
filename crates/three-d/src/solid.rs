@@ -29,6 +29,8 @@ pub struct View {
     pub light_softness: f64,
     pub lights: Option<crate::Lights>,
     pub ambient: f64,
+    /// The base material ([`crate::Material`]).
+    pub material: crate::Material,
     pub shade: bool,
 }
 
@@ -48,6 +50,7 @@ impl Default for View {
             light_softness: r.light_softness,
             lights: r.lights,
             ambient: r.ambient,
+            material: r.material,
             shade: r.shade,
         }
     }
@@ -75,6 +78,7 @@ impl View {
             light_softness: self.light_softness,
             lights: self.lights,
             ambient: self.ambient,
+            material: self.material,
             shade: self.shade,
             ..Revolve::default()
         }
@@ -226,6 +230,10 @@ pub struct Facet {
     pub illumination: [f64; 3],
     /// Smooth lighting on an inflated triangle, before clipping individual RGB channels.
     pub rgb_gradient: Option<crate::RgbGradient>,
+    /// The base material's shading at three points spanning the facet (document space), which a
+    /// linear gradient through them carries across it; `None` for the plain diffuse material
+    /// ([`crate::Material::is_plain`]) or without shading.
+    pub material: Option<[(Point, crate::Shade); 3]>,
     /// The contours in view space, before projection, for tests that measure depths.
     #[cfg(test)]
     view: Vec<Vec<V3>>,
@@ -435,6 +443,9 @@ struct Camera {
     eye: Option<f64>,
     /// Deeper than any part of the object: faces drawn first go this far behind it.
     far: f64,
+    /// The distance in front of the centre that reflections are seen from without perspective, so
+    /// that a flat face reflects a range of directions across it, as a real eye sees a mirror.
+    reflect_eye: f64,
     light: V3,
 }
 
@@ -443,7 +454,8 @@ impl Camera {
         let view = view.revolve();
         let [lx, ly, lz] = view.light_direction();
         let size = (bounds.width() / 2.0).max(bounds.height() / 2.0).max(depth / 2.0).max(1.0);
-        Self { view, origin: bounds.center(), eye: eye_distance(view.perspective, size), far: 16.0 * size, light: V3(lx, ly, lz) }
+        let eye = eye_distance(view.perspective, size);
+        Self { view, origin: bounds.center(), eye, far: 16.0 * size, reflect_eye: 2.5 * size, light: V3(lx, ly, lz) }
     }
     fn rotate(&self, v: V3) -> V3 {
         self.view.rotate(v)
@@ -464,6 +476,29 @@ impl Camera {
     }
     fn brightness(&self, n: V3) -> f64 {
         crate::brightness(&self.view, n, self.light)
+    }
+    /// The unit direction from `at` (view space) to the eye that sees reflections.
+    fn to_eye(&self, at: V3) -> V3 {
+        V3(0.0, 0.0, self.eye.unwrap_or(self.reflect_eye)).sub(at).unit()
+    }
+    /// The material's shading at three points spanning a face of view-space `contours` (projected
+    /// as `projected`) with unit normal `n`; `None` for the plain material or a face too thin to
+    /// span.
+    fn material(&self, contours: &[Vec<V3>], projected: &[Vec<Point>], n: V3) -> Option<[(Point, crate::Shade); 3]> {
+        if !self.view.shade || self.view.material.is_plain() {
+            return None;
+        }
+        let points: Vec<(V3, Point)> = contours.iter().flatten().copied().zip(projected.iter().flatten().copied()).collect();
+        let (a, pa) = *points.first()?;
+        let farthest = |key: &dyn Fn(Point) -> f64| points.iter().copied().max_by(|x, y| key(x.1).total_cmp(&key(y.1)));
+        let (b, pb) = farthest(&|p| p.distance(pa))?;
+        let across = pb - pa;
+        let (c, pc) = farthest(&|p| across.cross(p - pa).abs())?;
+        if across.cross(pc - pa).abs() < 1e-6 {
+            return None;
+        }
+        let shade = |v: V3| crate::material::shade(&self.view, n, self.to_eye(v), self.light);
+        Some([(pa, shade(a)), (pb, shade(b)), (pc, shade(c))])
     }
 }
 
@@ -516,9 +551,11 @@ impl Builder<'_> {
         } else {
             (V3(-n.0, -n.1, -n.2), false)
         };
+        let projected: Vec<Vec<Point>> = contours.iter().map(|c| c.iter().map(|v| self.camera.project(*v)).collect()).collect();
+        let material = self.camera.material(&contours, &projected, n);
         #[cfg(test)]
-        let view = contours.clone();
-        let contours: Vec<Vec<Point>> = contours.iter().map(|c| c.iter().map(|v| self.camera.project(*v)).collect()).collect();
+        let view = contours;
+        let contours = projected;
         if contours.iter().flatten().any(|p| !p.x.is_finite() || !p.y.is_finite()) {
             return Err("The 3D projection is not finite".into());
         }
@@ -538,6 +575,7 @@ impl Builder<'_> {
             brightness: self.camera.brightness(n),
             illumination: crate::illumination(&self.camera.view, n, self.camera.light),
             rgb_gradient: None,
+            material,
             #[cfg(test)]
             view,
         });

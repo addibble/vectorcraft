@@ -68,6 +68,70 @@ pub(crate) fn shade(c: Color, rgb: [f64; 3]) -> Color {
     Color::rgb(r * rgb[0] as f32, g * rgb[1] as f32, b * rgb[2] as f32)
 }
 
+/// A facet of a 3D object whose base material isn't plain ([`vectorcraft_three_d::Material`]),
+/// painted with `paint`: a path whose fill (and seam stroke `seam` wide) is the paint as the
+/// material shades it at the facet's three `samples`. A solid color becomes a linear gradient
+/// through the three shaded colors, along the direction their brightness changes most (exact at
+/// the samples); a gradient has each stop shaded as at the facet's middle. `None` for other paints
+/// (patterns), which keep the plain lighting.
+pub(crate) fn material_art(
+    id: vectorcraft_doc::NodeId,
+    path: &vectorcraft_geom::PathData,
+    paint: &Paint,
+    samples: &[(vectorcraft_geom::Point, vectorcraft_three_d::Shade); 3],
+    seam: f64,
+) -> Option<vectorcraft_doc::Node> {
+    use vectorcraft_doc::color::{Gradient, GradientGeom, GradientKind, GradientPaint, GradientStop};
+    let rgb = |c: [f64; 3]| Color::rgb(c[0] as f32, c[1] as f32, c[2] as f32);
+    let paint = if let Some(color) = paint.color() {
+        let base = color.to_rgb().map(f64::from);
+        let colors = samples.map(|(_, s)| s.apply(base));
+        let lum = colors.map(|c| 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]);
+        let [(p0, _), (p1, _), (p2, _)] = samples;
+        let (u, v) = (*p1 - *p0, *p2 - *p0);
+        let det = u.cross(v);
+        // The brightness plane through the samples; its slope is the gradient's direction.
+        let g = vectorcraft_geom::Vec2::new(
+            ((lum[1] - lum[0]) * v.y - (lum[2] - lum[0]) * u.y) / det,
+            (u.x * (lum[2] - lum[0]) - v.x * (lum[1] - lum[0])) / det,
+        );
+        let t = samples.map(|(p, _)| (p - *p0).dot(g));
+        let (lo, hi) = (t.iter().copied().fold(f64::INFINITY, f64::min), t.iter().copied().fold(f64::NEG_INFINITY, f64::max));
+        if !(det.abs() > 1e-10 && g.hypot2() > 1e-30 && hi - lo > 1e-9 && [lo, hi, g.x, g.y].iter().all(|x| x.is_finite())) {
+            let mean: [f64; 3] = std::array::from_fn(|i| colors.iter().map(|c| c[i]).sum::<f64>() / 3.0);
+            Paint::solid(rgb(mean))
+        } else {
+            let mut stops: Vec<(f64, [f64; 3])> = t.iter().zip(colors).map(|(t, c)| ((t - lo) / (hi - lo), c)).collect();
+            stops.sort_by(|a, b| a.0.total_cmp(&b.0));
+            let stops = stops.into_iter().map(|(at, c)| GradientStop::new(at as f32, rgb(c))).collect();
+            let mut p = GradientPaint::new(Gradient::new(GradientKind::Linear, stops));
+            let along = g / g.hypot2();
+            p.geom = Some(GradientGeom { start: *p0 + along * lo, end: *p0 + along * hi, aspect: 1.0, focal: None });
+            Paint::Gradient(Box::new(p))
+        }
+    } else if matches!(paint, Paint::Gradient(_)) {
+        let middle = vectorcraft_three_d::Shade {
+            diffuse: std::array::from_fn(|i| samples.iter().map(|(_, s)| s.diffuse[i]).sum::<f64>() / 3.0),
+            sheen: std::array::from_fn(|i| samples.iter().map(|(_, s)| s.sheen[i]).sum::<f64>() / 3.0),
+        };
+        let mut shaded = paint.clone();
+        vectorcraft_doc::recolor::map_paint(&mut shaded, &|c: Color| rgb(middle.apply(c.to_rgb().map(f64::from))));
+        if let Paint::Gradient(g) = &mut shaded {
+            g.swatch = None;
+        }
+        shaded
+    } else {
+        return None;
+    };
+    let mut edge = vectorcraft_doc::StrokeLayer::new(paint.clone(), seam);
+    edge.join = vectorcraft_doc::LineJoin::Round;
+    Some(vectorcraft_doc::Node::path(
+        id,
+        path.clone(),
+        vectorcraft_doc::Appearance { items: vec![AppearanceItem::Fill(FillLayer::new(paint)), AppearanceItem::Stroke(edge)], ..Default::default() },
+    ))
+}
+
 pub(crate) fn smooth_paint(g: vectorcraft_three_d::LightGradient, color: Color) -> Paint {
     use vectorcraft_doc::color::{Gradient, GradientGeom, GradientKind, GradientPaint, GradientStop};
     let stops = g.stops().into_iter().map(|(at, rgb)| GradientStop::new(at, shade(color, rgb))).collect();

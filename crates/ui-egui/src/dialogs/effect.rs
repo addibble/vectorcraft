@@ -100,6 +100,24 @@ pub fn open(app: &mut VectorcraftApp, p: &Value) -> Result<Value, String> {
     Ok(Value::Null)
 }
 
+/// The first selected object's own Extrude & Bevel, Inflate or Rotate effect: its id and index.
+pub(crate) fn solid_effect(app: &VectorcraftApp) -> Option<(String, usize)> {
+    let st = app.session.active()?;
+    let n = st.selection.objects.first().and_then(|id| st.doc.node(*id))?;
+    n.appearance.effects.iter().enumerate().find(|(_, e)| vectorcraft_effects::SOLIDS.contains(&e.id.as_str())).map(|(k, e)| (e.id.clone(), k))
+}
+
+/// `ui.materialsDialog`: the options of the selected object's 3D effect ([`solid_effect`]) on the
+/// Materials tab, as Effect › 3D and Materials › Materials… opens them.
+pub fn open_materials(app: &mut VectorcraftApp) -> Result<Value, String> {
+    let (id, k) = solid_effect(app).ok_or("Materials… needs an object with an Extrude & Bevel, Inflate or Rotate effect")?;
+    open(app, &json!({"effect": id, "index": k, "item": null}))?;
+    if let Some(d) = app.ui.dialog.as_mut() {
+        d.fields.insert("__tab".into(), json!("materials"));
+    }
+    Ok(Value::Null)
+}
+
 /// The effects of the first selected object that `item` (an index or null) addresses.
 fn target_effects(app: &VectorcraftApp, item: &Value) -> Vec<vectorcraft_doc::Effect> {
     let Some(st) = app.session.active() else { return vec![] };

@@ -645,3 +645,40 @@ fn type_is_built_from_its_glyph_outlines() {
         assert!(all.len() > 2, "{id}");
     }
 }
+
+/// A material other than the default paints each facet of a solid fill with a linear gradient
+/// through its shaded samples (a metal in its own color); Roughness and Metallic are checked.
+#[test]
+fn a_metal_paints_its_facets_with_gradients_in_its_own_color() {
+    let gold = Color::Rgb { r: 0.83, g: 0.65, b: 0.17 };
+    let mut n = square_node();
+    n.appearance = Appearance::basic(Paint::solid(gold), Paint::None, 0.0).into();
+    n.appearance.effects.push(fx(EXTRUDE, json!({"roughness": 0.1, "metallic": 1.0})));
+    let art = solid_art(&n).unwrap();
+    let all = faces(&art);
+    let gradients: Vec<_> = all
+        .iter()
+        .filter_map(|f| match &f.appearance.items[0] {
+            AppearanceItem::Fill(fill) => match &fill.paint {
+                Paint::Gradient(g) => Some(g.clone()),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect();
+    assert!(!gradients.is_empty(), "shaded across the faces");
+    for g in &gradients {
+        for stop in &g.gradient.stops {
+            let [r, g_, b] = stop.color.to_rgb();
+            assert!(r >= g_ && g_ >= b, "gold stays gold: {:?}", stop.color);
+        }
+    }
+    // The default material keeps the plain flat shading.
+    n.appearance.effects = vec![fx(EXTRUDE, json!({}))];
+    assert!(
+        faces(&solid_art(&n).unwrap()).iter().all(|f| matches!(&f.appearance.items[0], AppearanceItem::Fill(fill) if fill.paint.color().is_some()))
+    );
+    for bad in [json!({"metallic": 1.5}), json!({"roughness": -0.1}), json!({"roughness": "shiny"})] {
+        assert!(validate_solid(None, &n, EXTRUDE, &bad).unwrap_err().contains("from 0 to 1"), "{bad}");
+    }
+}

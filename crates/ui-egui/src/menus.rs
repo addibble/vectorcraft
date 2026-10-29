@@ -904,6 +904,12 @@ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
         "{} open Document Raster Effects Settings (dialog `rasterEffectsSettings`: the document.rasterEffectsSettings fields); OK runs it. The menu item opens it too",
     ),
     (
+        "ui.materialsDialog",
+        "Materials…",
+        "",
+        "{} open the options of the selected object's Extrude & Bevel, Inflate or Rotate effect on its Materials tab (dialog `effect`, `__tab` \"materials\": Roughness and Metallic). Effect → 3D and Materials → Materials… opens it too; it needs such an effect on the object itself",
+    ),
+    (
         "ui.effectGalleryDialog",
         "Effect Gallery Dialog",
         "",
@@ -1862,6 +1868,7 @@ pub fn run_ui_command(app: &mut VectorcraftApp, id: &str, p: &Value) -> Option<R
         "ui.fileInfoDialog" => crate::dialogs::file_info::open(app),
         "ui.rasterEffectsSettingsDialog" => crate::dialogs::raster_effects::open(app),
         "ui.effectGalleryDialog" => crate::dialogs::effect_gallery::open(app, p),
+        "ui.materialsDialog" => crate::dialogs::open_materials(app),
         "ui.pdfPresetsDialog" => {
             crate::dialogs::pdf_presets::open(app, s("selected").as_deref());
             Ok(Value::Null)
@@ -2559,6 +2566,7 @@ pub fn enabled(app: &VectorcraftApp, id: &str) -> bool {
             id["view.goto".len()..].parse::<usize>().is_ok_and(|n| n >= 1 && app.session.active().is_some_and(|d| n <= d.doc.views.len()))
         }
         "effect.dialog" | "ui.recolorDialog" | "ui.effectGalleryDialog" => app.session.active().is_some_and(|d| !d.selection.is_empty()),
+        "ui.materialsDialog" => crate::dialogs::solid_effect(app).is_some(),
         "ui.cropImage" => selected_image(app, |_| true),
         "effect.applyLast" | "effect.last" => app.last_effect.is_some() && app.session.active().is_some_and(|d| !d.selection.is_empty()),
         "file.export.pdf" | "ui.savePdfDialog" | "ui.fileInfoDialog" | "ui.rasterEffectsSettingsDialog" => app.session.active().is_some(),
@@ -4178,13 +4186,13 @@ fn effect_menu() -> Vec<Item> {
         } else {
             let mut items = items;
             if sub_name == "3D and Materials" {
-                // In the panel's order of 3D types, then Materials (not built yet).
+                // In the panel's order of 3D types, then Materials (the options' Materials tab).
                 let rank = |label: &str| ["Extrude & Bevel…", "Revolve…", "Inflate…", "Rotate…"].iter().position(|l| *l == label).unwrap_or(9);
                 items.sort_by_key(|i| match i {
                     Item::Cmd(label, ..) => rank(label),
                     _ => 9,
                 });
-                items.push(todo("Materials…"));
+                items.push(c("Materials…", "ui.materialsDialog"));
             }
             out.push(sub(sub_name, items));
         }

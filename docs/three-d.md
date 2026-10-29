@@ -169,13 +169,38 @@ the default light had (45° left of the eye and 45° up). Effects saved before (
 `lightAzimuth` and `lightElevation`; those are read as the Rotation, Height and side of the same direction, so the
 shading is exactly as before.
 
+## Materials
+
+The **Materials** tab of Extrude & Bevel, Inflate and Rotate (also **Effect › 3D and Materials › Materials…**,
+which opens the selected object's 3D effect on that tab) holds the base material's two properties, as the public
+panel options list them: **Roughness** and **Metallic**, each 0 to 1. The defaults, Roughness 1 and Metallic 0,
+shade exactly as the effects did before materials, so existing documents keep their appearance. Revolve keeps
+that plain lighting.
+
+The public documentation doesn't say how its renderer shades them, so the shading is our own, drawn as vector
+art:
+
+- A **non-metal** (Metallic 0) keeps the diffuse lighting of the Lighting tab and adds a white sheen: each light's
+  highlight, tighter as Roughness falls, and the reflection of a studio surround, stronger at grazing angles.
+- A **metal** (Metallic 1) has no diffuse color of its own: it reflects the surround and the lights in its own
+  paint's color, so a smooth gold shows the surround's bands (a bright sky, a dark horizon a little below the
+  eye, a grey ground) across its faces and bevels, its brightest highlights paling toward the light's color.
+  Values between mix the two.
+- Each face is shaded at three points spanning it and painted with an ordinary linear gradient through the
+  three colors, along the direction they change most (exact at those points); reflections are seen from an eye
+  2.5 times the object's size away when Perspective is 0, so a flat face reflects a range of directions. A
+  gradient paint has each stop shaded as at the face's middle; a pattern keeps the plain lighting.
+- Not built: Adobe Substance materials and graphics (Adobe's own assets), the surround's own settings, shadows
+  and ray-traced rendering. Colored-light Inflate's smooth surfaces keep their lighting without the material.
+
 ## Parameters (`effect.apply`, `effect.setParams`)
 
 `threeD.extrude`: `depth`, `twist`, `taper` (%), `cap`, `bevel` (`none`, `classic`, `rounded`, `cove`, `step`,
 `ogee`), `bevelWidth`, `bevelHeight`, `bevelRepeat`, `bevelSpace` (%), `bevelInside`, `bevelBothSides`.
 `threeD.inflate`: `depth`, `volume` (%), `bothSides`. All three take the view and lighting parameters Revolve
 uses: `rotationX`, `rotationY`, `rotationZ`, `perspectiveAngle` (degrees), `shade`, `lightColor` (`#rrggbb`, default `#ffffff`), `lightIntensity` (%), `lightRotation`,
-`lightHeight` (degrees), `lightSoftness` (%), `ambient` (%, to 200), `lightBehind`. Lengths are points and scale with the object (Scale Strokes & Effects).
+`lightHeight` (degrees), `lightSoftness` (%), `ambient` (%, to 200), `lightBehind`, and the base material's
+`roughness` (0..1, 1) and `metallic` (0..1, 0). Lengths are points and scale with the object (Scale Strokes & Effects).
 Commands validate the shape and the parameters before the document changes. All four also take `lights`: null (the default, use the earlier single-light fields), or an array of one to ten objects. Each object takes `color` (opaque `#rrggbb`, white), `intensity` (0..100%, 80), `rotation` (-180..180 degrees, 125.26), `height` (0..90 degrees, 30), `softness` (0..100%, 0), and `behind` (boolean, false). Omitted settings use those defaults. An explicit list replaces the earlier single light; `ambient` and `shade` remain shared. Set `lights` to null to return to the single-light fields. Invalid lists, counts, keys and values are rejected before editing; malformed loaded lists fall back to the earlier light safely.
 
 ## What differs from the public documentation
@@ -185,9 +210,10 @@ and [Create 3D objects](https://helpx.adobe.com/illustrator/desktop/special-effe
 pages, and the archived Extrude & Bevel option list (depth 0–2,000, cap on/off, bevel height, bevel extent in or
 out, perspective). No Adobe software, assets, presets or bevel shapes were used.
 
-- **Materials** (base, Adobe Substance and graphics), **shadows**
-  and **ray-traced rendering** are not built: shading uses directional lights, in the paint of the fill or
-  stroke the solid is built for ([Fills and strokes](#fills-and-strokes)).
+- Of **Materials**, the base material's Roughness and Metallic are built ([Materials](#materials)); Adobe
+  Substance materials and graphics, **shadows** and **ray-traced rendering** are not: shading uses directional
+  lights and a studio surround, in the paint of the fill or stroke the solid is built for
+  ([Fills and strokes](#fills-and-strokes)).
 - The bevel shapes and their names are our own; custom bevel paths are not supported.
 - Visibility is a painter's algorithm: faces of a closed solid turned away are left out, and the rest are drawn
   back to front, with a flat cap or flat back turned toward the viewer drawn after all of them. Concave solids
@@ -210,6 +236,7 @@ Release measurements and a repeatable CLI scene are in [3D lighting performance]
 
 | Date | Change |
 |---|---|
+| 2026-10-26 | Materials: the base material's Roughness and Metallic (our own vector shading: a non-metal's white sheen, a metal reflecting a studio surround in its own color), the Materials tab and Effect › 3D and Materials › Materials…; the defaults keep the earlier appearance. |
 | 2026-10-26 | Extrude & Bevel, Inflate and Rotate on type (its glyph outlines, still live) and symbol instances (the symbol's art), as one object in 3D. |
 | 2026-10-21 | Four original lighting presets, shared by all four 3D effects and commands, with effective-setting recognition and existing preview/history behavior. |
 | 2026-10-17 | Smooth colored Inflate lighting and surface batching; legacy white-light appearance and the 0.05 seam minimum preserved; shared light Color and multiple lights remain vector output. |

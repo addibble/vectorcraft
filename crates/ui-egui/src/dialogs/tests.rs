@@ -2388,3 +2388,26 @@ fn artboard_options_selected_fit_spans_other_boards_and_off_board_art() {
     app.run("edit.redo", json!({})).unwrap();
     assert_eq!(app.session.doc().unwrap().doc, after);
 }
+
+/// Effect › 3D and Materials › Materials… opens the selected object's 3D effect on the Materials
+/// tab, whose Roughness and Metallic fields read 0–1 with two places; without a 3D effect on the
+/// object it is disabled.
+#[test]
+fn materials_opens_the_3d_options_on_their_materials_tab() {
+    use crate::widgets::accessibility_tests::{slider_value, tree};
+    let mut app = app();
+    let r = app.run("shape.rectangle", json!({"x": 10, "y": 10, "width": 50, "height": 50})).unwrap();
+    assert!(!crate::menus::enabled(&app, "ui.materialsDialog"), "no 3D effect yet");
+    assert!(app.run("ui.materialsDialog", json!({})).is_err());
+    app.run("effect.apply", json!({"effect": vectorcraft_effects::EXTRUDE, "ids": [r["id"]], "item": null, "params": {"metallic": 0.75}})).unwrap();
+    assert!(crate::menus::enabled(&app, "ui.materialsDialog"));
+    app.run("ui.materialsDialog", json!({})).unwrap();
+    let d = app.ui.dialog.as_ref().expect("the options are open");
+    assert_eq!(
+        (d.str("__effect"), d.str("__tab"), d.f64("metallic", 0.0)),
+        (vectorcraft_effects::EXTRUDE.to_string(), "materials".to_string(), 0.75)
+    );
+    let shown = tree(|ui| show(&mut app, ui.ctx()));
+    assert_eq!(slider_value(&shown, "Metallic"), (Some(0.75), Some(0.0), Some(1.0), Some("0.75".to_string())));
+    assert_eq!(slider_value(&shown, "Roughness"), (Some(1.0), Some(0.0), Some(1.0), Some("1".to_string())));
+}

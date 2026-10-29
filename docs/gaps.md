@@ -480,10 +480,13 @@ from G14 and the budget run of G15: **~170–270 h** one agent, ~50–80 h wall 
 
 - **Done:** an initial live Revolve in the `three-d` crate (#846, from the contributor who offered in #605), with automatic smooth vector shading, default-on circular caps and spike-free continuous rims;
   Extrude & Bevel, Inflate and Rotate with Position presets ([three-d.md](three-d.md), #1407). Colored Inflate has automatic smooth vector lighting from shared membrane normals. White-light Inflate keeps its existing appearance. All four take one to ten colored directional lights, with neutral ambient applied once, a light list and independent previewing controls. Standard, Diffuse, Top Left and Right select original rigs, shared with commands; manual settings show Custom.
-- **Missing:** materials (base, Substance, graphics), shadows,
+- **Done (2026-10-26):** Extrude & Bevel, Inflate and Rotate on type (live) and symbol instances; the base
+  material's Roughness and Metallic (our own vector shading) on the Materials tab and Effect › 3D and
+  Materials › Materials… ([three-d.md](three-d.md#materials)).
+- **Missing:** Substance materials and graphics, shadows,
   ray-traced rendering, angular cut caps, exact visibility for intersecting and concave surfaces, 3D Classic,
   Turntable, 3D export (OBJ, USDA, glTF).
-- **Impact:** specialist; Materials is the one menu stub left.
+- **Impact:** specialist.
 - **Estimate:** 25–45 h; plan in `plan/` before coding.
 
 ## G7 Views and windows

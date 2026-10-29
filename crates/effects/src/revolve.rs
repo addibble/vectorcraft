@@ -57,6 +57,8 @@ pub fn revolve_options(p: &Value) -> Revolve {
         light_intensity: num(p, "lightIntensity", 80.0) / 100.0,
         light_softness: num(p, "lightSoftness", 0.0) / 100.0,
         ambient: num(p, "ambient", 25.0) / 100.0,
+        // Revolve keeps the plain diffuse lighting.
+        material: Default::default(),
         shade: flag(p, "shade", true),
         smooth_shading: true,
         cap_ends: flag(p, "cap", true),
