@@ -117,6 +117,8 @@ fn status_width_measurements_are_reused_across_frames() {
 }
 
 /// Each independent cache-key component refreshes widths, then subsequent frames reuse them.
+// Reads catalogs other than English.
+#[cfg(feature = "translations")]
 #[test]
 fn status_width_measurements_refresh_for_language_units_and_dpi() {
     let (mut app, ctx) = status_readout_app();
