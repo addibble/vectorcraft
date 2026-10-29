@@ -1,5 +1,7 @@
 /// The script filter: Thai lists families with Thai; Latin, those with neither Thai nor
 /// Japanese.
+// Reads catalogs other than English.
+#[cfg(feature = "translations")]
 #[test]
 fn the_thai_filter_lists_fonts_with_thai() {
     use vectorcraft_text::FontTraits;
@@ -356,6 +358,8 @@ fn activating_the_family_popup_leaves_its_wheel_input_available() {
 }
 
 /// The Font Technology filter's Variable is the font adjective, not the Variables panel's noun.
+// Reads catalogs other than English.
+#[cfg(feature = "translations")]
 #[test]
 fn the_variable_filter_is_named_as_fonts_are() {
     use crate::i18n::{Lang, tr, tr_ctx};

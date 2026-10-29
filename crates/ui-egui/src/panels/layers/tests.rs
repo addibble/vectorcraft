@@ -12,6 +12,8 @@ fn filled_targets(app: &mut VectorcraftApp, ctx: &egui::Context) -> usize {
 
 /// A generated `<Kind>` name is translated where painted; an unnamed text object's text never
 /// is, even when it reads like one.
+// Reads catalogs other than English.
+#[cfg(feature = "translations")]
 #[test]
 fn only_generated_names_are_translated() {
     let zh = crate::i18n::Lang::from_code("zh-hant").unwrap();
