@@ -55,6 +55,7 @@ impl Serialize for Node {
             is_default(&e.shape_mode),
             e.symbol_overrides.is_empty(),
             e.envelope_edit_margin.is_none(),
+            is_default(&e.placement_clip),
         ];
         let mut st = s.serialize_struct("Node", skips.iter().filter(|s| !**s).count())?;
         let mut skip = skips.into_iter();
@@ -104,6 +105,7 @@ impl Serialize for Node {
         field!("shape_mode", &e.shape_mode);
         field!("symbol_overrides", &e.symbol_overrides);
         field!("envelope_edit_margin", &e.envelope_edit_margin);
+        field!("placement_clip", &e.placement_clip);
         st.end()
     }
 }
@@ -272,6 +274,8 @@ pub(super) struct NodeWire {
     symbol_overrides: Vec<crate::SymbolOverride>,
     #[serde(default)]
     envelope_edit_margin: Option<[f32; 4]>,
+    #[serde(default)]
+    placement_clip: bool,
 }
 
 /// A node's schema is its file form's ([`NodeWire`]: the flat field list a node is written as).
@@ -326,6 +330,7 @@ impl From<NodeWire> for Node {
             shape_mode: w.shape_mode,
             symbol_overrides: w.symbol_overrides,
             envelope_edit_margin: w.envelope_edit_margin,
+            placement_clip: w.placement_clip,
         };
         Node {
             id: w.id,
