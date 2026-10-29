@@ -623,7 +623,8 @@ art too large at that scale) keeps the dialog open.
 Placement Options: the Links panel's flyout (or `ui.placementOptionsDialog {ids?}` for agents) opens the
 `placementOptions` dialog for the selected images (fields `ids`, `preserve`: `transforms`/`bounds`/`fileDimensions`/
 `fit`/`fill`, `align`: `topLeft` … `bottomRight`, `clip`). `ui.dialog.confirm` runs `links.placementOptions` with them as
-one undo step, which also applies them at once to the linked images (see `links.placementOptions`). The Links panel (`window.panel {panel: "links"}`) shows `links.list` and the first selected image's
+one undo step, which also applies them at once to the linked images and placed documents (see `links.placementOptions`);
+options the images don't share (`mixed`) are sent only when changed. The Links panel (`window.panel {panel: "links"}`) shows `links.list` and the first selected image's
 `links.info`; `links.editOriginal` and `links.reveal` (Edit › Edit Original, Show in Folder) hand the linked file to
 the system and return `{path}`. Edit Original opens only a regular file whose extension is a format `document.open`
 reads, and answers a control request with an error unless the file is a placed document (which opens in a tab).

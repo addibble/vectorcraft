@@ -238,6 +238,25 @@ fn placement_options_dialog_sets_the_options() {
     assert_eq!(bounds(&app), [25.0, 0.0, 175.0, 200.0]);
 }
 
+/// Placement Options on images whose options differ: OK sets what was changed and leaves each
+/// image the options it had for the rest.
+#[test]
+fn placement_options_dialog_keeps_mixed_options() {
+    let dir = Folder::new("dialog-mixed");
+    let (mut app, linked, _) = app(&dir);
+    let other = app.run("file.place", json!({"path": dir.0.join("linked.png"), "at": [300, 100]})).unwrap()["ids"][0].as_u64().unwrap();
+    app.run("links.placementOptions", json!({"ids": [other], "preserve": "transforms", "clip": true})).unwrap();
+    app.run("select.set", json!({"ids": [linked, other]})).unwrap();
+    app.run("ui.placementOptionsDialog", json!({})).unwrap();
+    let d = app.ui.dialog.as_mut().unwrap();
+    assert_eq!(d.str("preserve"), "bounds", "shown as the first image's");
+    d.fields.insert("align".into(), json!("top"));
+    crate::dialogs::confirm(&mut app).unwrap();
+    let options = |app: &mut VectorcraftApp, id: u64| app.run("links.placementOptions", json!({"ids": [id]})).unwrap()["placement"].clone();
+    assert_eq!(options(&mut app, linked), json!({"preserve": "bounds", "align": "top", "clip": false}));
+    assert_eq!(options(&mut app, other), json!({"preserve": "transforms", "align": "top", "clip": true}));
+}
+
 #[test]
 fn properties_shows_the_selected_image_and_its_link_actions() {
     let dir = Folder::new("props");

@@ -19,6 +19,7 @@ fn extras_are_written_flat_in_order() {
         e.slice = Some(Box::default());
         e.perspective = Some(Box::new(crate::PerspectiveAttachment::new("left", 1.0)));
         e.live_paint_gaps = Some(Box::default());
+        e.placement_clip = true;
     }
     /// The top-level keys of a JSON object, in the order written.
     struct Keys(Vec<String>);
@@ -61,6 +62,7 @@ fn extras_are_written_flat_in_order() {
         "bbox_angle",
         "perspective",
         "live_paint_gaps",
+        "placement_clip",
     ];
     assert_eq!(keys, order);
     assert_eq!(serde_json::from_value::<Node>(v).unwrap(), n);

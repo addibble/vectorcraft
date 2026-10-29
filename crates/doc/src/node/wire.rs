@@ -41,6 +41,7 @@ impl Serialize for Node {
             e.intertwine.is_none(),
             e.live_paint_gaps.is_none(),
             e.objects_on_path.is_none(),
+            is_default(&e.placement_clip),
         ];
         let mut st = s.serialize_struct("Node", skips.iter().filter(|s| !**s).count())?;
         let mut skip = skips.into_iter();
@@ -80,6 +81,7 @@ impl Serialize for Node {
         field!("intertwine", &e.intertwine);
         field!("live_paint_gaps", &e.live_paint_gaps);
         field!("objects_on_path", &e.objects_on_path);
+        field!("placement_clip", &e.placement_clip);
         st.end()
     }
 }
@@ -141,6 +143,8 @@ pub(super) struct NodeWire {
     live_paint_gaps: Option<Box<crate::live_paint::GapOptions>>,
     #[serde(default)]
     objects_on_path: Option<Box<crate::objects_on_path::ObjectsOnPath>>,
+    #[serde(default)]
+    placement_clip: bool,
 }
 
 impl From<NodeWire> for Node {
@@ -161,6 +165,7 @@ impl From<NodeWire> for Node {
             intertwine: w.intertwine,
             live_paint_gaps: w.live_paint_gaps,
             objects_on_path: w.objects_on_path,
+            placement_clip: w.placement_clip,
         };
         Node {
             id: w.id,

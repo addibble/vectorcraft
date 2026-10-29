@@ -4,7 +4,9 @@
 //! shows: Fit or Fill puts a distorted image back in proportion, File Dimensions at its 100% size.
 //!
 //! Fields: `ids` (the images; null: the selected ones), `preserve` (transforms|bounds|fileDimensions|fit|fill), `align`
-//! (topLeft … bottomRight) and `clip`. OK runs `links.placementOptions` with them: one undo step.
+//! (topLeft … bottomRight) and `clip`; `mixed`: those the images don't share, shown as the first
+//! image's (`opened`) and left as each image has them unless changed. OK runs
+//! `links.placementOptions` with them: one undo step.
 
 use serde_json::{Value, json};
 
@@ -36,12 +38,23 @@ pub fn open(app: &mut VectorcraftApp, p: &Value) -> Result<Value, String> {
     let r = app.session.execute(CMD, &json!({ "ids": ids })).map_err(|e| e.to_string())?;
     let mut fields = r["placement"].clone();
     fields["ids"] = ids;
+    if let Some(mixed) = r.get("mixed") {
+        fields["mixed"] = mixed.clone();
+        fields["opened"] = r["placement"].clone();
+    }
     app.ui.dialog = Some(Dialog::new(KIND, fields));
     Ok(Value::Null)
 }
 
 fn confirm(app: &mut VectorcraftApp, d: &Dialog) -> Result<Value, String> {
-    let r = app.run(CMD, Value::Object(d.fields.clone()));
+    let mut p = d.fields.clone();
+    let (mixed, opened) = (p.remove("mixed"), p.remove("opened"));
+    for k in mixed.as_ref().and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str) {
+        if opened.as_ref().and_then(|o| o.get(k)) == p.get(k) {
+            p.remove(k);
+        }
+    }
+    let r = app.run(CMD, Value::Object(p));
     if r.is_ok() {
         app.ui.dialog = None;
     }
