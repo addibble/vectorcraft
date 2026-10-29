@@ -341,3 +341,27 @@ fn the_web_says_how_many_fonts_are_missing() {
     after_open_for(&mut app, &json!({"warnings": ["fonts"]}), true);
     assert_eq!(app.ui.status, "Opened with 1 note(s): fonts");
 }
+
+/// A font a font source supplies isn't counted missing when a document opens on the web: it is
+/// on its way. One that fails to load says so then.
+#[test]
+fn the_web_leaves_out_a_font_a_source_is_fetching() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
+    const FAMILY: &str = "On Its Way 01";
+    let integrity = format!("sha256-{}", vectorcraft_format::base64_encode(&[0xef; 32]));
+    vectorcraft_text::FontDb::global().add_sources(vec![vectorcraft_text::FontSource {
+        family: FAMILY.into(),
+        style: "Regular".into(),
+        url: "fonts/on-its-way.ttf".into(),
+        integrity,
+    }]);
+    let mut app = VectorcraftApp::new(Session::new(), Default::default());
+    app.run("file.new", json!({"width": 400, "height": 300})).unwrap();
+    app.run("text.create", json!({"x": 10, "y": 40, "text": "Coming", "font": FAMILY})).unwrap();
+    app.ui.status.clear();
+    after_open_for(&mut app, &json!({}), true);
+    assert_eq!(app.ui.status, "", "nothing missing while the source is fetched");
+    app.font_source_failed(FAMILY, "HTTP 404");
+    assert_eq!(app.ui.status, "On Its Way 01 couldn't be loaded (HTTP 404): its text shows in another font");
+}

@@ -153,7 +153,7 @@ impl FontDb {
         paths.sort();
         paths.dedup();
         let files = paths.into_iter().flat_map(|p| font_files(&p).into_iter().map(move |data| (data, Some(p.clone()))));
-        self.add_fonts(files) > 0 || self.is_loaded(family)
+        !self.add_fonts(files).added.is_empty() || self.is_loaded(family)
     }
 
     /// Resolve a family + style to a face, falling back to the closest style of the family, then to
@@ -176,6 +176,10 @@ impl FontDb {
             if let Some(f) = self.find(family, style) {
                 return Some(f);
             }
+        }
+        // A host can supply it: asked for once, drawn in the fallback until the host adds it.
+        if found.as_ref().is_none_or(|f| norm(&f.style) != norm(style)) {
+            self.request_source(family, style);
         }
         found
             .or_else(|| self.find(FALLBACK_FAMILY, style))
@@ -324,7 +328,19 @@ impl FontDb {
     /// Is `family` available (loaded, or installed on the system)?
     pub fn has_family(&self, family: &str) -> bool {
         let (family, _) = self.canonical(family, "");
-        self.is_loaded(&family) || self.read_catalog().contains_key(&family.to_ascii_lowercase())
+        self.is_loaded(&family) || self.read_catalog().contains_key(&family.to_ascii_lowercase()) || self.is_source(&family)
+    }
+
+    /// Whether `family` in `style` is a font source not loaded yet: what draws it would request it
+    /// ([`FontDb::face`]), so a font menu's sample leaves it out and only type set in it asks. Each
+    /// style counts apart: a family with Regular loaded may still have Bold to come.
+    pub fn is_pending_source(&self, family: &str, style: &str) -> bool {
+        self.pending_source(family, style).is_some()
+    }
+
+    /// Whether a host can supply `family` ([`FontDb::add_sources`]).
+    pub fn is_source(&self, family: &str) -> bool {
+        self.sources.read().unwrap_or_else(|e| e.into_inner()).iter().any(|s| s.family.eq_ignore_ascii_case(family))
     }
 
     pub(crate) fn is_loaded(&self, family: &str) -> bool {

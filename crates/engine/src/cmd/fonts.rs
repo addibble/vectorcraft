@@ -52,6 +52,24 @@ pub fn specs() -> Vec<CommandSpec> {
             font_list
         ),
         cmd!(
+            query "text.addFont",
+            "Add Font",
+            [],
+            None,
+            "{dataBase64: a font file (TrueType, OpenType or a collection, at most 64 MB), name?: what to call it in an error (default \"the font\")} give this session the file's faces, as installing it would (a page that embeds VectorCraft on the web, where no fonts are installed, supplies its fonts this way); text in a face that became available redraws in it. A face already loaded (the same family, style and version) is not added again. Not an edit: nothing is saved, journaled or undone → {faces: [{family, style}] (the faces added), found (the faces the file holds)}",
+            always,
+            add_font
+        ),
+        cmd!(
+            query "text.addFontSources",
+            "Add Font Sources",
+            [],
+            None,
+            "{fonts: [{family, style?: \"Regular\", url: where the host gets the file (for the web build, a URL relative to the page), sha256: the file's SHA-256 in hex}] (1 to 10000)} fonts the host can supply, as a font provider's are activated on demand: listed in the font menus and text.fontList from now on, and fetched when type names their family (the web build fetches it, checks it against its SHA-256 and adds it as text.addFont does; until then the type draws in the fallback face). A family and style already a source is kept as it was, unless it failed to load: given again, it is asked for again. Not an edit: nothing is saved, journaled or undone → {added, sources (how many there are now)}",
+            always,
+            add_font_sources
+        ),
+        cmd!(
             "text.rescanFonts",
             "Refresh Font List",
             [],
@@ -404,6 +422,8 @@ fn font_param(p: &Value, k: &str, c: &str) -> Result<(String, Option<String>)> {
     Ok((family.to_string(), v.get("style").and_then(Value::as_str).map(str::to_string)))
 }
 
+/// `text.replaceFont`: the type in one family and style (in the selection, or the whole document)
+/// set in another, which is available, installed or a font source.
 fn replace(s: &mut Session, p: &Value) -> Result<Value> {
     const C: &str = "text.replaceFont";
     let (ff, fs) = font_param(p, "from", C)?;
@@ -412,6 +432,8 @@ fn replace(s: &mut Session, p: &Value) -> Result<Value> {
     // Any name of the family (ヒラギノ角ゴシック) is stored as its own name (Hiragino Sans).
     let tf = match db.resolve(&tf, ts.as_deref().unwrap_or("Regular")) {
         Some((f, m)) if m != vectorcraft_text::FontMatch::Missing => f.family.clone(),
+        // A font source's family: the type takes it now and draws in it once the host adds it.
+        _ if db.is_source(&tf) => tf.clone(),
         _ => return Err(bad(C, format!("font family `{tf}` is not available"))),
     };
     let ids = scope(s, bool_or(p, "selectionOnly", false))?;
@@ -469,6 +491,8 @@ fn select_font(s: &mut Session, p: &Value) -> Result<Value> {
     Ok(json!({ "count": n }))
 }
 
+/// `text.fontList`: every family the font menus list, or one family's styles and the axes of one
+/// style (none for a font source not loaded yet).
 fn font_list(_: &mut Session, p: &Value) -> Result<Value> {
     let db = vectorcraft_text::FontDb::global();
     match str_param(p, "family") {
@@ -480,8 +504,10 @@ fn font_list(_: &mut Session, p: &Value) -> Result<Value> {
             let name = db.family_list().iter().find(|f| f.eq_ignore_ascii_case(family)).cloned().unwrap_or_else(|| family.to_string());
             let styles = db.styles(family);
             let style = str_param(p, "style").map(str::to_string).or_else(|| styles.first().cloned()).unwrap_or_else(|| "Regular".into());
-            let axes: Vec<Value> = db
-                .face(family, &style)
+            // A font source not loaded yet has no axes to tell, and listing it asks for nothing
+            // (only type set in it does).
+            let face = if db.is_pending_source(family, &style) { None } else { db.face(family, &style) };
+            let axes: Vec<Value> = face
                 .map(|face| {
                     let axes = face.axes();
                     axes.iter()
@@ -500,14 +526,91 @@ fn font_list(_: &mut Session, p: &Value) -> Result<Value> {
     }
 }
 
+/// `text.rescanFonts`: the font folders scanned again, and the type laid out in the fonts available now.
 pub(crate) fn rescan(s: &mut Session, _: &Value) -> Result<Value> {
     let db = vectorcraft_text::FontDb::global();
     #[cfg(not(target_arch = "wasm32"))]
     let faces = db.load_system_fonts();
     #[cfg(target_arch = "wasm32")]
     let faces = 0;
-    // The canvas redraws type in the fonts available now (renderers lay it out again when the
-    // fonts change), and the bounds follow; that isn't an edit to save.
+    relayout_text(s);
+    Ok(json!({ "families": db.menu_family_list().len(), "faces": faces }))
+}
+
+/// The most bytes a font file given to `text.addFont` may have (large CJK collections are tens of
+/// megabytes).
+const MAX_ADDED_FONT: usize = 64 << 20;
+
+/// `text.addFont`: a font file's faces, given as base64, added to the session's font database; the
+/// type laid out again when any was added.
+fn add_font(s: &mut Session, p: &Value) -> Result<Value> {
+    const C: &str = "text.addFont";
+    let name = str_param(p, "name").unwrap_or("the font");
+    let data = str_param(p, "dataBase64").ok_or_else(|| bad(C, "give the font file as dataBase64"))?;
+    // Base64 is four characters for three bytes: refuse an oversized file before decoding it.
+    if data.len() / 4 * 3 > MAX_ADDED_FONT {
+        return Err(bad(C, format!("{name} is larger than {} MB", MAX_ADDED_FONT >> 20)));
+    }
+    let bytes = vectorcraft_format::base64_decode(data).ok_or_else(|| bad(C, format!("{name}: dataBase64 is not base64")))?;
+    let report = vectorcraft_text::FontDb::global().add_font_reporting(bytes);
+    if report.found == 0 {
+        return Err(bad(C, format!("{name} is not a TrueType, OpenType or collection font")));
+    }
+    if !report.added.is_empty() {
+        relayout_text(s);
+    }
+    let faces: Vec<Value> = report.added.iter().map(|(family, style)| json!({ "family": family, "style": style })).collect();
+    Ok(json!({ "faces": faces, "found": report.found }))
+}
+
+/// The most font sources one `text.addFontSources` call may give.
+const MAX_FONT_SOURCES: usize = 10_000;
+
+/// `text.addFontSources`: the fonts a host can supply, checked (each a family, a style, a URL and a
+/// SHA-256) and registered with the font database as [`vectorcraft_text::FontSource`]s.
+fn add_font_sources(_: &mut Session, p: &Value) -> Result<Value> {
+    const C: &str = "text.addFontSources";
+    let fonts =
+        p.get("fonts").and_then(Value::as_array).ok_or_else(|| bad(C, "give fonts, a list of fonts each with a family, a url and a sha256"))?;
+    if fonts.is_empty() || fonts.len() > MAX_FONT_SOURCES {
+        return Err(bad(C, format!("give 1 to {MAX_FONT_SOURCES} fonts")));
+    }
+    let mut list = Vec::with_capacity(fonts.len());
+    for (i, f) in fonts.iter().enumerate() {
+        let text = |key: &str, max: usize| -> Result<String> {
+            let v = f.get(key).and_then(Value::as_str).map(str::trim).unwrap_or("");
+            if v.is_empty() || v.len() > max {
+                return Err(bad(C, format!("fonts[{i}].{key} is 1 to {max} characters")));
+            }
+            Ok(v.to_string())
+        };
+        let family = text("family", 256)?;
+        let style = match f.get("style") {
+            None | Some(Value::Null) => "Regular".to_string(),
+            Some(_) => text("style", 256)?,
+        };
+        let url = text("url", 2048)?;
+        let sha256 = text("sha256", 64)?;
+        let digest = hex_bytes(&sha256).filter(|d| d.len() == 32).ok_or_else(|| bad(C, format!("fonts[{i}].sha256 is 64 hexadecimal digits")))?;
+        let integrity = format!("sha256-{}", vectorcraft_format::base64_encode(&digest));
+        list.push(vectorcraft_text::FontSource { family, style, url, integrity });
+    }
+    let db = vectorcraft_text::FontDb::global();
+    let added = db.add_sources(list);
+    Ok(json!({ "added": added, "sources": db.sources().len() }))
+}
+
+/// `hex`'s bytes, two digits a byte; `None` when it is no even run of hexadecimal digits.
+fn hex_bytes(hex: &str) -> Option<Vec<u8>> {
+    if !hex.len().is_multiple_of(2) {
+        return None;
+    }
+    (0..hex.len()).step_by(2).map(|i| hex.get(i..i + 2).and_then(|b| u8::from_str_radix(b, 16).ok())).collect()
+}
+
+/// The canvas redraws type in the fonts available now (renderers lay it out again when the fonts
+/// change), and the bounds follow; that isn't an edit to save.
+fn relayout_text(s: &mut Session) {
     for d in &mut s.docs {
         let mut texts = vec![];
         d.doc.walk(|n| {
@@ -527,12 +630,184 @@ pub(crate) fn rescan(s: &mut Session, _: &Value) -> Result<Value> {
         }
         d.revision += 1;
     }
-    Ok(json!({ "families": db.menu_family_list().len(), "faces": faces }))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Font sources: listed before they are loaded, requested once when type names their family,
+    /// drawn once the host adds the file; bad input is refused.
+    #[test]
+    fn a_font_source_is_listed_requested_once_and_drawn_once_added() {
+        let _fonts = crate::adding_fonts();
+        const FAMILY: &str = "Sourced Fnt 1";
+        let db = vectorcraft_text::FontDb::global();
+        let mut s = Session::new();
+        s.execute("file.new", &json!({"width": 200, "height": 100})).unwrap();
+        let sha = "ab".repeat(32);
+        let added = s.execute("text.addFontSources", &json!({"fonts": [{"family": FAMILY, "url": "fonts/sourced.ttf", "sha256": sha}]})).unwrap();
+        assert_eq!(added["added"], 1, "{added}");
+        let again = s
+            .execute("text.addFontSources", &json!({"fonts": [{"family": FAMILY, "style": "Regular", "url": "elsewhere.ttf", "sha256": sha}]}))
+            .unwrap();
+        assert_eq!(again["added"], 0, "a family and style already a source is kept");
+        let list = s.execute("text.fontList", &json!({})).unwrap();
+        assert!(list["families"].as_array().unwrap().iter().any(|f| f == FAMILY), "listed before it is loaded");
+        assert_eq!(s.execute("text.fontList", &json!({"family": FAMILY})).unwrap()["styles"], json!(["Regular"]));
+        assert!(db.take_source_requests().iter().all(|r| r.family != FAMILY), "listing a source asks for nothing");
+
+        let source = vectorcraft_text::FontSource {
+            family: FAMILY.into(),
+            style: "Regular".into(),
+            url: "fonts/sourced.ttf".into(),
+            integrity: format!("sha256-{}", vectorcraft_format::base64_encode(&[0xab; 32])),
+        };
+        s.execute("text.create", &json!({"x": 10, "y": 50, "text": "Sourced", "font": FAMILY})).unwrap();
+        s.execute("text.fonts", &json!({})).unwrap();
+        let asked = db.take_source_requests();
+        assert_eq!(asked.iter().filter(|r| r.family == FAMILY).collect::<Vec<_>>(), [&source], "requested once type names it");
+        s.execute("text.create", &json!({"x": 10, "y": 80, "text": "Again", "font": FAMILY})).unwrap();
+        s.execute("text.fonts", &json!({})).unwrap();
+        assert!(db.take_source_requests().iter().all(|r| r.family != FAMILY), "and only once");
+
+        let status = |s: &mut Session| s.execute("text.fonts", &json!({})).unwrap()[0]["status"].clone();
+        assert_eq!(status(&mut s), "missing");
+        let data = vectorcraft_format::base64_encode(&vectorcraft_testkit::fonts::renamed(FAMILY));
+        s.execute("text.addFont", &json!({"dataBase64": data})).unwrap();
+        assert_eq!(status(&mut s), "exact", "drawn in it once the host adds the file");
+
+        for bad in [
+            json!({}),
+            json!({"fonts": []}),
+            json!({"fonts": [{"family": "X", "url": "u", "sha256": "zz"}]}),
+            json!({"fonts": [{"url": "u", "sha256": sha}]}),
+        ] {
+            assert!(s.execute("text.addFontSources", &bad).is_err(), "{bad}");
+        }
+    }
+
+    /// Each style of a source counts apart: with its Regular added, a family's Bold source is still
+    /// to come, asked for when type takes Bold and not for Regular.
+    #[test]
+    fn a_source_s_styles_are_pending_apart() {
+        let _fonts = crate::adding_fonts();
+        const FAMILY: &str = "Two Styles 01";
+        let db = vectorcraft_text::FontDb::global();
+        let source = |style: &str| vectorcraft_text::FontSource {
+            family: FAMILY.into(),
+            style: style.into(),
+            url: format!("fonts/{style}.ttf"),
+            integrity: format!("sha256-{}", vectorcraft_format::base64_encode(&[0x5a; 32])),
+        };
+        db.add_sources(vec![source("Regular"), source("Bold")]);
+        assert!(db.is_pending_source(FAMILY, "Regular") && db.is_pending_source(FAMILY, "Bold"));
+        assert!(db.add_font(vectorcraft_testkit::fonts::renamed(FAMILY)) > 0);
+        assert!(!db.is_pending_source(FAMILY, "Regular"), "Regular is loaded");
+        assert!(db.is_pending_source(FAMILY, "Bold"), "Bold is still to come");
+        db.face(FAMILY, "Regular");
+        assert!(db.take_source_requests().iter().all(|r| r.family != FAMILY), "the loaded style asks for nothing");
+        db.face(FAMILY, "Bold");
+        assert_eq!(db.take_source_requests().into_iter().filter(|r| r.family == FAMILY).collect::<Vec<_>>(), [source("Bold")]);
+    }
+
+    /// A style loaded some other way is not pending though the family's only source has another
+    /// style: Regular added by hand, Bold the only source, so Regular asks for nothing and keeps
+    /// its sample, and Bold is still to come.
+    #[test]
+    fn a_loaded_style_is_not_pending_for_another_style_s_source() {
+        let _fonts = crate::adding_fonts();
+        const FAMILY: &str = "Bold Source 1";
+        let db = vectorcraft_text::FontDb::global();
+        let integrity = format!("sha256-{}", vectorcraft_format::base64_encode(&[0x3c; 32]));
+        db.add_sources(vec![vectorcraft_text::FontSource { family: FAMILY.into(), style: "Bold".into(), url: "fonts/bold.ttf".into(), integrity }]);
+        assert!(db.add_font(vectorcraft_testkit::fonts::renamed(FAMILY)) > 0);
+        assert!(!db.is_pending_source(FAMILY, "Regular"), "Regular is loaded");
+        assert!(db.is_pending_source(FAMILY, "Bold"));
+        db.face(FAMILY, "Regular");
+        assert!(db.take_source_requests().iter().all(|r| r.family != FAMILY), "the loaded style asks for nothing");
+    }
+
+    /// A source the host is done with is no longer pending: one that failed is drawn in the
+    /// fallback face and counted missing until the host gives it again, which asks for it again;
+    /// one whose file was added is done though the file names its style otherwise.
+    #[test]
+    fn a_settled_source_is_no_longer_pending() {
+        let _fonts = crate::adding_fonts();
+        let db = vectorcraft_text::FontDb::global();
+        let source = |family: &str, style: &str| vectorcraft_text::FontSource {
+            family: family.into(),
+            style: style.into(),
+            url: format!("fonts/{style}.ttf"),
+            integrity: format!("sha256-{}", vectorcraft_format::base64_encode(&[0x42; 32])),
+        };
+        let failed = source("Failed Src 01", "Regular");
+        db.add_sources(vec![failed.clone()]);
+        db.face(&failed.family, "Regular");
+        assert!(db.take_source_requests().contains(&failed));
+        db.source_settled(&failed, false);
+        assert!(!db.is_pending_source(&failed.family, "Regular"), "a failed source is not on its way");
+        db.face(&failed.family, "Regular");
+        assert!(!db.take_source_requests().contains(&failed), "nor asked for again by itself");
+        assert_eq!(db.add_sources(vec![failed.clone()]), 1, "given again, it is taken");
+        assert!(db.is_pending_source(&failed.family, "Regular"));
+        db.face(&failed.family, "Regular");
+        assert!(db.take_source_requests().contains(&failed), "and asked for again");
+
+        // The host's "Book" turns out to be a Regular face: loaded all the same.
+        let book = source("Book Style 01", "Book");
+        db.add_sources(vec![book.clone()]);
+        assert!(db.add_font(vectorcraft_testkit::fonts::renamed(&book.family)) > 0);
+        assert!(db.is_pending_source(&book.family, "Book"));
+        assert!(db.source_settled(&book, true));
+        assert!(!db.is_pending_source(&book.family, "Book"));
+
+        // A file of another family is a failure: no longer pending, asked for again when given again.
+        let other = source("Wrong Family1", "Regular");
+        db.add_sources(vec![other.clone()]);
+        assert!(db.add_font(vectorcraft_testkit::fonts::renamed("Other Family1")) > 0);
+        assert!(!db.source_settled(&other, true), "the file holds another family");
+        assert!(!db.is_pending_source(&other.family, "Regular"));
+        assert_eq!(db.add_sources(vec![other.clone()]), 1, "a failure, so given again it is taken");
+    }
+
+    /// A source's italic styles are listed after its upright ones, as loaded faces' are.
+    #[test]
+    fn a_source_s_italics_follow_its_uprights() {
+        let _fonts = crate::adding_fonts();
+        const FAMILY: &str = "Italic Order 01";
+        let mut s = Session::new();
+        let fonts: Vec<Value> = ["Bold Italic", "Italic", "Bold", "Regular"]
+            .iter()
+            .map(|style| json!({"family": FAMILY, "style": style, "url": format!("fonts/{style}.ttf"), "sha256": "cd".repeat(32)}))
+            .collect();
+        s.execute("text.addFontSources", &json!({ "fonts": fonts })).unwrap();
+        let styles = s.execute("text.fontList", &json!({"family": FAMILY})).unwrap()["styles"].clone();
+        assert_eq!(styles, json!(["Regular", "Bold", "Italic", "Bold Italic"]));
+    }
+
+    /// Text › Add Font: a font file's faces join the session, text set in its family is no longer
+    /// missing, a face already loaded is not added again, and bytes that are no font are refused.
+    #[test]
+    fn a_font_given_as_bytes_joins_the_session_once() {
+        let _fonts = crate::adding_fonts();
+        let mut s = Session::new();
+        s.execute("file.new", &json!({"width": 200, "height": 100})).unwrap();
+        s.execute("text.create", &json!({"x": 10, "y": 50, "text": "Added", "font": "Added Font 01"})).unwrap();
+        let status = |s: &mut Session| s.execute("text.fonts", &json!({})).unwrap()[0]["status"].clone();
+        assert_eq!(status(&mut s), "missing");
+        let data = vectorcraft_format::base64_encode(&vectorcraft_testkit::fonts::renamed("Added Font 01"));
+        let added = s.execute("text.addFont", &json!({"dataBase64": data})).unwrap();
+        assert_eq!(added["found"], 1, "{added}");
+        assert_eq!(added["faces"], json!([{"family": "Added Font 01", "style": "Regular"}]));
+        assert_eq!(status(&mut s), "exact");
+        let again = s.execute("text.addFont", &json!({"dataBase64": data})).unwrap();
+        assert_eq!(again, json!({"faces": [], "found": 1}));
+        let junk = s.execute("text.addFont", &json!({"dataBase64": vectorcraft_format::base64_encode(b"not a font"), "name": "junk.ttf"}));
+        assert!(junk.unwrap_err().to_string().contains("junk.ttf is not a TrueType"));
+        assert!(s.execute("text.addFont", &json!({"dataBase64": "%%%"})).unwrap_err().to_string().contains("not base64"));
+        assert!(s.execute("text.addFont", &json!({})).unwrap_err().to_string().contains("dataBase64"));
+    }
 
     /// Type › Options › Additional Fonts Folder (#683) adds its folder to the system font scan,
     /// trimmed; clearing it takes the folder out again.

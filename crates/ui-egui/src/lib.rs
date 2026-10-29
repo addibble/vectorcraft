@@ -90,6 +90,14 @@ use tests::{
 };
 #[cfg(test)]
 mod tests;
+/// Held by the tests that add fonts or font sources to the shared
+/// [`vectorcraft_text::FontDb::global`] for as long as they run, and by those that read its font
+/// list more than once: adding clears the database's cached lists.
+#[cfg(test)]
+pub(crate) fn adding_fonts() -> std::sync::MutexGuard<'static, ()> {
+    static FONTS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    FONTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender};

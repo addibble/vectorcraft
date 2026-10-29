@@ -186,6 +186,8 @@ fn highlight_commands_focus_the_font_kerning_and_tracking_fields() {
 #[cfg(feature = "translations")]
 #[test]
 fn variable_fonts_get_a_slider_per_axis() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
     use vectorcraft_text::test_fonts::{TWO_AXIS_FAMILY, two_axis_font};
     let db = vectorcraft_text::FontDb::global();
     db.add_font(two_axis_font().unwrap());

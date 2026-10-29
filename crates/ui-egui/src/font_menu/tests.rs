@@ -244,6 +244,8 @@ fn the_variable_filter_is_named_as_fonts_are() {
 /// filters; clicked again, every family is back.
 #[test]
 fn the_variable_filter_lists_only_variable_families() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
     use vectorcraft_text::FontClass;
     use vectorcraft_text::test_fonts::{TWO_AXIS_FAMILY, two_axis_font};
     let db = vectorcraft_text::FontDb::global();

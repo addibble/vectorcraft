@@ -190,4 +190,10 @@ impl VectorcraftApp {
     pub fn status(&mut self, s: impl Into<String>) {
         self.ui.status = s.into();
     }
+
+    /// A font source (`text.addFontSources`) the host couldn't fetch or add: its type stays in the
+    /// fallback face, which the status line says.
+    pub fn font_source_failed(&mut self, font: &str, reason: &str) {
+        self.status(format!("{font} couldn't be loaded ({reason}): its text shows in another font"));
+    }
 }

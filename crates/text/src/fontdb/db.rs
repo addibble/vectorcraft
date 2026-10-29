@@ -1,5 +1,4 @@
 use super::build::make_face;
-#[cfg(not(target_arch = "wasm32"))]
 use super::build::{style_italic, style_weight};
 #[cfg(not(target_arch = "wasm32"))]
 use super::cache::CatalogFace;
@@ -9,7 +8,7 @@ use super::dirs::confined_font_dirs;
 use super::face::{BUNDLED, FontBytes, FontFace, Instances};
 #[cfg(not(target_arch = "wasm32"))]
 use super::names::SysFallback;
-use super::names::name;
+use super::names::{name, norm};
 use super::scan::enumerate_faces;
 #[cfg(not(target_arch = "wasm32"))]
 use super::scan::{file_face_names, is_font_file};
@@ -17,7 +16,9 @@ use super::scan::{file_face_names, is_font_file};
 use super::traits::faces_published;
 #[cfg(not(target_arch = "wasm32"))]
 use super::traits::{Alias, FaceStyle};
-use super::{Arc, AtomicU64, FontDb, FontPaths, HashMap, Mutex, Ordering, Path, PathBuf, RwLock, StringId};
+use super::{
+    Arc, AtomicU64, FontDb, FontPaths, FontSource, FontsAdded, HashMap, Mutex, Ordering, Path, PathBuf, RwLock, SourceRequests, StringId, source_key,
+};
 #[cfg(not(target_arch = "wasm32"))]
 use super::{ScanStamp, modified};
 
@@ -63,6 +64,8 @@ impl FontDb {
             version_scanned: RwLock::new(std::collections::HashSet::new()),
             family_cache: Mutex::new(None),
             menu_cache: Mutex::new(None),
+            sources: RwLock::new(Vec::new()),
+            source_requests: Mutex::new(SourceRequests::default()),
             generation: AtomicU64::new(0),
             #[cfg(not(target_arch = "wasm32"))]
             sys: Mutex::new(SysFallback { enabled: true, ..Default::default() }),
@@ -128,6 +131,7 @@ impl FontDb {
         }
         let mut v: Vec<String> = self.read_faces().iter().map(|f| f.family.clone()).collect();
         v.extend(catalog.values().map(|c| c.name.clone()));
+        v.extend(self.sources.read().unwrap_or_else(|e| e.into_inner()).iter().map(|s| s.family.clone()));
         v.sort_by_key(|a| a.to_lowercase());
         v.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
         let list: Arc<[String]> = v.into();
@@ -187,9 +191,104 @@ impl FontDb {
                 }
             }
         }
+        for src in self.sources.read().unwrap_or_else(|e| e.into_inner()).iter().filter(|s| s.family.eq_ignore_ascii_case(family)) {
+            if !v.iter().any(|(_, _, s)| s.eq_ignore_ascii_case(&src.style)) {
+                v.push((style_italic(&src.style), style_weight(&src.style), src.style.clone()));
+            }
+        }
         v.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.total_cmp(&b.1)).then(a.2.cmp(&b.2)));
         v.dedup_by(|a, b| a.2 == b.2);
         v.into_iter().map(|t| t.2).collect()
+    }
+
+    /// Fonts a host can supply ([`FontSource`]): listed in the font menus from now on and
+    /// requested when type names their family. A family and style already a source is kept as it
+    /// was, unless it failed to load ([`FontDb::source_settled`]): given again, it replaces the
+    /// failed one and is asked for again. Returns how many were added.
+    pub fn add_sources(&self, list: Vec<FontSource>) -> usize {
+        let mut sources = self.sources.write().unwrap_or_else(|e| e.into_inner());
+        let mut requests = self.source_requests.lock().unwrap_or_else(|e| e.into_inner());
+        let mut added = 0;
+        for src in list {
+            let key = source_key(&src);
+            let same = |s: &FontSource| s.family.eq_ignore_ascii_case(&src.family) && s.style.eq_ignore_ascii_case(&src.style);
+            if let Some(at) = sources.iter().position(same) {
+                if requests.settled.get(&key) != Some(&false) {
+                    continue;
+                }
+                sources.remove(at);
+                requests.settled.remove(&key);
+                requests.asked.remove(&key);
+            }
+            sources.push(src);
+            added += 1;
+        }
+        drop(requests);
+        drop(sources);
+        if added > 0 {
+            self.changed();
+        }
+        added
+    }
+
+    /// The fonts a host can supply ([`FontDb::add_sources`]).
+    pub fn sources(&self) -> Vec<FontSource> {
+        self.sources.read().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    /// The sources type has asked for since the last call, for the host to fetch and add
+    /// ([`FontDb::add_font`]); each is asked for once.
+    pub fn take_source_requests(&self) -> Vec<FontSource> {
+        std::mem::take(&mut self.source_requests.lock().unwrap_or_else(|e| e.into_inner()).queue)
+    }
+
+    /// Whether type has asked for sources not taken yet ([`FontDb::take_source_requests`]): a host
+    /// that takes them once a frame asks for another frame.
+    pub fn has_source_requests(&self) -> bool {
+        !self.source_requests.lock().unwrap_or_else(|e| e.into_inner()).queue.is_empty()
+    }
+
+    /// The host is done with `src`: its file was added (`added`), or it couldn't be fetched or
+    /// added. Either way it is no longer pending. An added file counts only when a face of the
+    /// source's family is now loaded (by any of the family's names; its style may be named
+    /// otherwise, "Book" for a "Regular" source): a file of another family leaves the type in the
+    /// fallback face, so it counts as a failure. A failed source is asked for again only once the
+    /// host gives it again ([`FontDb::add_sources`]). Returns whether the source loaded.
+    pub fn source_settled(&self, src: &FontSource, added: bool) -> bool {
+        let loaded = added && self.is_loaded(&self.canonical(&src.family, "").0);
+        self.source_requests.lock().unwrap_or_else(|e| e.into_inner()).settled.insert(source_key(src), loaded);
+        loaded
+    }
+
+    /// The source that type set in `family` and `style` asks for: the family's source of that
+    /// style, else its first; `None` when that style is loaded (however it came, by any of its
+    /// names, as [`FontDb::find`] takes them), when no source supplies the family, or when the
+    /// source's own face is loaded or the host is done with it ([`FontDb::source_settled`]).
+    pub(super) fn pending_source(&self, family: &str, style: &str) -> Option<FontSource> {
+        let loaded = |style: &str| {
+            let ns = norm(style);
+            self.read_faces().iter().any(|f| f.family.eq_ignore_ascii_case(family) && (norm(&f.style) == ns || f.keys.styles.contains(&ns)))
+        };
+        if loaded(style) {
+            return None;
+        }
+        let src = {
+            let sources = self.sources.read().unwrap_or_else(|e| e.into_inner());
+            let of_family = || sources.iter().filter(|s| s.family.eq_ignore_ascii_case(family));
+            of_family().find(|s| norm(&s.style) == norm(style)).or_else(|| of_family().next())?.clone()
+        };
+        let settled = self.source_requests.lock().unwrap_or_else(|e| e.into_inner()).settled.contains_key(&source_key(&src));
+        (!settled && !loaded(&src.style)).then_some(src)
+    }
+
+    /// Ask for the source of `family` in `style` ([`FontDb::pending_source`]), once.
+    pub(super) fn request_source(&self, family: &str, style: &str) {
+        let Some(src) = self.pending_source(family, style) else { return };
+        let key = source_key(&src);
+        let mut requests = self.source_requests.lock().unwrap_or_else(|e| e.into_inner());
+        if requests.asked.insert(key) {
+            requests.queue.push(src);
+        }
     }
 
     /// Add a user font (TTF/OTF/TTC bytes). Returns the number of faces added (0 if unparseable or
@@ -198,25 +297,39 @@ impl FontDb {
         self.add_font_from(bytes, None)
     }
 
+    /// [`FontDb::add_font`], telling an unreadable file (no faces found) from one whose faces are
+    /// all loaded already: what the file holds and which faces it added.
+    pub fn add_font_reporting(&self, bytes: Vec<u8>) -> FontsAdded {
+        self.add_font_report(bytes, None)
+    }
+
     /// [`FontDb::add_font`] for the bytes of the file at `path` (when known).
     pub(super) fn add_font_from(&self, bytes: Vec<u8>, path: Option<&Path>) -> usize {
+        self.add_font_report(bytes, path).added.len()
+    }
+
+    /// [`FontDb::add_font_reporting`] for the bytes of the file at `path` (when known).
+    pub(super) fn add_font_report(&self, bytes: Vec<u8>, path: Option<&Path>) -> FontsAdded {
         self.add_fonts([(bytes, path.map(Path::to_path_buf))])
     }
 
     /// Add the faces of `files` (each file's bytes, and the file when known) all at once: a lookup
     /// on another thread finds all of them or none, never a family with only some of its styles
     /// loaded, whose nearest style it would take instead (Arial Bold Italic, the first of Arial's
-    /// files, for upright Regular text). Returns the number of faces added.
-    pub(super) fn add_fonts(&self, files: impl IntoIterator<Item = (Vec<u8>, Option<PathBuf>)>) -> usize {
+    /// files, for upright Regular text). Returns what the files held and which faces they added.
+    pub(super) fn add_fonts(&self, files: impl IntoIterator<Item = (Vec<u8>, Option<PathBuf>)>) -> FontsAdded {
         // Another version of a family and style is kept: a document may name it (the first one
         // loaded stays the one the family and style alone resolve to).
         let same = |f: &FontFace, family: &str, style: &str, version: &str| {
             f.family.eq_ignore_ascii_case(family) && f.style.eq_ignore_ascii_case(style) && f.version == version
         };
+        let mut report = FontsAdded { found: 0, added: vec![] };
         let mut made: Vec<FontFace> = Vec::new();
         for (bytes, path) in files {
             let data = Arc::new(bytes);
-            for (i, spec) in enumerate_faces(&data) {
+            let faces = enumerate_faces(&data);
+            report.found += faces.len();
+            for (i, spec) in faces {
                 let version = skrifa::FontRef::from_index(&data, i).ok().and_then(|f| name(&f, &[StringId::VERSION_STRING])).unwrap_or_default();
                 let present = |f: &FontFace| same(f, &spec.family, &spec.style, &version);
                 if self.read_faces().iter().any(|f| present(f)) || made.iter().any(present) {
@@ -228,21 +341,20 @@ impl FontDb {
             }
         }
         let mut faces = self.faces.write().unwrap_or_else(std::sync::PoisonError::into_inner);
-        let before = faces.len();
         for f in made {
             // Another thread may have added the same face meanwhile.
             if !faces.iter().any(|g| same(g, &f.family, &f.style, &f.version)) {
+                report.added.push((f.family.clone(), f.style.clone()));
                 faces.push(Arc::new(f));
             }
         }
-        let added = faces.len() - before;
         drop(faces);
         #[cfg(test)]
         faces_published();
-        if added > 0 {
+        if !report.added.is_empty() {
             self.changed();
         }
-        added
+        report
     }
 
     /// Catalog the installed fonts unless that has been done: the first caller scans the font
