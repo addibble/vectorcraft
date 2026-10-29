@@ -21,6 +21,7 @@ fn extras_are_written_flat_in_order() {
         e.live_paint_gaps = Some(Box::default());
         e.compound_shape = true;
         e.shape_mode = crate::ShapeMode::Exclude;
+        e.placement_clip = true;
     }
     /// The top-level keys of a JSON object, in the order written.
     struct Keys(Vec<String>);
@@ -65,6 +66,7 @@ fn extras_are_written_flat_in_order() {
         "live_paint_gaps",
         "compound_shape",
         "shape_mode",
+        "placement_clip",
     ];
     assert_eq!(keys, order);
     assert_eq!(v["shape_mode"], "exclude");

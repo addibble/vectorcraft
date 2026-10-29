@@ -190,7 +190,7 @@ font-technology	Variable	Променливи
 	Appearance of Black	Външен вид на черното
 	Appearance Panel	Панел „Външен вид“
 	Appearance panel	Панел „Външен вид“
-	Applies when the linked file is relinked or updated.	Прилага се, когато свързаният файл бъде пресвързан или актуализиран.
+	Applies to linked files now, and when they are relinked or updated.	Прилага се към свързаните файлове веднага, както и когато бъдат пресвързани или актуализирани.
 	Applies the next time VectorCraft starts.	Прилага се при следващото стартиране на VectorCraft.
 	Apply	Прилагане
 	Apply Brush	Прилагане на четка
