@@ -10,7 +10,8 @@
 //!
 //! `links.check` reports, `links.update` reads modified files again, `links.relink` points images
 //! at other files. A file read again takes the image's place as its Placement Options say
-//! ([`PlacementOptions`]: keep the bounds or the transforms, fit or fill the bounds…).
+//! ([`PlacementOptions`]: keep the bounds or the transforms, fit or fill the bounds…); setting
+//! them applies them at once to the file each linked image already shows.
 //!
 //! The Links panel lists every image (`links.list`) with its Link Info (`links.info`); Go To
 //! selects one (`links.goTo`), Embed keeps a linked file's pixels in the document
@@ -28,10 +29,10 @@ use std::path::{Component, Path};
 use serde_json::{Value, json};
 use vectorcraft_doc::links::{Align, Preserve, hash_bytes};
 use vectorcraft_doc::{Appearance, Document, ImageBlob, ImageObject, LinkInfo, Node, NodeId, NodeKind, PageBox, PlacedDocument, PlacementOptions};
-use vectorcraft_geom::{Affine, Rect, shapes};
+use vectorcraft_geom::{Affine, Point, Rect, shapes};
 
 use super::fileio::{self, RasterImage, absolute_path, file_created, file_stamp, read_file, write_file};
-use super::{CommandSpec, EngineError, Result, Session, bad, bool_or, cmd, has_doc, id_param, ids_param, str_param};
+use super::{CommandSpec, EngineError, Result, Session, bad, bool_or, checked_ids_param, cmd, has_doc, id_param, ids_param, str_param};
 
 pub fn specs() -> Vec<CommandSpec> {
     vec![
@@ -121,7 +122,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Placement Options",
             [],
             None,
-            "{ids?: [image or placed document ids] (default: the selected ones), preserve?: transforms|bounds (default)|fileDimensions|fit|fill, align?: topLeft|top|topRight|left|center (default)|right|bottomLeft|bottom|bottomRight (where the new art sits; not for bounds), clip?: false (clip it to the old bounds where it is larger)} how a file read again (links.relink, links.update) takes each image's place: transforms keeps its scale (relative to each file's 100% size), rotation and position; bounds stretches it into the old bounds; fileDimensions puts it at 100%, unrotated; fit and fill scale it proportionally to fit inside or cover the old bounds. Without options → {placement} of the first image; else one undo step → {ids, placement}",
+            "{ids?: [image or placed document ids] (default: the selected ones), preserve?: transforms|bounds (default)|fileDimensions|fit|fill, align?: topLeft|top|topRight|left|center (default)|right|bottomLeft|bottom|bottomRight (where the new art sits; not for bounds), clip?: false (clip it to the old bounds where it is larger)} how a file read again (links.relink, links.update) takes each image's place: transforms keeps its scale (relative to each file's 100% size), rotation and position; bounds stretches it into the old bounds; fileDimensions puts it at 100%, unrotated; fit and fill scale it proportionally to fit inside or cover the old bounds. Setting them also applies them at once to each linked image and placed document, from the file it already shows (nothing is read): fit and fill put a distorted image back in proportion inside or over its bounds, as align says, fileDimensions puts it at its file's 100% size, unrotated; bounds and transforms move nothing; with clip, art now larger than its bounds is clipped to them in a clip group of its own, which later options place the art in (transforms keeps it where it is) and which clip: false removes (a clip group the user made is never reshaped); embedded images keep their place. Without options → {placement} of the first image, mixed?: [the options the images don't share]; else one undo step (none when nothing changes) → {ids, placement, applied: [ids that moved, changed size, or were clipped or let out], embedded?: [embedded image ids, left in place], previewing?: [linked image ids fileDimensions left in place: only their preview is loaded]}",
             has_doc,
             placement_options
         ),
@@ -493,17 +494,18 @@ fn install_document(d: &mut Document, ids: &[NodeId], link: &LinkInfo, src: &sup
     for id in ids {
         let Some(NodeKind::PlacedDocument(p)) = d.node(*id).map(|n| &n.kind) else { continue };
         let o = PlacementOptions { preserve: force.unwrap_or(p.placement.preserve), ..p.placement };
-        let (xf, clip) = placed_xf(p.xf, (p.width, p.height), (1.0, 1.0), (w, h), (1.0, 1.0), o);
+        let (xf, clip) = placed_xf(p.xf, (p.width, p.height), (1.0, 1.0), (w, h), (1.0, 1.0), o, clip_frame(d, *id));
         if let Some(n) = d.node_mut(*id)
             && let NodeKind::PlacedDocument(p) = &mut n.kind
         {
             let p: &mut PlacedDocument = p;
             (p.key, p.width, p.height, p.xf, p.link) = (src.key.clone(), w, h, xf, link.clone());
         }
-        clips.extend(clip.map(|c| (*id, c)));
+        // A Preserve forced on the file (Embed, a data set's image) keeps the clip as it is.
+        clips.push((*id, clip, o.clip || force.is_some()));
     }
     super::place::document::store(d, src);
-    clips.into_iter().try_for_each(|(id, clip)| clip_image(d, id, clip))
+    clips.into_iter().try_for_each(|(id, to, clip)| reclip(d, id, to, clip).map(drop))
 }
 
 /// Points per pixel of the file image `key` of `d` shows, at the resolution it declares (72 ppi
@@ -521,24 +523,85 @@ fn file_ppi(d: &Document, key: &str) -> Option<(f64, f64)> {
 /// Where the clip of an image goes: the old bounds' frame (bounds space to the document) and size.
 type Clip = (Affine, (f64, f64));
 
+/// The lengths of the axes of transform `xf`: its scale across and down, shear and all.
+fn scales(xf: Affine) -> (f64, f64) {
+    let [a, b, c, d, ..] = xf.as_coeffs();
+    (a.hypot(b), c.hypot(d))
+}
+
+/// The square frame of transform `xf`: its rotation, reflection and origin, without its scale or
+/// shear (the down axis square to the across axis, on the side the art's own is); `None` when it
+/// is flat.
+fn upright(xf: Affine) -> Option<Affine> {
+    let [a, b, c, d, e, f] = xf.as_coeffs();
+    let (su, det) = (a.hypot(b), a * d - b * c);
+    if !(su > 1e-12 && det.abs() > 1e-12 * su && xf.as_coeffs().iter().all(|v| v.is_finite())) {
+        return None;
+    }
+    let (ux, uy, flip) = (a / su, b / su, det.signum());
+    Some(Affine::new([ux, uy, -uy * flip, ux * flip, e, f]))
+}
+
+/// The bounds of art of `size` (its own units) placed with `xf`, as a rectangle in its square
+/// frame (see [`upright`]): a sheared image's corners all inside it.
+fn square_bounds(xf: Affine, size: (f64, f64)) -> Option<Clip> {
+    let frame = upright(xf)?;
+    let r = (frame.inverse() * xf).transform_rect_bbox(Rect::new(0.0, 0.0, size.0, size.1));
+    Some((frame * Affine::translate(r.origin().to_vec2()), (r.width(), r.height())))
+}
+
+/// Whether art of `size` (its own units) placed with `xf` reaches outside rectangle `room` in
+/// `frame`.
+fn overflows(xf: Affine, size: (f64, f64), (frame, room): Clip) -> bool {
+    let to_frame = frame.inverse() * xf;
+    let (ex, ey) = (1e-6 * (1.0 + room.0), 1e-6 * (1.0 + room.1));
+    [(0.0, 0.0), (size.0, 0.0), (0.0, size.1), size].into_iter().any(|(x, y)| {
+        let q = to_frame * Point::new(x, y);
+        !(q.x >= -ex && q.y >= -ey && q.x <= room.0 + ex && q.y <= room.1 + ey)
+    })
+}
+
 /// The transform an image placed with `xf` showing `old` pixels (`old_pt`: points per pixel at
 /// 100%) gives a new file of `new` pixels (`new_pt`), as Placement Options `o` say; and the clip
-/// when `o.clip` and the new art overflows the old bounds. (A placed document's "pixels" are points,
-/// one point each.)
-fn placed_xf(xf: Affine, old: (f64, f64), old_pt: (f64, f64), new: (f64, f64), new_pt: (f64, f64), o: PlacementOptions) -> (Affine, Option<Clip>) {
+/// when `o.clip` and the new art overflows the old bounds. `within`: the rectangle Clip to Bounding
+/// Box already clips the art to (see [`clip_frame`]), which Fit, Fill and File Dimensions place it
+/// in rather than in its own bounds, and which stays its clip; Transforms keeps the art where it
+/// is. (A placed document's "pixels" are points, one point each.)
+fn placed_xf(
+    xf: Affine,
+    old: (f64, f64),
+    old_pt: (f64, f64),
+    new: (f64, f64),
+    new_pt: (f64, f64),
+    o: PlacementOptions,
+    within: Option<Clip>,
+) -> (Affine, Option<Clip>) {
     let (ow, oh, nw, nh) = (old.0, old.1, new.0.max(1e-9), new.1.max(1e-9));
-    let [a, b, c, d, ..] = xf.as_coeffs();
-    // The bounds' frame: the transform without its scale (rotation, reflection and position).
-    let (su, sv) = (a.hypot(b), c.hypot(d));
-    if o.preserve == Preserve::Bounds || su < 1e-12 || sv < 1e-12 {
-        return (xf * Affine::scale_non_uniform(ow / nw, oh / nh), None);
-    }
-    let (frame, room) = match o.preserve {
-        Preserve::FileDimensions => {
-            let r = xf.transform_rect_bbox(Rect::new(0.0, 0.0, ow, oh));
+    let stretched = (xf * Affine::scale_non_uniform(ow / nw, oh / nh), None);
+    let (su, sv) = scales(xf);
+    // The old bounds, as a frame and the room in it: Transforms keeps the art's own axes, shear and
+    // all; the others take its square bounds.
+    let own: Clip = match o.preserve {
+        Preserve::Bounds => return stretched,
+        Preserve::Transforms if su > 1e-12 && sv > 1e-12 => (xf * Affine::scale_non_uniform(1.0 / su, 1.0 / sv), (ow * su, oh * sv)),
+        Preserve::Transforms => return stretched,
+        _ => match square_bounds(xf, (ow, oh)) {
+            Some(own) => own,
+            None => return stretched,
+        },
+    };
+    let (frame, room) = match (o.preserve, within) {
+        (Preserve::Transforms, _) => own,
+        // Unrotated: in the bounding box of the clip, else of the art as it is placed.
+        (Preserve::FileDimensions, _) => {
+            let r = match within {
+                Some((f, room)) => f.transform_rect_bbox(Rect::new(0.0, 0.0, room.0, room.1)),
+                None => xf.transform_rect_bbox(Rect::new(0.0, 0.0, ow, oh)),
+            };
             (Affine::translate(r.origin().to_vec2()), (r.width(), r.height()))
         }
-        _ => (xf * Affine::scale_non_uniform(1.0 / su, 1.0 / sv), (ow * su, oh * sv)),
+        (_, Some(clip)) => clip,
+        (_, None) => own,
     };
     // The new file's size at 100% (pt), then as placed.
     let natural = (nw * new_pt.0, nh * new_pt.1);
@@ -551,29 +614,121 @@ fn placed_xf(xf: Affine, old: (f64, f64), old_pt: (f64, f64), new: (f64, f64), n
         }
         _ => natural,
     };
+    if !(size.0 > 1e-9 && size.1 > 1e-9 && size.0.is_finite() && size.1.is_finite()) {
+        return stretched;
+    }
     let (fx, fy) = o.align.fractions();
     let at = Affine::translate(((room.0 - size.0) * fx, (room.1 - size.1) * fy));
-    let over = size.0 > room.0 + 1e-6 || size.1 > room.1 + 1e-6;
-    (frame * at * Affine::scale_non_uniform(size.0 / nw, size.1 / nh), (o.clip && over).then_some((frame, room)))
+    let placed = frame * at * Affine::scale_non_uniform(size.0 / nw, size.1 / nh);
+    // Clipped to the old bounds as they are (the clip already holding it, else its own), rotated
+    // with them.
+    let clip_to = within.unwrap_or(own);
+    (placed, (o.clip && overflows(placed, (nw, nh), clip_to)).then_some(clip_to))
 }
 
-/// Clip image `id` of `d` to `room` in `frame`: the clipping path of the clip group holding just
-/// it changes, else the image goes into a new clip group.
-fn clip_image(d: &mut Document, id: NodeId, (frame, room): Clip) -> Result<()> {
-    let path = shapes::rectangle(Rect::new(0.0, 0.0, room.0, room.1)).transformed(frame);
-    let clip_path = d.parent_of(id).and_then(|p| match &d.node(p)?.kind {
+/// Path `path` as a rectangle in a frame of its own (origin at a corner, axes along its sides,
+/// turned as near as they come to those of square frame `near`) and its size; `None` when it isn't
+/// a rectangle (four square corners, no handles) or is flat.
+fn rect_frame(path: &vectorcraft_geom::PathData, near: Affine) -> Option<Clip> {
+    let [sp] = &path.subpaths[..] else { return None };
+    if !(sp.closed && sp.anchors.iter().all(|a| a.h_in == a.p && a.h_out == a.p)) {
+        return None;
+    }
+    let [p0, p1, _, p3] = sp.anchors[..] else { return None };
+    let (e1, e2) = (p1.p - p0.p, p3.p - p0.p);
+    let (l1, l2) = (e1.hypot(), e2.hypot());
+    if !(l1 > 1e-9 && l2 > 1e-9 && l1.is_finite() && l2.is_finite()) {
+        return None;
+    }
+    let [ux, uy, vx, vy, ..] = near.as_coeffs();
+    let (want_u, want_v) = (vectorcraft_geom::Vec2::new(ux, uy), vectorcraft_geom::Vec2::new(vx, vy));
+    // The across axis: the side direction nearest `near`'s; the down axis: the other side's, the
+    // way nearest `near`'s.
+    let (a, b) = if (e1 / l1).dot(want_u).abs() >= (e2 / l2).dot(want_u).abs() { (e1 / l1, e2 / l2) } else { (e2 / l2, e1 / l1) };
+    let u = if a.dot(want_u) >= 0.0 { a } else { -a };
+    let v = if b.dot(want_v) >= 0.0 { b } else { -b };
+    let axes = Affine::new([u.x, u.y, v.x, v.y, 0.0, 0.0]);
+    let local = path.transformed(axes.inverse());
+    let r = local.bounds()?;
+    same_rectangle(&local, &shapes::rectangle(r)).then(|| (axes * Affine::translate(r.origin().to_vec2()), (r.width(), r.height())))
+}
+
+/// The clip group Clip to Bounding Box made around just image (or placed document) `id` of `d`
+/// (marked [`placement_clip`](vectorcraft_doc::NodeExtras::placement_clip)), and its clipping path,
+/// while that is still a rectangle.
+fn own_placement_clip(d: &Document, id: NodeId) -> Option<(NodeId, NodeId)> {
+    let (group, c) = own_clip(d, id)?;
+    let NodeKind::Path { path, .. } = &d.node(c)?.kind else { return None };
+    (d.node(group)?.extras().placement_clip && rect_frame(path, Affine::IDENTITY).is_some()).then_some((group, c))
+}
+
+/// The rectangle Clip to Bounding Box keeps image (or placed document) `id` of `d` in (see
+/// [`own_placement_clip`]), in a frame turned like the art's. Fit, Fill and File Dimensions place
+/// the art in it rather than in the art's own bounds, which a Fill has made bigger.
+fn clip_frame(d: &Document, id: NodeId) -> Option<Clip> {
+    let xf = match &d.node(id)?.kind {
+        NodeKind::Image(im) => im.xf,
+        NodeKind::PlacedDocument(p) => p.xf,
+        _ => return None,
+    };
+    let (_, c) = own_placement_clip(d, id)?;
+    let NodeKind::Path { path, .. } = &d.node(c)?.kind else { return None };
+    rect_frame(path, upright(xf).unwrap_or(Affine::IDENTITY))
+}
+
+/// The clip group holding just image (or placed document) `id` of `d`, and its clipping path.
+fn own_clip(d: &Document, id: NodeId) -> Option<(NodeId, NodeId)> {
+    let parent = d.parent_of(id)?;
+    match &d.node(parent)?.kind {
         NodeKind::Group { children, clip: true } => match &children[..] {
-            [c, im] if im.id == id && matches!(c.kind, NodeKind::Path { clipping: true, .. }) => Some(c.id),
+            [c, im] if im.id == id && matches!(c.kind, NodeKind::Path { clipping: true, .. }) => Some((parent, c.id)),
             _ => None,
         },
         _ => None,
-    });
-    if let Some(c) = clip_path {
-        if let Some(Node { kind: NodeKind::Path { path: p, .. }, .. }) = d.node_mut(c) {
-            *p = path;
-        }
-        return Ok(());
     }
+}
+
+/// Clip to Bounding Box for object `id` of `d`, as Placement Options `clip` say: `to` is the
+/// rectangle (in its frame) to clip it to, or `None` when it fits its bounds → whether its clip
+/// changed.
+///
+/// - With a rectangle: the clip group Clip to Bounding Box made around it takes that rectangle;
+///   a clip group the user made is never reshaped: one already clipping it to that rectangle is
+///   kept, and inside any other (a mask the user drew, a crop) the art gets a clip group of its
+///   own, so both clip it.
+/// - Without Clip, the clip group Clip to Bounding Box made lets the art go; the user's stay.
+fn reclip(d: &mut Document, id: NodeId, to: Option<Clip>, clip: bool) -> Result<bool> {
+    let own = own_placement_clip(d, id);
+    let Some((frame, room)) = to else {
+        return match own {
+            Some((group, c)) if !clip => unclip(d, id, group, c).map(|()| true),
+            _ => Ok(false),
+        };
+    };
+    let rect = shapes::rectangle(Rect::new(0.0, 0.0, room.0, room.1)).transformed(frame);
+    let path_of = |d: &Document, c: NodeId| match d.node(c).map(|n| &n.kind) {
+        Some(NodeKind::Path { path, .. }) => Some(path.clone()),
+        _ => None,
+    };
+    if let Some((_, c)) = own {
+        if path_of(d, c).is_some_and(|p| same_rectangle(&p, &rect)) {
+            return Ok(false);
+        }
+        if let Some(Node { kind: NodeKind::Path { path, .. }, .. }) = d.node_mut(c) {
+            *path = rect;
+        }
+        return Ok(true);
+    }
+    if own_clip(d, id).and_then(|(_, c)| path_of(d, c)).is_some_and(|p| same_rectangle(&p, &rect)) {
+        return Ok(false);
+    }
+    wrap_in_clip(d, id, rect)?;
+    Ok(true)
+}
+
+/// Put object `id` of `d` into a new clip group of its own, clipped by `path`, where it was: the
+/// clip group of Clip to Bounding Box.
+fn wrap_in_clip(d: &mut Document, id: NodeId, path: vectorcraft_geom::PathData) -> Result<()> {
     let (par, index, _) = d.position(id).ok_or(EngineError::NoNode(id))?;
     let image = d.remove(id)?;
     let none = vectorcraft_color::Paint::None;
@@ -581,8 +736,35 @@ fn clip_image(d: &mut Document, id: NodeId, (frame, room): Clip) -> Result<()> {
     if let NodeKind::Path { clipping, .. } = &mut clip.kind {
         *clipping = true;
     }
-    let group = Node::new(d.alloc_id(), NodeKind::Group { children: vec![std::sync::Arc::new(clip), image], clip: true });
+    let mut group = Node::new(d.alloc_id(), NodeKind::Group { children: vec![std::sync::Arc::new(clip), image], clip: true });
+    group.extras_mut().placement_clip = true;
     d.insert(par, index, group)?;
+    Ok(())
+}
+
+/// Object `id` of `d` no longer clipped by `group`, the clip group Clip to Bounding Box made around
+/// it (clipping path `clip`): the art takes the group's place, or, when the group carries more than
+/// the clip (opacity, a blend mode, an appearance, a name, a lock…), the group stays a plain group
+/// around it, without its clipping path.
+fn unclip(d: &mut Document, id: NodeId, group: NodeId, clip: NodeId) -> Result<()> {
+    let g = d.node(group).ok_or(EngineError::NoNode(group))?;
+    let mut bare = Node::new(g.id, g.kind.clone());
+    bare.bbox_angle = g.bbox_angle;
+    bare.extras_mut().placement_clip = true;
+    if *g != bare {
+        d.remove(clip)?;
+        if let Some(g) = d.node_mut(group) {
+            if let NodeKind::Group { clip, .. } = &mut g.kind {
+                *clip = false;
+            }
+            g.extras_mut().placement_clip = false;
+        }
+        return Ok(());
+    }
+    let (par, index, _) = d.position(group).ok_or(EngineError::NoNode(group))?;
+    let art = d.remove(id)?;
+    d.remove(group)?;
+    d.insert(par, index, std::sync::Arc::unwrap_or_clone(art))?;
     Ok(())
 }
 
@@ -608,16 +790,17 @@ fn install(d: &mut Document, ids: &[NodeId], (link, img): FileRead, force: Optio
         let Some(NodeKind::Image(im)) = d.node(*id).map(|n| &n.kind) else { continue };
         let o = PlacementOptions { preserve: force.unwrap_or(im.placement.preserve), ..im.placement };
         let size = |w: u32, h: u32| (w as f64, h as f64);
-        let (xf, clip) = placed_xf(im.xf, size(im.width, im.height), file_pt(d, &im.key), size(img.width, img.height), new_pt, o);
+        let (xf, clip) = placed_xf(im.xf, size(im.width, im.height), file_pt(d, &im.key), size(img.width, img.height), new_pt, o, clip_frame(d, *id));
         if let Some(n) = d.node_mut(*id)
             && let NodeKind::Image(im) = &mut n.kind
         {
             (im.key, im.width, im.height, im.xf, im.link) = (img.key.clone(), img.width, img.height, xf, Some(link.clone()));
         }
-        clips.extend(clip.map(|c| (*id, c)));
+        // A Preserve forced on the file (Embed, a data set's image) keeps the clip as it is.
+        clips.push((*id, clip, o.clip || force.is_some()));
     }
     store_image(d, &img.key, img.blob, true);
-    clips.into_iter().try_for_each(|(id, clip)| clip_image(d, id, clip))
+    clips.into_iter().try_for_each(|(id, to, clip)| reclip(d, id, to, clip).map(drop))
 }
 
 /// Groups (of the document saved at `doc_path`) as `{name, path, ids}` rows (those with objects in
@@ -888,6 +1071,8 @@ fn update(s: &mut Session, p: &Value) -> Result<Value> {
     let updated: Vec<u64> = reads.iter().flat_map(|(ids, _)| ids_json(ids)).collect();
     if !reads.is_empty() {
         s.edit("Update Links", |d, _| reads.into_iter().try_for_each(|(ids, read)| install_read(d, &ids, read, None)))?;
+        // Isolation ends with a clip group Clip to Bounding Box let go of.
+        super::edit::leave_isolation_if_gone(s.doc_mut()?);
     }
     Ok(json!({ "updated": updated, "missing": missing }))
 }
@@ -1006,6 +1191,8 @@ fn relink(s: &mut Session, p: &Value) -> Result<Value> {
     let relinked: Vec<u64> = reads.iter().flat_map(|(ids, _)| ids_json(ids)).collect();
     if !reads.is_empty() {
         s.edit("Relink", |d, _| reads.into_iter().try_for_each(|(ids, read)| install_read(d, &ids, read, preserve)))?;
+        // Isolation ends with a clip group Clip to Bounding Box let go of.
+        super::edit::leave_isolation_if_gone(s.doc_mut()?);
     }
     not_found.sort();
     not_found.dedup();
@@ -1415,8 +1602,14 @@ fn info(s: &mut Session, p: &Value) -> Result<Value> {
 
 fn placement_options(s: &mut Session, p: &Value) -> Result<Value> {
     const C: &str = "links.placementOptions";
+    let given = match p.get("ids") {
+        None | Some(Value::Null) => None,
+        Some(_) => Some(checked_ids_param(s, p, "ids", C)?),
+    };
     let st = s.doc()?;
-    let ids = ids_param(p, "ids").unwrap_or_else(|| st.selection.objects.iter().copied().filter(|id| placement_of(&st.doc, *id).is_some()).collect());
+    let mut ids = given.unwrap_or_else(|| st.selection.objects.iter().copied().filter(|id| placement_of(&st.doc, *id).is_some()).collect());
+    let mut seen = BTreeSet::new();
+    ids.retain(|id| seen.insert(*id));
     if let Some(id) = ids.iter().find(|id| placement_of(&st.doc, **id).is_none()) {
         return Err(bad(C, format!("object {} is not an image or a linked file", id.0)));
     }
@@ -1438,22 +1631,134 @@ fn placement_options(s: &mut Session, p: &Value) -> Result<Value> {
     };
     let first = ids.first().and_then(|id| placement_of(&st.doc, *id)).unwrap_or_default();
     if preserve.is_none() && align.is_none() && clip.is_none() {
-        return Ok(json!({ "placement": placement_json(first) }));
+        let all: Vec<PlacementOptions> = ids.iter().filter_map(|id| placement_of(&st.doc, *id)).collect();
+        let mut mixed = vec![];
+        if all.iter().any(|o| o.preserve != first.preserve) {
+            mixed.push("preserve");
+        }
+        if all.iter().any(|o| o.align != first.align) {
+            mixed.push("align");
+        }
+        if all.iter().any(|o| o.clip != first.clip) {
+            mixed.push("clip");
+        }
+        let mut out = json!({ "placement": placement_json(first) });
+        if !mixed.is_empty() {
+            out["mixed"] = json!(mixed);
+        }
+        return Ok(out);
     }
     let set = |o: &mut PlacementOptions| {
         o.preserve = preserve.unwrap_or(o.preserve);
         o.align = align.unwrap_or(o.align);
         o.clip = clip.unwrap_or(o.clip);
     };
-    s.edit("Placement Options", |d, _| {
+    let embedded: Vec<NodeId> = ids.iter().copied().filter(|id| image_of(&st.doc, *id).is_some_and(|im| im.link.is_none())).collect();
+    // → whether anything changed, the objects applied and those previewing.
+    let run = |d: &mut Document| -> Result<(bool, Vec<NodeId>, Vec<NodeId>)> {
+        // Where Clip to Bounding Box already keeps the art.
+        let within: Vec<Option<Clip>> = ids.iter().map(|id| clip_frame(d, *id)).collect();
+        let mut changed = false;
         for id in &ids {
             if let Some(o) = d.node_mut(*id).and_then(placement_mut) {
+                let was = *o;
                 set(o);
+                changed |= *o != was;
             }
         }
-        Ok(())
-    })?;
+        let (applied, previewing) = apply_placement(d, &ids, &within)?;
+        Ok((changed || !applied.is_empty(), applied, previewing))
+    };
+    // The options as they were and nothing to move: no undo step.
+    let mut trial = Document::clone(&st.doc);
+    let (changed, mut applied, mut previewing) = run(&mut trial)?;
+    if changed {
+        (applied, previewing) = s.edit("Placement Options", |d, _| run(d).map(|(_, a, p)| (a, p)))?;
+        // Isolation ends with a clip group Clip to Bounding Box let go of.
+        super::edit::leave_isolation_if_gone(s.doc_mut()?);
+    }
     let mut shown = first;
     set(&mut shown);
-    Ok(json!({ "ids": ids_json(&ids), "placement": placement_json(shown) }))
+    let mut out = json!({ "ids": ids_json(&ids), "placement": placement_json(shown), "applied": ids_json(&applied) });
+    if !embedded.is_empty() {
+        out["embedded"] = json!(ids_json(&embedded));
+    }
+    if !previewing.is_empty() {
+        out["previewing"] = json!(ids_json(&previewing));
+    }
+    Ok(out)
+}
+
+/// Links panel › Placement Options' OK: the linked images and placed documents among `ids` of `d`
+/// take their place again at once, as their Placement Options now say, from the file they already
+/// show: the "old" art is each one as it is placed and the "new" art is the same file, so a
+/// distorted image fitted or filled into its bounds is in proportion again (a shear taken off too),
+/// and one put at File Dimensions is at the file's 100% size, unrotated. Nothing is read from disk
+/// (the web build has no files), so Fit, Fill and Clip work while the file is missing too; File
+/// Dimensions waits for the file.
+///
+/// - Bounds and Transforms move nothing: the same file in the same bounds, at the same scale.
+/// - Embedded images keep their place (Placement Options are for linked files); their options are
+///   still set, for when they are relinked.
+/// - File Dimensions leaves a linked image showing only its preview in place: the preview doesn't
+///   keep the file's resolution, so its 100% size is unknown. Fit and Fill take the preview's
+///   pixels as square (a file declaring a different resolution across and down is put in its
+///   proportions again once it is read).
+/// - Clip to Bounding Box clips art that now overflows its old bounds, in a clip group of its own
+///   (see [`reclip`]). Art it already clips is placed in that clip's rectangle (`within`, each id's
+///   [`clip_frame`] before the options changed), so a filled image changes its alignment in it.
+///   Without Clip, that clip group lets the art go.
+///
+/// → the objects that moved, changed size or were clipped or let go, and the images File
+/// Dimensions left in place for want of their file's resolution.
+fn apply_placement(d: &mut Document, ids: &[NodeId], within: &[Option<Clip>]) -> Result<(Vec<NodeId>, Vec<NodeId>)> {
+    let (mut applied, mut previewing) = (vec![], vec![]);
+    for (i, id) in ids.iter().enumerate() {
+        let Some(n) = d.node(*id) else { continue };
+        let (xf, size, pt, o, waits) = match &n.kind {
+            NodeKind::Image(im) if im.link.is_some() => {
+                let waits = im.placement.preserve == Preserve::FileDimensions && self::previewing(d, &im.key);
+                (im.xf, (im.width as f64, im.height as f64), file_pt(d, &im.key), im.placement, waits)
+            }
+            NodeKind::PlacedDocument(p) => (p.xf, (p.width, p.height), (1.0, 1.0), p.placement, false),
+            _ => continue,
+        };
+        if waits {
+            previewing.push(*id);
+        }
+        let empty = !(size.0 > 0.0 && size.1 > 0.0) || !xf.as_coeffs().iter().all(|c| c.is_finite());
+        let keep = waits || empty || matches!(o.preserve, Preserve::Bounds | Preserve::Transforms);
+        let (placed, to) = if keep { (xf, None) } else { placed_xf(xf, size, pt, size, pt, o, within.get(i).copied().flatten()) };
+        let moved = xf.as_coeffs().iter().zip(placed.as_coeffs()).any(|(a, b)| (a - b).abs() > 1e-9 * (1.0 + a.abs()));
+        if moved && let Some(n) = d.node_mut(*id) {
+            match &mut n.kind {
+                NodeKind::Image(im) => im.xf = placed,
+                NodeKind::PlacedDocument(p) => p.xf = placed,
+                _ => {}
+            }
+        }
+        if reclip(d, *id, to, o.clip)? || moved {
+            applied.push(*id);
+        }
+    }
+    Ok((applied, previewing))
+}
+
+/// Whether path `p` is the rectangle `rect` (four corners with no handles), from any corner and in
+/// either direction.
+fn same_rectangle(p: &vectorcraft_geom::PathData, rect: &vectorcraft_geom::PathData) -> bool {
+    let corners = |p: &vectorcraft_geom::PathData| match &p.subpaths[..] {
+        [sp] if sp.closed && sp.anchors.len() == 4 && sp.anchors.iter().all(|a| a.h_in == a.p && a.h_out == a.p) => {
+            Some(sp.anchors.iter().map(|a| a.p).collect::<Vec<_>>())
+        }
+        _ => None,
+    };
+    let (Some(a), Some(b)) = (corners(p), corners(rect)) else { return false };
+    // Within a millionth of its size (and the precision of where it is), however far from the origin.
+    let extent = b.iter().fold(0.0_f64, |m, q| b.iter().fold(m, |m, r| m.max((q.x - r.x).abs()).max((q.y - r.y).abs())));
+    let far = b.iter().fold(0.0_f64, |m, q| m.max(q.x.abs()).max(q.y.abs()));
+    let tol = 1e-6 * extent + 64.0 * f64::EPSILON * far;
+    let near = |c: Point, q: Point| (c.x - q.x).abs() <= tol && (c.y - q.y).abs() <= tol;
+    // The same corners in the same cyclic order, read either way round.
+    (0..4).any(|k| (0..4).all(|i| near(a[(k + i) % 4], b[i])) || (0..4).all(|i| near(a[(k + 4 - i) % 4], b[i])))
 }

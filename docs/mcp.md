@@ -3788,7 +3788,16 @@ file is missing stays linked: relink it first); `links.unembed {id, path}` write
 (another extension converts it) and links to it, and without `path` returns `{name, dataBase64}`.
 `links.placementOptions {ids?, preserve?: transforms|bounds|fileDimensions|fit|fill, align?: topLeftÃ¢â‚¬Â¦bottomRight,
 clip?}` decides how a relinked or updated file takes an image's place (default `bounds`: stretched into the old
-bounds; `clip` puts it in a clip group of the old bounds when it is larger). The UI commands `links.editOriginal` and
+bounds; `clip` puts it in a clip group of its own, clipped to the old bounds, when it is larger), and applies it at once to
+each linked image and placed document from the file it already shows, reading nothing: `fit` and `fill` put a distorted
+(stretched or sheared) image back in proportion, `fileDimensions` at its file's 100% size, unrotated, `bounds` and
+`transforms` move nothing; embedded images keep their place. Art that clip group already holds is placed in its
+rectangle (`transforms` keeps it where it is), and without `clip` it leaves the group; a clip group the user made is
+never reshaped. Options set as they were, with nothing to move, change nothing (no undo step). Without options it answers
+`{placement}` of the first image, and `mixed`: the options the images don't share. Otherwise it answers `applied` (the
+ids that moved, changed size, or were clipped or let out of their clip), and, when there are any, `embedded` and
+`previewing`: linked images `fileDimensions` left in place because only their preview is loaded, which doesn't keep the
+file's resolution (`fit` and `fill` take a preview's pixels as square). The UI commands `links.editOriginal` and
 `links.reveal` open the linked file in its app or show it in its folder (desktop). Edit Original runs only from the app's window,
 except for a placed document, which opens in a tab.
 

@@ -2295,7 +2295,7 @@ lighting	Light	Licht
 	Images: link to the file instead of only embedding it.	Afbeeldingen: koppel aan het bestand in plaats van het alleen in te sluiten.
 	VectorCraft documents: one locked object, updated when the file changes.	VectorCraft-documenten: één vergrendeld object, bijgewerkt wanneer het bestand verandert.
 	Alignment:	Uitlijning:
-	Applies when the linked file is relinked or updated.	Is van toepassing wanneer het gekoppelde bestand opnieuw gekoppeld of bijgewerkt wordt.
+	Applies to linked files now, and when they are relinked or updated.	Is nu van toepassing op gekoppelde bestanden, en wanneer ze opnieuw gekoppeld of bijgewerkt worden.
 	Bounds (Fill Proportionally)	Begrenzing (proportioneel vullen)
 	Bounds (Fit Proportionally)	Begrenzing (proportioneel passend maken)
 	File Dimensions	Bestandsafmetingen

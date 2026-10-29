@@ -524,10 +524,11 @@ fn redo(s: &mut Session, _: &Value) -> Result<Value> {
     Ok(json!({ "redone": label }))
 }
 
-/// After undo or redo, isolation mode ends when the isolated object is no longer in the document,
+/// After undo or redo (or an edit that removes a group), isolation mode ends when the isolated
+/// object is no longer in the document,
 /// such as the clip group Draw Inside made around the isolated object (#3705), rather than naming
 /// an id a later object may take.
-fn leave_isolation_if_gone(st: &mut crate::DocState) {
+pub(crate) fn leave_isolation_if_gone(st: &mut crate::DocState) {
     if st.isolation.is_some_and(|i| st.doc.node(i).is_none()) {
         st.isolation = None;
     }
