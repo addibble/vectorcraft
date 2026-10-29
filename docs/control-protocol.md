@@ -1046,6 +1046,11 @@ hidden tab (whose frames the browser pauses) answers when it is shown again.
 
 `request`, `execute`, `commands`, `docInspect`, `uiInspect` and `screenshot` come from [`craft-web-api`](https://github.com/storytold/craft-libs/tree/main/crates/web-api) (storytold/craft-libs#413), the same shape in every Craft app. A call the app does not answer within 30 seconds rejects, and the app drops it unrun if it had not started it. `openFile`, `captureDownloads`, `files`, `readFile` and `inspect` are VectorCraft's own.
 
+The browser has no installed fonts, so a host page supplies the fonts its documents use:
+`vectorcraft.execute("text.addFont", {dataBase64})` gives the session a font file's faces, and type set in them redraws;
+`vectorcraft.execute("text.addFontSources", {fonts: [{family, style, url, sha256}]})` lists a whole collection in the
+font menus and lets the app fetch each face itself when type uses it (`docs/mcp.md`, fonts).
+
 ## Revision history
 
 | Date | Change | Summary |
@@ -1060,3 +1065,5 @@ hidden tab (whose frames the browser pauses) answers when it is shown again.
 | 2026-10-13 | minor | Documented count, pending-event and per-frame request budgets (#1709). |
 | 2026-10-13 | minor | Documented transport deadlines and connection-slot recovery (#1726). |
 | 2026-10-18 | minor | Documented `window.vectorcraft`, the web build's control channel. |
+| 2026-10-22 | minor | A host page supplies fonts with `text.addFont`. |
+| 2026-10-22 | minor | A host page lists the fonts it can supply with `text.addFontSources`. |
