@@ -63,6 +63,10 @@ pub struct NodeExtras {
     pub compound_shape: bool,
     /// As a member of a compound shape, how this object combines with the members below it.
     pub shape_mode: crate::ShapeMode,
+    /// Links › Placement Options › Clip to Bounding Box made this clip group: it holds just an
+    /// image or placed document, clipped to the bounds the options place it in (a clip group the
+    /// user made never has it).
+    pub placement_clip: bool,
 }
 
 /// No extras: what [`Node::extras`] gives for a node without any.
@@ -87,6 +91,7 @@ pub(super) static NO_EXTRAS: NodeExtras = NodeExtras {
     colorize: None,
     compound_shape: false,
     shape_mode: crate::ShapeMode::Add,
+    placement_clip: false,
 };
 
 /// A node's [`NodeExtras`], if it has any ([`Node::extras`]). Extras that are all unset equal

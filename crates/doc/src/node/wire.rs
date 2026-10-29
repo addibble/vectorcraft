@@ -53,6 +53,7 @@ impl Serialize for Node {
             e.colorize.is_none(),
             is_default(&e.compound_shape),
             is_default(&e.shape_mode),
+            is_default(&e.placement_clip),
         ];
         let mut st = s.serialize_struct("Node", skips.iter().filter(|s| !**s).count())?;
         let mut skip = skips.into_iter();
@@ -100,6 +101,7 @@ impl Serialize for Node {
         field!("colorize", &e.colorize);
         field!("compound_shape", &e.compound_shape);
         field!("shape_mode", &e.shape_mode);
+        field!("placement_clip", &e.placement_clip);
         st.end()
     }
 }
@@ -264,6 +266,8 @@ pub(super) struct NodeWire {
     compound_shape: bool,
     #[serde(default)]
     shape_mode: crate::ShapeMode,
+    #[serde(default)]
+    placement_clip: bool,
 }
 
 /// A node's schema is its file form's ([`NodeWire`]: the flat field list a node is written as).
@@ -316,6 +320,7 @@ impl From<NodeWire> for Node {
             colorize: w.colorize,
             compound_shape: w.compound_shape,
             shape_mode: w.shape_mode,
+            placement_clip: w.placement_clip,
         };
         Node {
             id: w.id,
