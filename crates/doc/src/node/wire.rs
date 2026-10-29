@@ -56,6 +56,7 @@ impl Serialize for Node {
             e.symbol_overrides.is_empty(),
             e.envelope_edit_margin.is_none(),
             is_default(&e.pixel_aligned),
+            is_default(&e.placement_clip),
         ];
         let mut st = s.serialize_struct("Node", skips.iter().filter(|s| !**s).count())?;
         let mut skip = skips.into_iter();
@@ -106,6 +107,7 @@ impl Serialize for Node {
         field!("symbol_overrides", &e.symbol_overrides);
         field!("envelope_edit_margin", &e.envelope_edit_margin);
         field!("pixel_aligned", &e.pixel_aligned);
+        field!("placement_clip", &e.placement_clip);
         st.end()
     }
 }
@@ -276,6 +278,8 @@ pub(super) struct NodeWire {
     envelope_edit_margin: Option<[f32; 4]>,
     #[serde(default)]
     pixel_aligned: bool,
+    #[serde(default)]
+    placement_clip: bool,
 }
 
 /// A node's schema is its file form's ([`NodeWire`]: the flat field list a node is written as).
@@ -331,6 +335,7 @@ impl From<NodeWire> for Node {
             symbol_overrides: w.symbol_overrides,
             envelope_edit_margin: w.envelope_edit_margin,
             pixel_aligned: w.pixel_aligned,
+            placement_clip: w.placement_clip,
         };
         Node {
             id: w.id,
