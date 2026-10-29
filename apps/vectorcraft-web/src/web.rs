@@ -369,6 +369,29 @@ impl eframe::App for WebShell {
             self.restart(&why);
         }
         let Some(app) = &mut self.app else { return };
+        // Font sources: those type asked for are fetched; those fetched join the session, as
+        // `text.addFont` adds a file, and the type set in them redraws.
+        // The host is told how each one ended, so it is no longer pending.
+        crate::fonts::fetch_requested(ctx);
+        let db = vectorcraft_text::FontDb::global();
+        for (src, bytes) in crate::fonts::take_fetched() {
+            let name = format!("{} {}", src.family, src.style);
+            let params = serde_json::json!({ "dataBase64": vectorcraft_format::base64_encode(&bytes), "name": name });
+            let added = app.run("text.addFont", params);
+            let loaded = db.source_settled(&src, added.is_ok());
+            if let Err(e) = added {
+                log::warn!("font source {name}: {e}");
+                app.font_source_failed(&src.family, &e);
+            } else if !loaded {
+                // The file is a font, but not of the family the host said it is.
+                log::warn!("font source {name}: the file has no face of {}", src.family);
+                app.font_source_failed(&src.family, &format!("the file has no face of {}", src.family));
+            }
+        }
+        for (src, reason) in crate::fonts::take_failed() {
+            db.source_settled(&src, false);
+            app.font_source_failed(&src.family, &reason);
+        }
         app.tick(ctx);
         crate::api::poll_replies();
         app.finish_ime_logic(ctx);
@@ -420,6 +443,11 @@ impl eframe::App for WebShell {
                 }
             }
             app.ui(ui);
+        }
+        // Type laid out in this frame may have asked for font sources: the next frame's logic
+        // fetches them, so it is asked for now rather than at the next input.
+        if vectorcraft_text::FontDb::global().has_source_requests() {
+            ui.ctx().request_repaint();
         }
         crate::api::poll_replies();
     }
