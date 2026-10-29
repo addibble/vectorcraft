@@ -43,16 +43,21 @@ pub(super) const SPEC: DialogSpec = DialogSpec {
 
 /// After a document opened (`document.open`'s result `r`): its Missing Fonts dialog waits for the
 /// dialog slot. On the web the status line shows how many fonts are missing instead, unless it
-/// shows the open's notes.
+/// shows the open's notes; a font a font source supplies is not counted, since the web build is
+/// fetching it (`text.addFontSources`): one that fails to load says so when it does
+/// ([`VectorcraftApp::font_source_failed`]).
 pub fn after_open(app: &mut VectorcraftApp, r: &Value) {
     after_open_for(app, r, cfg!(target_arch = "wasm32"));
 }
 
+/// [`after_open`], on the web (`web`: the status line, leaving out fonts a source is fetching) or
+/// on the desktop (the Missing Fonts dialog).
 fn after_open_for(app: &mut VectorcraftApp, r: &Value, web: bool) {
     let Some(st) = app.session.active() else { return };
     let uid = st.uid;
     if web {
-        let n = vectorcraft_engine::cmd::fontfiles::missing_fonts(&st.doc).len();
+        let db = vectorcraft_text::FontDb::global();
+        let n = vectorcraft_engine::cmd::fontfiles::missing_fonts(&st.doc).iter().filter(|f| !db.is_pending_source(&f.family, &f.style)).count();
         if n > 0 && r["warnings"].as_array().is_none_or(Vec::is_empty) {
             app.status(format!("{n} font(s) aren't available here: their text shows in another font"));
         }
