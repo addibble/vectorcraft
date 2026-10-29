@@ -179,7 +179,7 @@ font-technology	Variable	Variabel
 	Appearance of Black	Aussehen von Schwarz
 	Appearance Panel	Bedienfeld „Aussehen“
 	Appearance panel	Bedienfeld „Aussehen“
-	Applies when the linked file is relinked or updated.	Gilt, wenn die verknüpfte Datei neu verknüpft oder aktualisiert wird.
+	Applies to linked files now, and when they are relinked or updated.	Gilt sofort für verknüpfte Dateien und wenn sie neu verknüpft oder aktualisiert werden.
 	Applies the next time VectorCraft starts.	Gilt ab dem nächsten Start von VectorCraft.
 	Apply	Anwenden
 	Apply Brush	Pinsel anwenden
