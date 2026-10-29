@@ -83,6 +83,7 @@ fn vertical_type_names_the_alignments_top_and_bottom_and_the_position_y() {
 
 /// The position field's label is translated: French puts a no-break space before the colon,
 /// Chinese writes a full-width colon.
+#[cfg(feature = "translations")]
 #[test]
 fn position_label_is_translated() {
     let mut app = VectorcraftApp::new(Session::new(), Default::default());

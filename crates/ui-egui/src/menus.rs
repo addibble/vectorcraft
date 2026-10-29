@@ -69,7 +69,8 @@ pub(crate) use invoke::graph_dialog;
 #[cfg(test)]
 pub(crate) use invoke::with_held_keys;
 pub use invoke::{click_target, invoke, invoke_from_system_menu};
-#[cfg(test)]
+// Used only by the tests that read catalogs other than English.
+#[cfg(all(test, feature = "translations"))]
 pub(crate) use labels::lists_plugin;
 #[cfg(test)]
 use labels::shows_a_name;
