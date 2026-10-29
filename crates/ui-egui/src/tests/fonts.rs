@@ -8,6 +8,8 @@ use crate::{VectorcraftApp, menus};
 
 #[test]
 fn type_font_menu_lists_every_available_family() {
+    // The font list is read twice: no test adds to it meanwhile.
+    let _fonts = crate::adding_fonts();
     let mut app = VectorcraftApp::new(Session::new(), Default::default());
     app.run("file.new", json!({})).unwrap();
     let fonts = |app: &VectorcraftApp| -> Vec<String> {
