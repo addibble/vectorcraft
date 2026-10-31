@@ -2,7 +2,7 @@ use super::{
     Affine, Arc, BezPath, Document, FillRule, Frame, HashMap, Ink, Node, NodeKind, Pixmap, Rect, RenderContext, Renderer, Shape, blob_key,
     blob_pixmap, fill_rule, image_mip, ink, lookup, mip_level, peniko, proof, vello_cpu,
 };
-use crate::images;
+use crate::{images, link_pixels};
 
 /// The color image node `n` of `doc` is colorized with ([`vectorcraft_doc::NodeExtras::colorize`]),
 /// if it is and its pixels take it ([`vectorcraft_doc::ImageBlob::takes_colorize`]), as `ink`
