@@ -132,7 +132,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Add Link Sources",
             [],
             None,
-            "{sources: [{path: the path links name (their relative path, else their path), url: where the host serves the file at a size, `{width}`, `{height}` and `{side}` (the longer) replaced by the pixels asked for (for the web build, relative to the page)}] (1 to 100000), resolution?: 300 (ppi, 1 to 2400: the most a placement is asked for at, the host's output resolution)} linked files a host can supply where VectorCraft reads no files (the web build): an image linking one shows its saved preview until it is drawn magnified past it, then the file is fetched at the size its largest placement needs at that resolution (never more than the file has) and drawn over the preview, and used for PDF export; resized larger, it is fetched again. What arrives is kept outside the document, the least recently drawn dropped first past view.imageCache's linked budget. A link with a source counts as found (status ok in links.list, links.check and the Links panel) until its fetch fails. A path already a source takes the new URL (its file is asked for again from it); one that failed is asked for again. Not an edit: nothing is saved, journaled or undone → {added, sources (how many there are now), resolution}",
+            "{sources: [{path: the path links name (their relative path, else their path), url: where the host serves the file at a size, `{width}`, `{height}` and `{side}` (the longer) replaced by the pixels asked for (for the web build, relative to the page), sidecar?: the file's XMP sidecar as text (at most 256 KB: what <name>.xmp beside it would hold; its main subject, an IPTC image region in relative units, is the link's for Link Info and Placement Options › Preserve: Subject, before what the link kept; a new sidecar for a path changes no pixels)}] (1 to 100000), resolution?: 300 (ppi, 1 to 2400: the most a placement is asked for at, the host's output resolution)} linked files a host can supply where VectorCraft reads no files (the web build): an image linking one shows its saved preview until it is drawn magnified past it, then the file is fetched at the size its largest placement needs at that resolution (never more than the file has) and drawn over the preview, and used for PDF export; resized larger, it is fetched again. What arrives is kept outside the document, the least recently drawn dropped first past view.imageCache's linked budget. A link with a source counts as found (status ok in links.list, links.check and the Links panel) until its fetch fails. A path already a source takes the new URL (its file is asked for again from it); one that failed is asked for again. Not an edit: nothing is saved, journaled or undone → {added, sources (how many there are now), resolution}",
             always,
             add_sources
         ),
@@ -170,6 +170,8 @@ pub fn specs() -> Vec<CommandSpec> {
 
 /// The most sources one `links.addSources` call may give.
 const MAX_LINK_SOURCES: usize = 100_000;
+/// The largest sidecar a source may carry: a sidecar of regions is a few kilobytes.
+const MAX_SIDECAR: usize = 256 << 10;
 
 /// `links.addSources`: the files a host can supply, checked and registered with
 /// [`crate::link_sources`].
@@ -192,7 +194,16 @@ fn add_sources(s: &mut Session, p: &Value) -> Result<Value> {
             }
             Ok(v.to_string())
         };
-        sources.push((text("path", 4096)?, crate::link_sources::LinkSource { url: text("url", 4096)? }));
+        let sidecar = match src.get("sidecar") {
+            None | Some(Value::Null) => None,
+            Some(v) => Some(
+                v.as_str()
+                    .filter(|x| x.len() <= MAX_SIDECAR)
+                    .ok_or_else(|| bad(C, format!("sources[{i}].sidecar is the XMP sidecar's text, at most {MAX_SIDECAR} bytes")))?
+                    .to_string(),
+            ),
+        };
+        sources.push((text("path", 4096)?, crate::link_sources::LinkSource { url: text("url", 4096)?, sidecar }));
     }
     let added = crate::link_sources::add(sources, resolution);
     // Links supplied now count as found: the Links panel and the canvas look again (not an edit).
@@ -2227,9 +2238,10 @@ fn region_json(r: ImageRegion) -> Value {
     json!({ "left": r.left, "top": r.top, "right": r.right, "bottom": r.bottom })
 }
 
-/// The main subject of the file `l` links to, as last read.
+/// The main subject of the file `l` links to: the one its host's sidecar names (link sources),
+/// else the one kept when it was last read.
 pub(crate) fn link_subject(l: &LinkInfo) -> Option<ImageRegion> {
-    l.subject
+    crate::link_sources::subject(l).or(l.subject)
 }
 
 /// Placement Options as `{preserve, align, clip}`.
