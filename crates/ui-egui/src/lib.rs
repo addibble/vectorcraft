@@ -368,6 +368,12 @@ pub struct VectorcraftApp {
     injected_settle_hook: bool,
     /// A settled UI pass consumed the injected batch (read by the next host iteration).
     injected_settled: Arc<AtomicBool>,
+    /// How many times its size the canvas paints the tool cursors (`ui.set` `cursorScale`, 1 by
+    /// default): a screen recording or a demonstration shows them larger. Not saved.
+    pub(crate) cursor_scale: f32,
+    /// The widgets the last presented pass drew, for the control channel's `ui.widgets`: `None`
+    /// until a request asks for them, which turns on egui's screen-reader tree to name them.
+    pub(crate) widget_list: Option<Vec<control::widget_list::Widget>>,
     /// A change of the window's content geometry (resize, DPI, zoom or surface), even back again.
     geometry_epoch: u64,
     /// The geometry stamp [`Self::geometry_epoch`] was last advanced for.

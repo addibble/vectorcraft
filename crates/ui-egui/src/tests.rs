@@ -59,4 +59,5 @@ mod taskbar;
 mod toolescape;
 mod trace_runs;
 mod transparencygrid;
+mod widget_list;
 mod widthtool;
