@@ -93,3 +93,40 @@ fn the_image_caches_budgets_are_told_and_set() {
 fn s_cache(p: &serde_json::Value) -> serde_json::Value {
     Session::new().execute("view.imageCache", p).unwrap()
 }
+
+/// A source may carry the file's XMP sidecar: its main subject (an IPTC image region) is the
+/// link's, before the one kept when the file was read, for Link Info and Placement Options ›
+/// Preserve: Subject, in the web build where no `<name>.xmp` beside the file can be read. A new
+/// sidecar alone changes no pixels.
+#[test]
+fn a_source_s_sidecar_names_the_link_s_subject() {
+    let dir = Folder::new("sources-sidecar");
+    let pic = dir.file("subject-sourced.png");
+    write(&pic, &png(600, 300, FILE));
+    let mut s = session();
+    let id = place(&mut s, &pic);
+    let path = image(&s, id).link.unwrap().path;
+    assert_eq!(s.execute("links.info", &json!({"id": id.0})).unwrap().get("subject"), None);
+    let xmp = |x: f64| {
+        format!(
+            r#"<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description xmlns:Iptc4xmpExt="http://iptc.org/std/Iptc4xmpExt/2008-02-29/"><Iptc4xmpExt:ImageRegion><rdf:Bag><rdf:li rdf:parseType="Resource"><Iptc4xmpExt:RegionBoundary rdf:parseType="Resource"><Iptc4xmpExt:rbShape>rectangle</Iptc4xmpExt:rbShape><Iptc4xmpExt:rbUnit>relative</Iptc4xmpExt:rbUnit><Iptc4xmpExt:rbX>{x}</Iptc4xmpExt:rbX><Iptc4xmpExt:rbY>0.2</Iptc4xmpExt:rbY><Iptc4xmpExt:rbW>0.25</Iptc4xmpExt:rbW><Iptc4xmpExt:rbH>0.4</Iptc4xmpExt:rbH></Iptc4xmpExt:RegionBoundary><Iptc4xmpExt:rRole><rdf:Bag><rdf:li rdf:parseType="Resource"><Iptc4xmpExt:Identifier><rdf:Bag><rdf:li>http://cv.iptc.org/newscodes/imageregionrole/mainSubjectArea</rdf:li></rdf:Bag></Iptc4xmpExt:Identifier></rdf:li></rdf:Bag></Iptc4xmpExt:rRole></rdf:li></rdf:Bag></Iptc4xmpExt:ImageRegion></rdf:Description></rdf:RDF></x:xmpmeta>"#
+        )
+    };
+    let add = |s: &mut Session, x: f64| {
+        s.execute("links.addSources", &json!({"sources": [{"path": path, "url": "subject-sourced.png?side={side}", "sidecar": xmp(x)}]})).unwrap()
+    };
+    assert_eq!(add(&mut s, 0.25)["added"], 1);
+    let subject = s.execute("links.info", &json!({"id": id.0})).unwrap()["subject"].clone();
+    let sides = ["left", "top", "right", "bottom"].map(|k| (subject[k].as_f64().unwrap() * 1e9).round() / 1e9);
+    assert_eq!(sides, [0.25, 0.2, 0.5, 0.6], "{subject}");
+    // Its subject (50, 60, 200, 180 on the artboard) fits a target: 75, 0, 225, 120 at scale 1.
+    s.execute("links.placementOptions", &json!({"ids": [id.0], "preserve": "subject", "target": {"x": 0, "y": 0, "width": 300, "height": 120}}))
+        .unwrap();
+    let b = s.doc().unwrap().doc.node(id).unwrap().geometric_bounds().unwrap();
+    assert_eq!([b.x0, b.y0, b.x1, b.y1].map(f64::round), [-75.0, -60.0, 525.0, 240.0]);
+    // Moved by the host: the new sidecar's subject, the same source.
+    assert_eq!(add(&mut s, 0.5)["added"], 0);
+    assert_eq!(s.execute("links.info", &json!({"id": id.0})).unwrap()["subject"]["left"], json!(0.5));
+    let too_big = "x".repeat(300 << 10);
+    assert!(s.execute("links.addSources", &json!({"sources": [{"path": path, "url": "u", "sidecar": too_big}]})).is_err());
+}
