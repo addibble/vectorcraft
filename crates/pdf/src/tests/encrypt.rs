@@ -242,3 +242,14 @@ fn the_file_key_is_seeded_from_the_os_random_source() {
     assert!(!src.contains("RandomState"), "encrypt.rs seeds its keys from RandomState");
     assert!(src.contains("getrandom::fill"), "encrypt.rs doesn't seed its keys from the OS random source");
 }
+
+/// getrandom's wasm32 source is the binary's to pick (getrandom's guidance for libraries): the
+/// web app takes the browser's, and an embedder without JavaScript can give its own, which a
+/// library turning on `wasm_js` would refuse to build.
+#[test]
+fn the_random_source_on_wasm32_is_the_binarys_to_pick() {
+    let manifest = include_str!("../../Cargo.toml");
+    assert!(!manifest.contains(r#""wasm_js""#), "vectorcraft-pdf picks getrandom's wasm32 source");
+    let web = include_str!("../../../../apps/vectorcraft-web/Cargo.toml");
+    assert!(web.contains(r#"getrandom = { version = "0.4", features = ["wasm_js"] }"#), "the web app gives getrandom no browser source");
+}

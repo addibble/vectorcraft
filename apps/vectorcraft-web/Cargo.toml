@@ -28,5 +28,8 @@ rfd = { workspace = true }
 wasm-bindgen = "0.2"
 serde_json = { workspace = true }
 wasm-bindgen-futures = "0.4"
+# The browser's crypto.getRandomValues for getrandom (PDF encryption's keys, vectorcraft-pdf):
+# the binary picks the random source, not the library.
+getrandom = { version = "0.4", features = ["wasm_js"] }
 js-sys = "0.3"
 web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlElement", "HtmlCanvasElement", "HtmlInputElement", "KeyboardEvent", "HtmlIFrameElement", "HtmlAnchorElement", "Blob", "BlobPropertyBag", "ClipboardEvent", "DataTransfer", "File", "FileList", "Url", "Location", "CssStyleDeclaration", "Event", "EventTarget", "MouseEvent", "PointerEvent", "TouchEvent", "AddEventListenerOptions", "DomRect", "DragEvent", "Storage", "Navigator", "RequestInit", "Response", "AbortController", "AbortSignal"] }
