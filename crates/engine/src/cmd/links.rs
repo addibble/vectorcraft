@@ -33,7 +33,7 @@ use vectorcraft_doc::{Appearance, Document, ImageBlob, ImageObject, LinkInfo, No
 use vectorcraft_geom::{Affine, PathData, Point, Rect, shapes};
 
 use super::fileio::{self, RasterImage, absolute_path, file_created, file_stamp, read_file, write_file};
-use super::{CommandSpec, EngineError, Result, Session, bad, bool_or, checked_ids_param, cmd, has_doc, ids_param, object_param, str_param};
+use super::{CommandSpec, EngineError, Result, Session, always, bad, bool_or, checked_ids_param, cmd, has_doc, ids_param, object_param, str_param};
 
 pub fn specs() -> Vec<CommandSpec> {
     vec![
