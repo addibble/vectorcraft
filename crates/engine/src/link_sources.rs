@@ -38,6 +38,10 @@ const POINTS_PER_INCH: f64 = 72.0;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LinkSource {
     pub url: String,
+    /// The file's XMP sidecar, as text, when the host has one: what a `<name>.xmp` beside the file
+    /// would hold. Its main subject (an IPTC image region) is the link's, read as a sidecar on disk
+    /// is ([`crate::cmd::fileio::regions`]).
+    pub sidecar: Option<String>,
 }
 
 /// A file to fetch for a link source.
@@ -95,8 +99,9 @@ pub fn add(list: Vec<(String, LinkSource)>, resolution: Option<f64>) -> usize {
         s.failed.remove(&path);
         match s.by_path.insert(path.clone(), source.clone()) {
             None => added += 1,
-            // Another URL may serve other pixels: what came from the old one is asked for again.
-            Some(old) if old != source => {
+            // Another URL may serve other pixels: what came from the old one is asked for again (a
+            // new sidecar alone changes no pixels).
+            Some(old) if old.url != source.url => {
                 s.answered.remove(&path);
             }
             Some(_) => {}
@@ -110,6 +115,14 @@ pub fn add(list: Vec<(String, LinkSource)>, resolution: Option<f64>) -> usize {
 pub fn sourced(link: &vectorcraft_doc::LinkInfo) -> bool {
     let s = sources();
     link.relative.iter().chain(std::iter::once(&link.path)).any(|p| s.by_path.contains_key(p.as_str()) && !s.failed.contains_key(p.as_str()))
+}
+
+/// The main subject the sidecar the host gave for the file `link` names (a source by its relative
+/// path or its path), in relative units.
+pub fn subject(link: &vectorcraft_doc::LinkInfo) -> Option<vectorcraft_doc::links::ImageRegion> {
+    let s = sources();
+    let sidecar = link.relative.iter().chain(std::iter::once(&link.path)).find_map(|p| s.by_path.get(p.as_str()))?.sidecar.as_ref()?;
+    crate::cmd::fileio::regions::main_subject_in(sidecar.as_bytes(), (0, 0))
 }
 
 /// How many paths are sources, and the resolution they are asked for at.
@@ -392,7 +405,7 @@ mod tests {
 
     #[test]
     fn a_source_s_url_takes_the_size_asked_for() {
-        let s = LinkSource { url: "p.png?w={width}&h={height}&s={side}".into() };
+        let s = LinkSource { url: "p.png?w={width}&h={height}&s={side}".into(), sidecar: None };
         assert_eq!(url_for(&s, 30, 40), "p.png?w=30&h=40&s=40");
     }
 }
