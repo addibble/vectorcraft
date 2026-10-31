@@ -197,32 +197,9 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
         return;
     }
     if app.session.active().is_none() {
-        // No document and Show The Home Screen When No Documents Are Open off: an empty window,
-        // with the embedding page's message and link when it gave them (already in the user's
-        // language). The link is the page's to follow: a click is only noted for it to hear.
+        // No document and Show The Home Screen When No Documents Are Open off: an empty window.
         ui.painter().rect_filled(full, 0.0, t.panel_darker);
-        let font = egui::FontId::proportional(16.0);
-        let message = app.ui.host_empty_message.as_ref().map(|m| ui.painter().layout_no_wrap(m.clone(), font.clone(), t.text_dim));
-        let link = app.ui.host_empty_link.as_ref().map(|l| ui.painter().layout_no_wrap(l.clone(), font.clone(), t.accent));
-        let gap = if message.is_some() && link.is_some() { 6.0 } else { 0.0 };
-        let width = message.as_ref().map_or(0.0, |g| g.size().x) + gap + link.as_ref().map_or(0.0, |g| g.size().x);
-        let mut x = full.center().x - width / 2.0;
-        if let Some(g) = message {
-            let w = g.size().x;
-            ui.painter().galley(egui::pos2(x, full.center().y - g.size().y / 2.0), g, t.text_dim);
-            x += w + gap;
-        }
-        if let Some(g) = link {
-            let r = egui::Rect::from_min_size(egui::pos2(x, full.center().y - g.size().y / 2.0), g.size());
-            let resp = ui.interact(r, egui::Id::unique("host-empty-link"), Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand);
-            if resp.hovered() {
-                ui.painter().hline(r.x_range(), r.bottom(), Stroke::new(1.0, t.accent));
-            }
-            ui.painter().galley(r.min, g, t.accent);
-            if resp.clicked() {
-                app.ui.host_empty_link_clicked = true;
-            }
-        }
+        host_empty_message(app, ui, full, &t);
         return;
     }
     // Normal Screen Mode and Full Screen Mode with Menu Bar keep the scroll bars along the right
@@ -380,6 +357,33 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
 }
 
 /// The pointer on the canvas: the tool's input, unless the context menu or the 3D gizmo has the press.
+/// The embedding page's message and link in the empty window, when it gave them (already in the
+/// user's language). The link is the page's to follow: a click is only noted for it to hear.
+fn host_empty_message(app: &mut VectorcraftApp, ui: &Ui, full: egui::Rect, t: &Tokens) {
+    let font = egui::FontId::proportional(16.0);
+    let message = app.ui.host_empty_message.as_ref().map(|m| ui.painter().layout_no_wrap(m.clone(), font.clone(), t.text_dim));
+    let link = app.ui.host_empty_link.as_ref().map(|l| ui.painter().layout_no_wrap(l.clone(), font.clone(), t.accent));
+    let gap = if message.is_some() && link.is_some() { 6.0 } else { 0.0 };
+    let width = message.as_ref().map_or(0.0, |g| g.size().x) + gap + link.as_ref().map_or(0.0, |g| g.size().x);
+    let mut x = full.center().x - width / 2.0;
+    if let Some(g) = message {
+        let w = g.size().x;
+        ui.painter().galley(egui::pos2(x, full.center().y - g.size().y / 2.0), g, t.text_dim);
+        x += w + gap;
+    }
+    if let Some(g) = link {
+        let r = egui::Rect::from_min_size(egui::pos2(x, full.center().y - g.size().y / 2.0), g.size());
+        let resp = ui.interact(r, egui::Id::unique("host-empty-link"), Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand);
+        if resp.hovered() {
+            ui.painter().hline(r.x_range(), r.bottom(), Stroke::new(1.0, t.accent));
+        }
+        ui.painter().galley(r.min, g, t.accent);
+        if resp.clicked() {
+            app.ui.host_empty_link_clicked = true;
+        }
+    }
+}
+
 fn canvas_input(app: &mut VectorcraftApp, ui: &Ui, resp: &egui::Response, rect: egui::Rect) {
     // A press on the canvas while the context menu is open only closes it (a drag too, which egui
     // alone would leave open); the tool doesn't get it.
