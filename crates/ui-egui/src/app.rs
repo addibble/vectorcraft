@@ -183,6 +183,8 @@ impl VectorcraftApp {
             injected_generation: InputGeneration::default(),
             injected_settle_hook: false,
             injected_settled: Default::default(),
+            cursor_scale: 1.0,
+            widget_list: None,
             geometry_epoch: 0,
             geometry_stamp: None,
         }
@@ -593,6 +595,10 @@ impl VectorcraftApp {
         }
         scrub::end_frame(self, &ctx);
         native_menu::sync(self, &ctx);
+        // After every bar, panel, menu and dialog of the pass, so each of them is listed.
+        if self.widget_list.is_some() && !ctx.will_discard() {
+            self.widget_list = Some(crate::control::widget_list::of_pass(&ctx));
+        }
         // Observe once, after all of this pass's input, dialogs, floating panels, palette and
         // commands: the latest completed pass is authoritative for owner, text and cause.
         crate::ime::end_of_pass(self, &ctx);

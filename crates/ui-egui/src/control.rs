@@ -331,6 +331,7 @@ pub fn handle(app: &mut VectorcraftApp, ctx: &egui::Context, req: &ControlReques
         "engine.commands" => ok(all_commands(app)),
         "document.inspect" => wrap(app.run("document.inspect", p.clone())),
         "ui.inspect" => ok(inspect(app, ctx)),
+        "ui.widgets" => ok(widget_list::request(app, ctx, s("label"))),
         "ui.docking" => ok(crate::panel_docking::inspect(app, ctx)),
         "ui.menu.list" => ok(serde_json::to_value(crate::menus::menu_entries(app)).unwrap_or_default()),
         "ui.contextMenu.list" => ok(serde_json::to_value(crate::menus::context_entries(app)).unwrap_or_default()),
@@ -607,6 +608,8 @@ pub(crate) fn save_screenshot_with_limit(
     }
 }
 
+pub mod widget_list;
+
 #[cfg(test)]
 mod tests;
 
@@ -758,6 +761,13 @@ fn set_ui(app: &mut VectorcraftApp, req: &ControlRequest) -> Outcome {
     }
     if let Some(v) = p.get("controlBar").and_then(Value::as_bool) {
         app.ui.control_bar = v;
+    }
+    if let Some(v) = p.get("cursorScale").and_then(Value::as_f64) {
+        // A finite size between half and four times the drawn one: the glyphs stay on the canvas.
+        if !v.is_finite() || !(0.5..=4.0).contains(&v) {
+            return err("`cursorScale` is a number from 0.5 to 4");
+        }
+        app.cursor_scale = v as f32;
     }
     if let Some(v) = p.get("imageTracePreview").and_then(Value::as_bool) {
         r = app.run("imageTrace.preview", json!({"on": v}));
