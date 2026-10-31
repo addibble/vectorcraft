@@ -596,7 +596,7 @@ pub fn corner(doc: &Document, node: NodeId, subpath: usize, anchor: usize) -> Op
 
 /// What a reader fills in for each field of [`DimensionOptions`] left out (see `crate::skip::container_defaults`).
 mod dimension_options_defaults {
-    use super::*;
+    use super::{ArrowStyle, DimensionOptions, LengthUnit, LineType, TextAlignment, TextPosition};
     crate::skip::container_defaults!(DimensionOptions {
         units: LengthUnit,
         precision: usize,
