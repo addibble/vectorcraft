@@ -1,5 +1,5 @@
 use super::{
-    Affine, Arc, BezPath, Document, FillRule, Frame, HashMap, Ink, Node, Pixmap, Rect, RenderContext, Renderer, Shape, blob_key, blob_pixmap,
+    Affine, Arc, BezPath, Document, FillRule, Frame, Ink, Node, Pixmap, Rect, RenderContext, Renderer, Shape, adjusted_pixmap, blob_key, blob_pixmap,
     fill_rule, image_mip, ink, lookup, mip_level, peniko, proof, vello_cpu,
 };
 use crate::{images, link_pixels};
