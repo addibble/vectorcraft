@@ -45,6 +45,7 @@ pub mod ppi;
 pub mod progress;
 pub mod psdread;
 mod pxrread;
+pub mod regions;
 mod save;
 mod screens;
 mod svg;

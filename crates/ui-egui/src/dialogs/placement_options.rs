@@ -3,7 +3,7 @@
 //! clipped to them. OK also applies them at once to the linked images, from the file each already
 //! shows: Fit or Fill puts a distorted image back in proportion, File Dimensions at its 100% size.
 //!
-//! Fields: `ids` (the images; null: the selected ones), `preserve` (transforms|bounds|fileDimensions|fit|fill), `align`
+//! Fields: `ids` (the images; null: the selected ones), `preserve` (transforms|bounds|fileDimensions|fit|fill|subject), `align`
 //! (topLeft … bottomRight) and `clip`; `mixed`: those the images don't share, shown as the first
 //! image's and left as each image has them unless chosen (`touched`: the ones chosen, even as the
 //! value shown). OK runs `links.placementOptions` with them: one undo step.
@@ -17,12 +17,15 @@ use crate::{VectorcraftApp, widgets};
 pub(super) const KIND: &str = "placementOptions";
 const CMD: &str = "links.placementOptions";
 /// (value, label) of each Preserve choice.
-const PRESERVE: [(&str, &str); 5] = [
+const PRESERVE: [(&str, &str); 6] = [
     ("transforms", "Transforms"),
     ("bounds", "Bounds"),
     ("fileDimensions", "File Dimensions"),
     ("fit", "Bounds (Fit Proportionally)"),
     ("fill", "Bounds (Fill Proportionally)"),
+    // The file's main subject (its IPTC image region) in the old one's place; on OK, in the frame
+    // clipping it, or like the key object's when one is set (as the Align panel takes it).
+    ("subject", "Subject (Content-Aware)"),
 ];
 /// The alignment points, row by row from the top left (the reference point widget's order).
 const ALIGN: [&str; 9] = ["topLeft", "top", "topRight", "left", "center", "right", "bottomLeft", "bottom", "bottomRight"];

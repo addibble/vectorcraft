@@ -38,6 +38,36 @@ pub struct LinkInfo {
     /// The page shown, for a linked document page (1-based).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub page: Option<u32>,
+    /// The file's main subject when last read: the IPTC image region with the role
+    /// `mainSubjectArea` in its XMP sidecar (`<name>.xmp` beside it) or its own XMP. Kept, as its
+    /// preview is, so Placement Options › Preserve: Subject places it with the file missing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject: Option<ImageRegion>,
+}
+
+/// A rectangle of an image as fractions of its width and height, from its top left: an IPTC
+/// image region's boundary in relative units
+/// (<https://iptc.org/std/photometadata/specification/IPTC-PhotoMetadata#image-region>).
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct ImageRegion {
+    pub left: f64,
+    pub top: f64,
+    pub right: f64,
+    pub bottom: f64,
+}
+
+impl ImageRegion {
+    /// The region when its sides are finite, within the image (a little past it is clamped) and
+    /// not flat.
+    pub fn checked(left: f64, top: f64, right: f64, bottom: f64) -> Option<Self> {
+        let all = [left, top, right, bottom];
+        if !all.iter().all(|v| v.is_finite() && (-0.5..=1.5).contains(v)) {
+            return None;
+        }
+        let c = |v: f64| v.clamp(0.0, 1.0);
+        let r = ImageRegion { left: c(left), top: c(top), right: c(right), bottom: c(bottom) };
+        (r.right - r.left > 1e-6 && r.bottom - r.top > 1e-6).then_some(r)
+    }
 }
 
 impl LinkInfo {
@@ -315,12 +345,16 @@ pub enum Preserve {
     Fit,
     /// Its bounds: the new art scaled proportionally to fill them.
     Fill,
+    /// Its subject: the new art scaled proportionally so its subject (its link's image region,
+    /// else all of it) takes the place of the old art's subject, inside it.
+    Subject,
 }
 
 impl Preserve {
-    pub const ALL: [Preserve; 5] = [Preserve::Transforms, Preserve::Bounds, Preserve::FileDimensions, Preserve::Fit, Preserve::Fill];
+    pub const ALL: [Preserve; 6] =
+        [Preserve::Transforms, Preserve::Bounds, Preserve::FileDimensions, Preserve::Fit, Preserve::Fill, Preserve::Subject];
 
-    /// The id commands use (`transforms`, `bounds`, `fileDimensions`, `fit`, `fill`).
+    /// The id commands use (`transforms`, `bounds`, `fileDimensions`, `fit`, `fill`, `subject`).
     pub fn id(self) -> &'static str {
         match self {
             Preserve::Transforms => "transforms",
@@ -328,6 +362,7 @@ impl Preserve {
             Preserve::FileDimensions => "fileDimensions",
             Preserve::Fit => "fit",
             Preserve::Fill => "fill",
+            Preserve::Subject => "subject",
         }
     }
 

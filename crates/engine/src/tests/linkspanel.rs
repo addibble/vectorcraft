@@ -1001,3 +1001,118 @@ fn a_clip_to_the_images_own_bounds_is_kept() {
     assert_eq!((b, r["applied"].clone()), ([-100.0, 0.0, 500.0, 300.0], json!([id.0])), "moved");
     assert_eq!(s.doc().unwrap().doc.parent_of(id), Some(outer), "already clipped to its bounds");
 }
+
+/// An XMP sidecar whose main subject (an IPTC image region, relative units) is `[left, top, right, bottom]`.
+fn subject_xmp(r: [f64; 4]) -> String {
+    format!(
+        r#"<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description xmlns:Iptc4xmpExt="http://iptc.org/std/Iptc4xmpExt/2008-02-29/"><Iptc4xmpExt:ImageRegion><rdf:Bag><rdf:li rdf:parseType="Resource"><Iptc4xmpExt:RegionBoundary rdf:parseType="Resource"><Iptc4xmpExt:rbShape>rectangle</Iptc4xmpExt:rbShape><Iptc4xmpExt:rbUnit>relative</Iptc4xmpExt:rbUnit><Iptc4xmpExt:rbX>{}</Iptc4xmpExt:rbX><Iptc4xmpExt:rbY>{}</Iptc4xmpExt:rbY><Iptc4xmpExt:rbW>{}</Iptc4xmpExt:rbW><Iptc4xmpExt:rbH>{}</Iptc4xmpExt:rbH></Iptc4xmpExt:RegionBoundary><Iptc4xmpExt:rRole><rdf:Bag><rdf:li rdf:parseType="Resource"><Iptc4xmpExt:Identifier><rdf:Bag><rdf:li>http://cv.iptc.org/newscodes/imageregionrole/mainSubjectArea</rdf:li></rdf:Bag></Iptc4xmpExt:Identifier></rdf:li></rdf:Bag></Iptc4xmpExt:rRole></rdf:li></rdf:Bag></Iptc4xmpExt:ImageRegion></rdf:Description></rdf:RDF></x:xmpmeta>"#,
+        r[0],
+        r[1],
+        r[2] - r[0],
+        r[3] - r[1]
+    )
+}
+
+/// A 600×300 px file whose sidecar names its subject `subject`, placed linked at the centre of the
+/// artboard (-100, 0, 500, 300) → session, id, its folder.
+fn with_subject(name: &str, subject: [f64; 4]) -> (Session, NodeId, Folder) {
+    let dir = Folder::new(name);
+    write(&dir.file("photo.png"), &png(600, 300, RED));
+    write(&dir.file("photo.xmp"), subject_xmp(subject).as_bytes());
+    let mut s = session();
+    let id = place(&mut s, &dir.file("photo.png"));
+    (s, id, dir)
+}
+
+/// A linked file's main subject is read from its XMP sidecar (`<name>.xmp`, as tools that won't
+/// rewrite a file keep its metadata; IPTC Image Region, role mainSubjectArea) and kept with the
+/// link: Link Info shows it, and a document saved and opened again keeps it.
+#[test]
+fn link_info_shows_the_subject_its_sidecar_names() {
+    let (mut s, id, dir) = with_subject("subject-info", [0.25, 0.2, 0.5, 0.6]);
+    let i = run(&mut s, "links.info", json!({"id": id.0}));
+    assert_eq!(i["subject"], json!({"left": 0.25, "top": 0.2, "right": 0.5, "bottom": 0.6}), "{i}");
+    let path = dir.file("doc.vectorcraft");
+    save(&mut s, &path);
+    // The file gone: the link keeps the subject it read.
+    std::fs::rename(dir.file("photo.png"), dir.file("away.png")).unwrap();
+    let mut t = session();
+    open(&mut t, &path);
+    assert_eq!(run(&mut t, "links.info", json!({"id": id.0}))["subject"]["right"], json!(0.5), "kept with the link");
+    // Found again with its sidecar gone: read again, it names none.
+    std::fs::rename(dir.file("away.png"), dir.file("photo.png")).unwrap();
+    std::fs::remove_file(dir.file("photo.xmp")).unwrap();
+    write(&dir.file("photo.png"), &png(600, 300, BLUE));
+    run(&mut t, "links.update", json!({}));
+    assert_eq!(run(&mut t, "links.info", json!({"id": id.0})).get("subject"), None, "read again");
+    // A file with no sidecar and no XMP of its own has none.
+    let plain = dir.file("plain.png");
+    write(&plain, &png(10, 10, BLUE));
+    let other = place(&mut t, &plain);
+    assert_eq!(run(&mut t, "links.info", json!({"id": other.0})).get("subject"), None);
+}
+
+/// Preserve: Subject on a relink: the new file is scaled uniformly so its subject fits inside the
+/// old file's subject, at the alignment point.
+#[test]
+fn a_relinked_file_puts_its_subject_where_the_old_one_was() {
+    let (mut s, id, dir) = with_subject("subject-relink", [0.25, 0.2, 0.5, 0.6]);
+    // The old subject: 50, 60, 200, 180 (150 × 120 pt). The new file's: its left half, 150 × 100 px.
+    write(&dir.file("blue.png"), &png(300, 100, BLUE));
+    write(&dir.file("blue.xmp"), subject_xmp([0.0, 0.0, 0.5, 1.0]).as_bytes());
+    run(&mut s, "links.placementOptions", json!({"ids": [id.0], "preserve": "subject"}));
+    assert_eq!(corners(bounds(&s, id)), [-362.5, -150.0, 1137.5, 600.0], "on OK, its subject fills its own bounds (no clip frames it)");
+    run(&mut s, "edit.undo", json!({}));
+    run(&mut s, "links.placementOptions", json!({"ids": [id.0], "preserve": "subject", "target": {"x": 50, "y": 60, "width": 150, "height": 120}}));
+    assert_eq!(corners(bounds(&s, id)), [-100.0, 0.0, 500.0, 300.0], "its own subject's place: nothing moves");
+    run(&mut s, "links.relink", json!({"ids": [id.0], "path": dir.file("blue.png")}));
+    assert_eq!(corners(bounds(&s, id)), [50.0, 70.0, 350.0, 170.0], "the new subject (150 × 100) inside the old one's place, centred");
+    let i = run(&mut s, "links.info", json!({"id": id.0}));
+    assert_eq!((i["subject"]["right"].clone(), i["placement"]["preserve"].clone()), (json!(0.5), json!("subject")));
+}
+
+/// Placement Options › Subject with a target: each subject fits inside it, at the alignment point,
+/// as Content-Aware Fit fits an image to its frame; target and key go with subject only.
+#[test]
+fn subject_placement_fits_the_subject_to_a_target() {
+    let (mut s, id, _d) = with_subject("subject-target", [0.25, 0.2, 0.5, 0.6]);
+    let (r, b) = apply(&mut s, id, json!({"preserve": "subject", "target": {"x": 0, "y": 0, "width": 300, "height": 120}}));
+    // The subject (150 × 120) at scale 1, centred across the target: 75, 0, 225, 120.
+    assert_eq!((b, r["applied"].clone()), ([-75.0, -60.0, 525.0, 240.0], json!([id.0])));
+    let (_, b) = apply(&mut s, id, json!({"preserve": "subject", "align": "left", "target": {"x": 0, "y": 0, "width": 600, "height": 60}}));
+    assert_eq!(b, [-75.0, -30.0, 225.0, 120.0], "half size, at the target's left");
+    for (p, why) in [
+        (json!({"preserve": "fit", "target": {"x": 0, "y": 0, "width": 1, "height": 1}}), "with preserve: subject"),
+        (json!({"preserve": "subject", "target": {"x": 0, "y": 0, "width": 0, "height": 1}}), "more than 0"),
+        (json!({"preserve": "subject", "target": {"x": 0}}), "finite numbers"),
+        (json!({"preserve": "subject", "key": 999_999}), "an object with bounds"),
+    ] {
+        let mut p = p;
+        p["ids"] = json!([id.0]);
+        let e = s.execute("links.placementOptions", &p).unwrap_err().to_string();
+        assert!(e.contains(why), "{p}: {e}");
+    }
+}
+
+/// Like this one: with a key object, each image's subject takes the key's subject's place
+/// relative to the frame clipping it, at the same relative size; the key itself stays. The key
+/// is the selection's key object (as the Align panel takes it) when none is named.
+#[test]
+fn subject_placement_places_each_subject_like_the_key_s() {
+    let (mut s, a, dir) = with_subject("subject-key", [0.25, 0.2, 0.5, 0.6]);
+    write(&dir.file("other.png"), &png(600, 300, BLUE));
+    write(&dir.file("other.xmp"), subject_xmp([0.5, 0.5, 1.0, 1.0]).as_bytes());
+    let b = place(&mut s, &dir.file("other.png"));
+    assert_eq!(corners(bounds(&s, b)), [-100.0, 0.0, 500.0, 300.0]);
+    let r = run(&mut s, "links.placementOptions", json!({"ids": [a.0, b.0], "preserve": "subject", "key": a.0}));
+    assert_eq!(r["applied"], json!([b.0]), "{r}");
+    // B's subject (300 × 150 px) into A's subject's place (50, 60, 200, 180) at half size, centred.
+    assert_eq!(corners(bounds(&s, b)), [-100.0, 7.5, 200.0, 157.5]);
+    assert_eq!(corners(bounds(&s, a)), [-100.0, 0.0, 500.0, 300.0]);
+    // The selection's key object stands in for key.
+    run(&mut s, "edit.undo", json!({}));
+    run(&mut s, "select.set", json!({"ids": [a.0, b.0]}));
+    s.doc_mut().unwrap().selection.key = Some(a);
+    run(&mut s, "links.placementOptions", json!({"preserve": "subject"}));
+    assert_eq!(corners(bounds(&s, b)), [-100.0, 7.5, 200.0, 157.5]);
+}
