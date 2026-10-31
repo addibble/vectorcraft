@@ -1,4 +1,4 @@
-use super::{Affine, Arc, BezPath, Ink, Node, Pixmap, Shape, images, ink, paint};
+use super::{Affine, Arc, BezPath, HashMap, Ink, Node, Pixmap, Shape, images, ink, paint};
 use vectorcraft_doc::{AppearanceItem, NodeKind};
 
 /// Pixels `src` (under `src_key` in the shared image store) recoloured by `map` (its hash `hash`),
