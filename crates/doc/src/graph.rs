@@ -585,13 +585,13 @@ impl Default for GraphSpec {
 
 /// What a reader fills in for each field of [`ColumnDesign`] left out (see `crate::skip::container_defaults`).
 mod column_design_defaults {
-    use super::*;
+    use super::ColumnDesign;
     crate::skip::container_defaults!(ColumnDesign { design: String, each: f64 });
 }
 
 /// What a reader fills in for each field of [`GraphSpec`] left out (see `crate::skip::container_defaults`).
 mod graph_spec_defaults {
-    use super::*;
+    use super::{GraphKind, GraphSpec, Rect, SeriesPaint};
     crate::skip::container_defaults!(GraphSpec {
         series_paints: Vec<SeriesPaint>,
         kind: GraphKind,
