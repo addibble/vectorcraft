@@ -733,7 +733,7 @@ art too large at that scale) keeps the dialog open.
 
 Placement Options: the Links panel's flyout (or `ui.placementOptionsDialog {ids?}` for agents) opens the
 `placementOptions` dialog for the selected images (fields `ids`, `preserve`: `transforms`/`bounds`/`fileDimensions`/
-`fit`/`fill`, `align`: `topLeft` … `bottomRight`, `clip`). `ui.dialog.confirm` runs `links.placementOptions` with them as
+`fit`/`fill`/`subject`, `align`: `topLeft` … `bottomRight`, `clip`). `ui.dialog.confirm` runs `links.placementOptions` with them as
 one undo step, which also applies them at once to the linked images and placed documents (see `links.placementOptions`);
 options the images don't share (`mixed`) are sent only when chosen.
 
