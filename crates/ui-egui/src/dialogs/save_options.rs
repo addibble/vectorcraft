@@ -552,8 +552,8 @@ fn choose(d: &mut Dialog, o: &FormatOption, c: &Choices, i: usize) {
 }
 
 /// The native versions VectorCraft writes, newest first, each with the first release that reads
-/// it (the format version each release tag writes: 2 in 0.1, 3 from 0.2, 4 from 0.8).
-const NATIVE_VERSIONS: [(u32, &str); 4] = [(4, "0.8"), (3, "0.2"), (2, "0.1"), (1, "0.1")];
+/// it (the format version each release tag writes: 2 in 0.1, 3 from 0.2, 4 from 0.8, 5 from 0.20).
+const NATIVE_VERSIONS: [(u32, &str); 5] = [(5, "0.20"), (4, "0.8"), (3, "0.2"), (2, "0.1"), (1, "0.1")];
 
 /// A native file's Version (#4931): a menu of the versions VectorCraft writes, named by the
 /// releases that read them, so a version it can't write can't be chosen. A version without
