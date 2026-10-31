@@ -1101,10 +1101,12 @@ The browser has no installed fonts, so a host page supplies the fonts its docume
 `vectorcraft.execute("text.addFontSources", {fonts: [{family, style, url, sha256}]})` lists a whole collection in the
 font menus and lets the app fetch each face itself when type uses it (`docs/mcp.md`, fonts).
 
-Nor can it read a document's linked files: `vectorcraft.execute("links.addSources", {sources: [{path, url}]})` lists the
+Nor can it read a document's linked files: `vectorcraft.execute("links.addSources", {sources: [{path, url, sidecar?}]})` lists the
 ones the page can supply, and the app fetches each (`url` with `{width}`, `{height}` or `{side}` filled in) once an image
 linking it is drawn larger than its preview, at the size it prints at; `links.loadSources` asks for all of them before a
-print, and `view.imageCache` sets the memory they and decoded images may hold (`docs/mcp.md`, links).
+print, and `view.imageCache` sets the memory they and decoded images may hold (`docs/mcp.md`, links). A source's
+`sidecar` is the file's XMP sidecar, as text, whose main subject (an IPTC image region) Placement Options › Preserve:
+Subject places it by.
 
 ## Revision history
 
