@@ -96,7 +96,7 @@ impl Node {
 
 /// What a reader fills in for each field of [`GapOptions`] left out (see `crate::skip::container_defaults`).
 mod gap_options_defaults {
-    use super::*;
+    use super::{GapOptions, GapSize};
     crate::skip::container_defaults!(GapOptions { detect: bool, size: GapSize, color: [u8; 3] });
 }
 

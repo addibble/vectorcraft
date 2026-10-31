@@ -326,7 +326,7 @@ impl DocSetup {
 
 /// What a reader fills in for each field of [`DocSetup`] left out (see `crate::skip::container_defaults`).
 mod doc_setup_defaults {
-    use super::*;
+    use super::{Background, Color, DocSetup, ExportText, GridSize, Quotes, ScriptMetrics};
     crate::skip::container_defaults!(DocSetup {
         bleed: [f64; 4],
         outline_images: bool,

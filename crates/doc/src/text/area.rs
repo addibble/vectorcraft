@@ -239,13 +239,13 @@ impl AreaFit {
 
 /// What a reader fills in for each field of [`TextWrap`] left out (see `crate::skip::container_defaults`).
 mod text_wrap_defaults {
-    use super::*;
+    use super::TextWrap;
     crate::skip::container_defaults!(TextWrap { offset: f64, invert: bool });
 }
 
 /// What a reader fills in for each field of [`AreaOptions`] left out (see `crate::skip::container_defaults`).
 mod area_options_defaults {
-    use super::*;
+    use super::{AreaOptions, FirstBaseline, VerticalAlign};
     crate::skip::container_defaults!(AreaOptions {
         rows: usize,
         columns: usize,

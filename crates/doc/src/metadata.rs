@@ -165,7 +165,7 @@ pub fn iso8601(t: i64) -> String {
 
 /// What a reader fills in for each field of [`DocMetadata`] left out (see `crate::skip::container_defaults`).
 mod doc_metadata_defaults {
-    use super::*;
+    use super::{CopyrightStatus, DocMetadata};
     crate::skip::container_defaults!(DocMetadata {
         author: String,
         author_title: String,

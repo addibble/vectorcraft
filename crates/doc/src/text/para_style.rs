@@ -545,7 +545,7 @@ pub enum FirstBaseline {
 
 /// What a reader fills in for each field of [`HyphenationOptions`] left out (see `crate::skip::container_defaults`).
 mod hyphenation_options_defaults {
-    use super::*;
+    use super::HyphenationOptions;
     crate::skip::container_defaults!(HyphenationOptions {
         words_longer_than: u32,
         after_first: u32,
@@ -558,7 +558,7 @@ mod hyphenation_options_defaults {
 
 /// What a reader fills in for each field of [`JustificationOptions`] left out (see `crate::skip::container_defaults`).
 mod justification_options_defaults {
-    use super::*;
+    use super::{JustificationOptions, SingleWordJustify};
     crate::skip::container_defaults!(JustificationOptions {
         word_spacing: [f64; 3],
         letter_spacing: [f64; 3],
