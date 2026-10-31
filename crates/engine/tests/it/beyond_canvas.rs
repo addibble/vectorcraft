@@ -11,7 +11,10 @@ fn document(far_object: bool) -> Value {
     s.execute("file.new", &json!({"width": 200, "height": 200})).unwrap();
     s.execute("shape.rectangle", &json!({"x": 10, "y": 10, "width": 50, "height": 30})).unwrap();
     s.execute("shape.rectangle", &json!({"x": 100, "y": 100, "width": 20, "height": 20})).unwrap();
-    let mut v: Value = serde_json::from_slice(&vectorcraft_format::save(&s.doc().unwrap().doc, false)).unwrap();
+    // Saved with the structured geometry (anchors and an `xf` array) that the far object is moved
+    // in, which every reader takes as it takes SVG's notation.
+    let saved = vectorcraft_geom::saved::structured_geometry(|| vectorcraft_format::save(&s.doc().unwrap().doc, false));
+    let mut v: Value = serde_json::from_slice(&saved).unwrap();
     if far_object {
         let far = &mut v["document"]["layers"][0]["kind"]["children"][0]["kind"];
         far["path"]["subpaths"][0]["anchors"].as_array_mut().unwrap().iter_mut().for_each(|a| a["p"][1] = json!(a["p"][1].as_f64().unwrap() + 1e17));
