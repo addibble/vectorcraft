@@ -770,7 +770,7 @@ mod tests {
 
 /// What a reader fills in for each field of [`EnvelopeOptions`] left out (see `crate::skip::container_defaults`).
 mod envelope_options_defaults {
-    use super::*;
+    use super::{EnvelopeOptions, PreserveShape};
     crate::skip::container_defaults!(EnvelopeOptions {
         anti_alias: bool,
         preserve_shape: PreserveShape,
