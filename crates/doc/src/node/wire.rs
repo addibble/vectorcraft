@@ -2,8 +2,9 @@ use super::attributes::ObjectAttributes;
 use super::extras::{Extras, NO_EXTRAS, NodeExtras};
 use super::ids::NodeId;
 use super::kind::NodeKind;
+use super::live_shape::LiveShape;
 use super::opacity::{Knockout, OpacityMask};
-use super::{Appearance, BlendMode, Deserialize, Node, PathData, Serialize, one, yes};
+use super::{Appearance, BlendMode, Deserialize, FillRule, Node, PathData, Serialize, one, yes};
 
 /// Field `name` of a [`Node`] written as `v`, or skipped. A function of its own, so the long field
 /// list stays one straight run of calls.
@@ -78,8 +79,12 @@ impl Serialize for Node {
         field!("pixelated", &e.pixelated);
         field!("shaper", &e.shaper);
         match LiveKind::saved(&self.kind) {
-            Some(live) => field!("kind", &live),
-            None => field!("kind", &self.kind),
+            Some(live) => {
+                field!("kind", &live);
+            }
+            None => {
+                field!("kind", &self.kind);
+            }
         }
         field!("graphic_style", &e.graphic_style);
         field!("attrs", &e.attrs);
