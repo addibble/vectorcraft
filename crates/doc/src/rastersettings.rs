@@ -109,7 +109,7 @@ impl RasterEffectsSettings {
 
 /// What a reader fills in for each field of [`RasterEffectsSettings`] left out (see `crate::skip::container_defaults`).
 mod raster_effects_settings_defaults {
-    use super::*;
+    use super::{Background, RasterColorModel, RasterEffectsSettings};
     crate::skip::container_defaults!(RasterEffectsSettings {
         color_model: RasterColorModel,
         background: Background,
