@@ -34,12 +34,10 @@ roxmltree = "0.21"
 aes = "0.8"
 md-5 = { version = "0.10", default-features = false }
 sha2 = { version = "0.10", default-features = false }
-# The seed of the file key, salts and IVs (encrypt.rs).
+# The seed of the file key, salts and IVs (encrypt.rs). On wasm32 the binary picks the random
+# source, as getrandom asks of libraries: the web app the browser's (its `wasm_js` feature), an
+# embedder without JavaScript its own (`getrandom_backend = "custom"`).
 getrandom = "0.4"
-
-[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
-# The browser's crypto.getRandomValues.
-getrandom = { version = "0.4", features = ["wasm_js"] }
 
 [dev-dependencies]
 vectorcraft-testkit = { workspace = true }
