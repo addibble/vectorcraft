@@ -6882,6 +6882,7 @@ dependencies = [
  "craft-web-api",
  "eframe",
  "egui",
+ "getrandom 0.4.3",
  "js-sys",
  "log",
  "rfd",
