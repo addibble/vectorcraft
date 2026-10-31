@@ -6565,6 +6565,7 @@ version = "0.19.0"
 dependencies = [
  "eframe",
  "egui",
+ "getrandom 0.4.3",
  "js-sys",
  "log",
  "rfd",
