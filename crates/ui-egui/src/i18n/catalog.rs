@@ -206,7 +206,7 @@ impl Catalog {
     }
 
     /// [`Catalog::message_forms`] with the first form of the translation.
-    #[cfg(test)]
+    #[cfg(all(test, feature = "translations"))]
     pub fn message<'a>(&self, s: &'a str) -> Option<(&str, Captures<'_, 'a>)> {
         self.message_forms(s).and_then(|(forms, caps)| Some((forms.first()?.as_str(), caps)))
     }

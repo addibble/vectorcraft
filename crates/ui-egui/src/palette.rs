@@ -211,7 +211,7 @@ mod tests {
     fn use_precise_cursors_palette_result_toggles_the_preference() {
         let ctx = egui::Context::default();
         let query = "use precise cursors";
-        let entries = entries(&ctx, Lang::EN);
+        let entries = entries(&ctx, crate::i18n::Lang::EN);
         let matches: Vec<&Entry> = entries.iter().filter(|e| query.split_whitespace().all(|word| e.haystack.contains(word))).take(14).collect();
         assert!(matches.iter().any(|e| e.id == "view.preciseCursors"), "preference toggle appears for its name");
         assert!(entries.iter().filter(|e| e.id == "view.capsLock").all(|e| e.shown != "Use Precise Cursors"));
