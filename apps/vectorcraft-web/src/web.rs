@@ -521,6 +521,8 @@ impl eframe::App for WebShell {
                 bridge.follow_saves(app);
                 bridge.report_dirty(app);
                 bridge.report_link(app);
+                bridge.report_task_bar(app);
+                bridge.report_selection(app);
             }
         }
         // Type laid out in this frame may have asked for font sources: the next frame's logic
