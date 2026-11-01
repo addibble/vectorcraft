@@ -134,7 +134,7 @@ anchors alone doesn't change it.
 `content` is at most 64 items, top to bottom:
 
 - `{kind: "text", text, tone?}`: up to 2,000 characters; `tone` is `hint` (dimmed) or `error`.
-- `{kind: "button", id, label, primary?, enabled?}`.
+- `{kind: "button", id, label, primary?, enabled?, icon?}`. `icon` names one of the app's icons (`trash-2`, say), drawn in place of the label, which is then its tooltip and its name to a screen reader; an icon the app doesn't have shows the label.
 - `{kind: "row", items: [buttons]}`: buttons side by side.
 - `{kind: "textArea", id, label, value, placeholder?, maxChars?}`: VectorCraft keeps the text being typed. While the field has the keyboard, a `value` sent again is ignored, so the page can resend the panel without undoing the typing. `maxChars` (1 to 4,000) is held while typing.
 - `{kind: "checkbox", id, label, checked, enabled?}`.
