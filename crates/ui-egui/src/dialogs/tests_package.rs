@@ -287,6 +287,7 @@ fn fonts_left_out_of_the_package_are_named() {
 
 /// The note on linked files left out of a package uses the form the language's plural rule picks
 /// for the count.
+#[cfg(feature = "translations")]
 #[test]
 fn the_missing_links_note_uses_each_count_form() {
     let note = |code: &str, missing: usize| {
@@ -306,6 +307,7 @@ fn the_missing_links_note_uses_each_count_form() {
 /// note, is translated by every catalog when the status bar shows it after a language switch, in
 /// the form the language's plural rule picks for the count, and a folder whose name has a space or
 /// parentheses keeps its whole name, next to one note or two.
+#[cfg(feature = "translations")]
 #[test]
 fn an_english_package_status_is_translated_after_a_language_switch() {
     use crate::i18n::{Lang, message};
