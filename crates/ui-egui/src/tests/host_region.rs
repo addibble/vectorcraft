@@ -220,3 +220,22 @@ fn the_region_goes_with_its_image_and_its_document() {
     clear_region(&mut app);
     assert!(app.ui.host_region.region.is_none());
 }
+
+/// A corner is taken where the press began, though the drag is recognized only some points on: a
+/// drag from the bottom right corner resizes the box, never moves it.
+#[test]
+fn a_corner_drag_resizes_the_box() {
+    let ctx = egui::Context::default();
+    let (mut app, _) = picture_with_region(&ctx);
+    let xf = view(&mut app, &ctx);
+    let q = box_on_screen(&app, &xf).unwrap();
+    // The press and its first travel in one frame, as a script's `ui.drag` sends them.
+    let (from, by) = (q[2], egui::vec2(-60.0, -30.0));
+    frame(&mut app, &ctx, vec![Event::PointerMoved(from), press(from, true), Event::PointerMoved(from + by / 3.0)]);
+    frame(&mut app, &ctx, vec![Event::PointerMoved(from + by)]);
+    frame(&mut app, &ctx, vec![press(from + by, false)]);
+    frame(&mut app, &ctx, vec![]);
+    let (_, r) = std::mem::take(&mut app.ui.host_region.changed)[0];
+    assert!((r[0] - 0.25).abs() < 1e-6 && (r[1] - 0.25).abs() < 1e-6, "its top left stayed: {r:?}");
+    assert!(r[2] < 0.7 && r[3] < 0.7, "its bottom right came in: {r:?}");
+}
