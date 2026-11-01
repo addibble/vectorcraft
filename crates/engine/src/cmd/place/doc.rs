@@ -45,6 +45,11 @@
 //! a structure that lies outside its stream, property pages whose runs are listed twice or
 //! overlap, and styles based on each other in a loop.
 
+// Without the `word-doc` feature (vectorcraft-engine's Cargo.toml) a Word document is recognized
+// by its name and refused, and the reader below is left unused.
+#![cfg_attr(not(feature = "word-doc"), allow(dead_code, unused_imports))]
+
+#[cfg(feature = "word-doc")]
 use std::io::{Cursor, Read};
 
 use vectorcraft_doc::text::Kashida;
@@ -104,13 +109,24 @@ const FC_LCB_97: u16 = 0x005D;
 /// Is the file `name` with `bytes` a Word 97-2003 document: a compound file named `.doc`, or one
 /// that holds a `WordDocument` stream?
 pub(super) fn is_doc(name: &str, bytes: &[u8]) -> bool {
-    bytes.starts_with(&SIGNATURE)
-        && (fileio::DOC_EXTS.contains(&fileio::extension(name).as_str())
-            || cfb::CompoundFile::open(Cursor::new(bytes)).is_ok_and(|f| f.is_stream("/WordDocument")))
+    bytes.starts_with(&SIGNATURE) && (fileio::DOC_EXTS.contains(&fileio::extension(name).as_str()) || holds_word_stream(bytes))
+}
+
+/// Does the compound file `bytes` hold a `WordDocument` stream?
+#[cfg(feature = "word-doc")]
+fn holds_word_stream(bytes: &[u8]) -> bool {
+    cfb::CompoundFile::open(Cursor::new(bytes)).is_ok_and(|f| f.is_stream("/WordDocument"))
+}
+
+/// Without the reader, only a compound file named `.doc` counts as a Word document.
+#[cfg(not(feature = "word-doc"))]
+fn holds_word_stream(_bytes: &[u8]) -> bool {
+    false
 }
 
 /// The main text of a Word 97-2003 document's `bytes` (a compound file) with its character and
 /// paragraph formatting, and a warning for each kind of content left out or changed.
+#[cfg(feature = "word-doc")]
 pub(super) fn import(bytes: &[u8], cmd: &str) -> Result<(Story, Vec<String>)> {
     let mut file = cfb::CompoundFile::open(Cursor::new(bytes)).map_err(|_| damaged(cmd, "its compound file structure is damaged"))?;
     let wd = stream(&mut file, "WordDocument", cmd)?.ok_or_else(|| bad(cmd, "not a Word document: its compound file has no WordDocument stream"))?;
@@ -156,7 +172,14 @@ fn spend(left: &mut usize, bytes: usize, cmd: &str) -> Result<()> {
     Ok(())
 }
 
+/// A build without the `word-doc` feature refuses a Word 97-2003 document.
+#[cfg(not(feature = "word-doc"))]
+pub(super) fn import(_bytes: &[u8], cmd: &str) -> Result<(Story, Vec<String>)> {
+    Err(bad(cmd, "this build doesn't read Word 97-2003 documents (vectorcraft-engine's `word-doc` feature)"))
+}
+
 /// The stream `name` of the compound file; None when it has no such stream.
+#[cfg(feature = "word-doc")]
 fn stream(file: &mut cfb::CompoundFile<Cursor<&[u8]>>, name: &str, cmd: &str) -> Result<Option<Vec<u8>>> {
     if !file.is_stream(name) {
         return Ok(None);
