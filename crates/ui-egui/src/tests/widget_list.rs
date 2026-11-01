@@ -99,6 +99,7 @@ fn ui_widgets_names_the_host_pages_task_bar_actions() {
         when: crate::state::HostTaskBarWhen::Image,
         linked: false,
         enabled: true,
+        panel: None,
     }];
     let ctx = egui::Context::default();
     frames(&mut app, &ctx, 2);

@@ -44,6 +44,7 @@ mod frame_rate;
 mod free_transform;
 pub mod graphics;
 pub mod hang_beacon;
+pub mod host_panels;
 pub mod i18n;
 pub mod icon_data;
 pub mod icons;

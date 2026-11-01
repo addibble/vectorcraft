@@ -3,6 +3,7 @@
 //! `vectorcraft:configure`, a `vectorcraft:saved`, a `vectorcraft:recoveryEntries` and a
 //! `vectorcraft:taskBar` must carry.
 
+use vectorcraft_ui_egui::host_panels::{HostButton, HostItem, HostListItem, HostPanel, HostPanelAnchor, Tone};
 use vectorcraft_ui_egui::{HostTaskBarAction, HostTaskBarWhen};
 
 /// What a `vectorcraft:open` delivers: a file to open like one picked with File › Open.
@@ -16,8 +17,8 @@ pub struct Open {
 }
 
 /// The messages the parent may send.
-pub const FROM_PARENT: [&str; 5] =
-    ["vectorcraft:open", "vectorcraft:configure", "vectorcraft:saved", "vectorcraft:recoveryEntries", "vectorcraft:taskBar"];
+pub const FROM_PARENT: [&str; 6] =
+    ["vectorcraft:open", "vectorcraft:configure", "vectorcraft:saved", "vectorcraft:recoveryEntries", "vectorcraft:taskBar", "vectorcraft:panel"];
 
 /// Whether the bridge reads a message at all: one of [`FROM_PARENT`] from the parent window, on
 /// the page's own origin. Anything else is ignored without a reply, so another page learns nothing.
@@ -233,6 +234,7 @@ pub struct TaskBarActionFields {
     pub when: Field<String>,
     pub linked: Field<bool>,
     pub enabled: Field<bool>,
+    pub panel: Field<String>,
 }
 
 /// Check a `vectorcraft:taskBar` the bridge accepted: `actions` is an array (`None`: not one, or
@@ -275,9 +277,183 @@ pub fn task_bar(actions: Option<Vec<TaskBarActionFields>>) -> Result<Vec<HostTas
         let label = text(f.label, "label", MAX_ACTION_LABEL_CHARS)?;
         let linked = flag(f.linked, "linked", false)?;
         let enabled = flag(f.enabled, "enabled", true)?;
-        out.push(HostTaskBarAction { id, label, icon, when, linked, enabled });
+        let panel = match f.panel {
+            Field::Absent => None,
+            Field::Given(v) if !v.trim().is_empty() && v.chars().count() <= MAX_ACTION_ID_CHARS => Some(v),
+            _ => return Err(format!("vectorcraft:taskBar's action {id}: `panel` is a host panel's id, 1 to {MAX_ACTION_ID_CHARS} characters")),
+        };
+        out.push(HostTaskBarAction { id, label, icon, when, linked, enabled, panel });
     }
     Ok(out)
+}
+
+/// The most panels a page fills, items in one, rows in its lists, and the longest id, label or title,
+/// text, and text area limit.
+pub const MAX_PANELS: usize = 8;
+pub const MAX_PANEL_ITEMS: usize = 64;
+pub const MAX_LIST_ITEMS: usize = 200;
+pub const MAX_PANEL_ID_CHARS: usize = 100;
+pub const MAX_PANEL_LABEL_CHARS: usize = 100;
+pub const MAX_PANEL_TEXT_CHARS: usize = 2_000;
+pub const MAX_TEXT_AREA_CHARS: usize = 4_000;
+
+/// A `vectorcraft:panel`: a panel to show (in place of the one of its id), or the id of one to close.
+#[derive(Debug, PartialEq)]
+pub enum PanelMessage {
+    Show(HostPanel),
+    Close(String),
+}
+
+type Json = serde_json::Value;
+
+/// A string field of a panel's JSON: `needed` ones non-blank, every one at most `max` characters.
+fn panel_text(v: &Json, key: &str, max: usize, needed: bool) -> Result<String, String> {
+    match v.get(key) {
+        None | Some(Json::Null) if !needed => Ok(String::new()),
+        Some(Json::String(s)) if s.chars().count() <= max && (!needed || !s.trim().is_empty()) => Ok(s.clone()),
+        _ => Err(format!("vectorcraft:panel: `{key}` is a string of {} to {max} characters", u8::from(needed))),
+    }
+}
+
+/// A boolean field of a panel's JSON, `default` when left out.
+fn panel_flag(v: &Json, key: &str, default: bool) -> Result<bool, String> {
+    match v.get(key) {
+        None | Some(Json::Null) => Ok(default),
+        Some(Json::Bool(b)) => Ok(*b),
+        _ => Err(format!("vectorcraft:panel: `{key}` is a boolean")),
+    }
+}
+
+fn panel_tone(v: &Json) -> Result<Tone, String> {
+    match v.get("tone") {
+        None | Some(Json::Null) => Ok(Tone::Plain),
+        Some(t) if t.as_str() == Some("hint") => Ok(Tone::Hint),
+        Some(t) if t.as_str() == Some("error") => Ok(Tone::Error),
+        _ => Err("vectorcraft:panel: `tone` is `hint` or `error`".to_string()),
+    }
+}
+
+fn panel_button(b: &Json) -> Result<HostButton, String> {
+    if b.get("kind").and_then(Json::as_str).is_some_and(|k| k != "button") {
+        return Err("vectorcraft:panel: a row or a list holds buttons only".to_string());
+    }
+    Ok(HostButton {
+        id: panel_text(b, "id", MAX_PANEL_ID_CHARS, true)?,
+        label: panel_text(b, "label", MAX_PANEL_LABEL_CHARS, true)?,
+        primary: panel_flag(b, "primary", false)?,
+        enabled: panel_flag(b, "enabled", true)?,
+    })
+}
+
+fn panel_buttons(v: &Json, key: &str) -> Result<Vec<HostButton>, String> {
+    match v.get(key) {
+        None | Some(Json::Null) => Ok(vec![]),
+        Some(Json::Array(a)) if a.len() <= MAX_PANEL_ITEMS => a.iter().map(panel_button).collect(),
+        _ => Err(format!("vectorcraft:panel: `{key}` is an array of at most {MAX_PANEL_ITEMS} buttons")),
+    }
+}
+
+/// `id`, once in `ids` (the panel's, or a list row's buttons').
+fn unique(id: String, ids: &mut Vec<String>) -> Result<String, String> {
+    if ids.contains(&id) {
+        return Err(format!("vectorcraft:panel: each item needs its own `id`: {id} is there twice"));
+    }
+    ids.push(id.clone());
+    Ok(id)
+}
+
+/// One item of a panel's `content`.
+fn panel_item(item: &Json, ids: &mut Vec<String>) -> Result<HostItem, String> {
+    Ok(match item.get("kind").and_then(Json::as_str) {
+        Some("text") => HostItem::Text { text: panel_text(item, "text", MAX_PANEL_TEXT_CHARS, true)?, tone: panel_tone(item)? },
+        Some("button") => {
+            let b = panel_button(item)?;
+            unique(b.id.clone(), ids)?;
+            HostItem::Button(b)
+        }
+        Some("row") => {
+            let row = panel_buttons(item, "items")?;
+            for b in &row {
+                unique(b.id.clone(), ids)?;
+            }
+            HostItem::Row(row)
+        }
+        Some("textArea") => {
+            let max_chars = match item.get("maxChars") {
+                None | Some(Json::Null) => 0,
+                Some(n) => match n.as_u64().filter(|n| (1..=MAX_TEXT_AREA_CHARS as u64).contains(n)) {
+                    Some(n) => n as usize,
+                    None => return Err(format!("vectorcraft:panel: `maxChars` is a whole number from 1 to {MAX_TEXT_AREA_CHARS}")),
+                },
+            };
+            HostItem::TextArea {
+                id: unique(panel_text(item, "id", MAX_PANEL_ID_CHARS, true)?, ids)?,
+                label: panel_text(item, "label", MAX_PANEL_LABEL_CHARS, true)?,
+                value: panel_text(item, "value", MAX_TEXT_AREA_CHARS, false)?,
+                placeholder: panel_text(item, "placeholder", MAX_PANEL_LABEL_CHARS, false)?,
+                max_chars,
+            }
+        }
+        Some("checkbox") => HostItem::Checkbox {
+            id: unique(panel_text(item, "id", MAX_PANEL_ID_CHARS, true)?, ids)?,
+            label: panel_text(item, "label", MAX_PANEL_LABEL_CHARS, true)?,
+            checked: item.get("checked").and_then(Json::as_bool).ok_or("vectorcraft:panel: a checkbox needs `checked`, a boolean")?,
+            enabled: panel_flag(item, "enabled", true)?,
+        },
+        Some("separator") => HostItem::Separator,
+        Some("list") => {
+            let rows = item
+                .get("items")
+                .and_then(Json::as_array)
+                .filter(|a| a.len() <= MAX_LIST_ITEMS)
+                .ok_or_else(|| format!("vectorcraft:panel: a list's `items` is an array of at most {MAX_LIST_ITEMS} rows"))?;
+            let mut list = Vec::with_capacity(rows.len());
+            for row in rows {
+                let id = unique(panel_text(row, "id", MAX_PANEL_ID_CHARS, true)?, ids)?;
+                let buttons = panel_buttons(row, "buttons")?;
+                let mut own = vec![];
+                for b in &buttons {
+                    unique(b.id.clone(), &mut own)?;
+                }
+                list.push(HostListItem { id, text: panel_text(row, "text", MAX_PANEL_TEXT_CHARS, true)?, tone: panel_tone(row)?, buttons });
+            }
+            HostItem::List(list)
+        }
+        _ => return Err("vectorcraft:panel: an item's `kind` is text, button, row, textArea, checkbox, separator or list".to_string()),
+    })
+}
+
+/// Check a `vectorcraft:panel` the bridge accepted, as JSON: `{ id, title, anchor: "taskBar" |
+/// "dock", content: [...] }`, or `{ id, close: true }`. The items are `text {text, tone?}`, `button
+/// {id, label, primary?, enabled?}`, `row {items: [buttons]}`, `textArea {id, label, value,
+/// placeholder?, maxChars?}`, `checkbox {id, label, checked, enabled?}`, `separator` and `list
+/// {items: [{id, text, tone?, buttons?}]}`; ids unique in the panel (a list's buttons in their
+/// row). Fields it doesn't name are ignored. The error is the text of the `vectorcraft:failed`
+/// reply, and nothing changes.
+pub fn panel(v: &Json) -> Result<PanelMessage, String> {
+    let id = panel_text(v, "id", MAX_PANEL_ID_CHARS, true)?;
+    if panel_flag(v, "close", false)? {
+        return Ok(PanelMessage::Close(id));
+    }
+    let title = panel_text(v, "title", MAX_PANEL_LABEL_CHARS, true)?;
+    let anchor = match v.get("anchor").and_then(Json::as_str) {
+        Some("taskBar") => HostPanelAnchor::TaskBar,
+        Some("dock") => HostPanelAnchor::Dock,
+        _ => return Err("vectorcraft:panel: `anchor` is `taskBar` or `dock`".to_string()),
+    };
+    let items = v
+        .get("content")
+        .and_then(Json::as_array)
+        .filter(|a| a.len() <= MAX_PANEL_ITEMS)
+        .ok_or_else(|| format!("vectorcraft:panel: `content` is an array of at most {MAX_PANEL_ITEMS} items"))?;
+    let mut ids = vec![];
+    let content = items.iter().map(|item| panel_item(item, &mut ids)).collect::<Result<Vec<_>, _>>()?;
+    Ok(PanelMessage::Show(HostPanel { id, title, anchor, content }))
+}
+
+/// Whether a page with `count` panels may show one more: a panel it already has is always replaced.
+pub fn room_for_panel(known: bool, count: usize) -> Result<(), String> {
+    if known || count < MAX_PANELS { Ok(()) } else { Err(format!("vectorcraft:panel: at most {MAX_PANELS} panels; close one first")) }
 }
 
 /// What the bridge last told the parent, so it tells it again only when it changes (the selection,
@@ -430,7 +606,8 @@ mod tests {
                     icon: Some("dc-pf-crop".into()),
                     when: HostTaskBarWhen::Image,
                     linked: true,
-                    enabled: true
+                    enabled: true,
+                    panel: None
                 },
                 HostTaskBarAction {
                     id: "expand".into(),
@@ -438,7 +615,8 @@ mod tests {
                     icon: None,
                     when: HostTaskBarWhen::ClipGroup,
                     linked: false,
-                    enabled: false
+                    enabled: false,
+                    panel: None
                 },
             ]
         );
@@ -472,6 +650,85 @@ mod tests {
         assert!(with(&|a| a.linked = Field::Wrong).unwrap_err().contains("`linked`"));
         assert!(with(&|a| a.enabled = Field::Wrong).unwrap_err().contains("`enabled`"));
         assert!(task_bar(Some(vec![action("a", "image"), action("a", "clipGroup")])).unwrap_err().contains("twice"));
+    }
+
+    #[test]
+    fn accepts_a_panel_from_the_parent_on_the_same_origin() {
+        assert!(accepts("https://cloud.example", "https://cloud.example", true, Some("vectorcraft:panel")));
+        assert!(!accepts("https://cloud.example", "https://evil.example", true, Some("vectorcraft:panel")));
+    }
+
+    #[test]
+    fn reads_a_panel_of_every_kind_of_item() {
+        let v = serde_json::json!({
+            "id": "fill", "title": "Generative Fill", "anchor": "taskBar", "unknown": 1,
+            "content": [
+                {"kind": "text", "text": "Paint black over what to replace.", "tone": "hint"},
+                {"kind": "button", "id": "setup", "label": "Set Up", "primary": true},
+                {"kind": "row", "items": [{"id": "paint", "label": "Paint Mask"}, {"id": "remove", "label": "Remove Setup", "enabled": false}]},
+                {"kind": "textArea", "id": "instructions", "label": "Instructions", "value": "Keep her face", "placeholder": "What to make", "maxChars": 2000},
+                {"kind": "checkbox", "id": "match", "label": "Color match", "checked": true},
+                {"kind": "separator"},
+                {"kind": "list", "items": [{"id": "sgr_1", "text": "Waiting for an Agent", "tone": "error", "buttons": [{"id": "cancel", "label": "Cancel"}]}]}
+            ]
+        });
+        let PanelMessage::Show(p) = panel(&v).unwrap() else { panic!("a panel") };
+        assert_eq!((p.id.as_str(), p.title.as_str(), p.anchor), ("fill", "Generative Fill", HostPanelAnchor::TaskBar));
+        assert_eq!(p.content.len(), 7);
+        assert_eq!(p.content[0], HostItem::Text { text: "Paint black over what to replace.".into(), tone: Tone::Hint });
+        assert_eq!(p.content[1], HostItem::Button(HostButton { id: "setup".into(), label: "Set Up".into(), primary: true, enabled: true }));
+        assert!(matches!(&p.content[2], HostItem::Row(r) if r.len() == 2 && !r[1].enabled));
+        assert!(matches!(&p.content[3], HostItem::TextArea { max_chars: 2000, value, .. } if value == "Keep her face"));
+        assert!(matches!(&p.content[4], HostItem::Checkbox { checked: true, enabled: true, .. }));
+        assert_eq!(p.content[5], HostItem::Separator);
+        assert!(matches!(&p.content[6], HostItem::List(l) if l[0].buttons[0].id == "cancel" && l[0].tone == Tone::Error));
+        assert_eq!(panel(&serde_json::json!({"id": "fill", "close": true})).unwrap(), PanelMessage::Close("fill".into()));
+    }
+
+    #[test]
+    fn refuses_a_panel_of_the_wrong_shape() {
+        let with = |content: serde_json::Value| panel(&serde_json::json!({"id": "p", "title": "P", "anchor": "dock", "content": content}));
+        assert!(with(serde_json::json!([])).is_ok());
+        assert!(panel(&serde_json::json!({"title": "P", "anchor": "dock", "content": []})).unwrap_err().contains("`id`"));
+        assert!(panel(&serde_json::json!({"id": "p", "anchor": "dock", "content": []})).unwrap_err().contains("`title`"));
+        assert!(panel(&serde_json::json!({"id": "p", "title": "P", "anchor": "window", "content": []})).unwrap_err().contains("`anchor`"));
+        assert!(panel(&serde_json::json!({"id": "x".repeat(MAX_PANEL_ID_CHARS + 1), "title": "P", "anchor": "dock", "content": []})).is_err());
+        assert!(panel(&serde_json::json!({"id": "p", "title": "x".repeat(MAX_PANEL_LABEL_CHARS + 1), "anchor": "dock", "content": []})).is_err());
+        assert!(with(serde_json::json!((0..=MAX_PANEL_ITEMS).map(|_| serde_json::json!({"kind": "separator"})).collect::<Vec<_>>())).is_err());
+        assert!(with(serde_json::json!((0..MAX_PANEL_ITEMS).map(|_| serde_json::json!({"kind": "separator"})).collect::<Vec<_>>())).is_ok());
+        assert!(with(serde_json::json!([{"kind": "slider"}])).unwrap_err().contains("`kind`"));
+        assert!(with(serde_json::json!([{"kind": "text", "text": "x".repeat(MAX_PANEL_TEXT_CHARS + 1)}])).is_err());
+        assert!(with(serde_json::json!([{"kind": "text", "text": "a", "tone": "loud"}])).unwrap_err().contains("`tone`"));
+        assert!(with(serde_json::json!([{"kind": "button", "id": "a", "label": "A", "primary": "yes"}])).unwrap_err().contains("`primary`"));
+        assert!(
+            with(serde_json::json!([{"kind": "button", "id": "a", "label": "A"}, {"kind": "checkbox", "id": "a", "label": "B", "checked": false}]))
+                .unwrap_err()
+                .contains("twice")
+        );
+        assert!(with(serde_json::json!([{"kind": "row", "items": [{"kind": "text", "text": "a"}]}])).unwrap_err().contains("buttons only"));
+        assert!(with(serde_json::json!([{"kind": "checkbox", "id": "c", "label": "C"}])).unwrap_err().contains("`checked`"));
+        assert!(
+            with(serde_json::json!([{"kind": "textArea", "id": "t", "label": "T", "maxChars": MAX_TEXT_AREA_CHARS + 1}]))
+                .unwrap_err()
+                .contains("`maxChars`")
+        );
+        assert!(with(serde_json::json!([{"kind": "textArea", "id": "t", "label": "T", "maxChars": 0}])).is_err());
+        let rows = |n: usize| serde_json::json!([{"kind": "list", "items": (0..n).map(|i| serde_json::json!({"id": i.to_string(), "text": "r"})).collect::<Vec<_>>()}]);
+        assert!(with(rows(MAX_LIST_ITEMS)).is_ok());
+        assert!(with(rows(MAX_LIST_ITEMS + 1)).is_err());
+        // A list's buttons are named by their row: the same button id in two rows is fine.
+        let two = serde_json::json!([{"kind": "list", "items": [
+            {"id": "r1", "text": "a", "buttons": [{"id": "cancel", "label": "Cancel"}]},
+            {"id": "r2", "text": "b", "buttons": [{"id": "cancel", "label": "Cancel"}]}
+        ]}]);
+        assert!(with(two).is_ok());
+    }
+
+    #[test]
+    fn a_page_fills_at_most_eight_panels() {
+        assert!(room_for_panel(false, MAX_PANELS - 1).is_ok());
+        assert!(room_for_panel(false, MAX_PANELS).unwrap_err().contains("close one first"));
+        assert!(room_for_panel(true, MAX_PANELS).is_ok(), "one it has is replaced");
     }
 
     #[test]

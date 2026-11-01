@@ -193,6 +193,7 @@ pub fn show_icon_panel(app: &mut VectorcraftApp, ui: &mut Ui, id: &str) {
         crate::addons::pathtools::shape::ID => crate::addons::pathtools::shape::show(app, ui),
         crate::addons::pen::ID => crate::addons::pen::show(app, ui),
         id if library_panel::parse(id).is_some() => library_panel::show(app, ui, id),
+        id if crate::host_panels::is_host(id) => crate::host_panels::show_docked(app, ui, id),
         _ => {
             dim_label(ui, tl!("This panel is on the roadmap (see the parity plan)."));
         }
