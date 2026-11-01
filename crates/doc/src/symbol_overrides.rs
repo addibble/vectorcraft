@@ -15,7 +15,7 @@ use crate::{Node, NodeKind};
 pub const MAX_PATH_DEPTH: usize = 64;
 
 /// One instance's appearance changes to one object of its dynamic symbol's art.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct SymbolOverride {
     /// The object: child indices (paint order) from the art's root down through its groups; empty
     /// for the root itself.
