@@ -201,10 +201,8 @@ pub fn mask_tints(doc: &vectorcraft_doc::Document, image: NodeId) -> Option<egui
     let view = Affine::scale_non_uniform(f64::from(w) / iw, f64::from(h) / ih) * im.xf.inverse();
     let drawn = RENDERER.with(|r| r.borrow_mut().render_node(doc, &Arc::new(art), w, h, view))?;
     let mut pixels = drawn.to_straight();
-    for px in pixels.chunks_exact_mut(4) {
-        if let Some(a) = px.get_mut(3) {
-            *a = (f32::from(*a) * TINT_ALPHA).round() as u8;
-        }
+    for [_, _, _, a] in pixels.as_chunks_mut::<4>().0 {
+        *a = (f32::from(*a) * TINT_ALPHA).round() as u8;
     }
     Some(egui::ColorImage::from_rgba_unmultiplied([usize::from(w), usize::from(h)], &pixels))
 }
