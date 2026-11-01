@@ -47,7 +47,7 @@ pub struct MaskEdit {
 /// Symbol editing mode: the art of symbol `symbol` lives on the temporary `layer` while editing,
 /// placed by `xf` (from the symbol's coordinates to the document's), and goes back into the symbol
 /// after each edit, so every instance follows it.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct SymbolEdit {
     pub symbol: String,
     pub layer: NodeId,
