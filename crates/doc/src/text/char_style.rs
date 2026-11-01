@@ -187,7 +187,7 @@ pub struct GlyphChoice {
 /// height of its OS/2 table), or its ideographic character face (ICF, OpenType's `icfb` and
 /// `icft` baselines). Layout sets the characters at the em size at which the chosen height equals
 /// the font size; with a font that has no such value, the size measures the em box.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum FontHeightReference {
     #[default]
