@@ -48,7 +48,7 @@ fn click(app: &mut VectorcraftApp, ctx: &egui::Context, label: &str) {
 }
 
 fn button(id: &str, label: &str, enabled: bool) -> HostButton {
-    HostButton { id: id.into(), label: label.into(), primary: false, enabled }
+    HostButton { id: id.into(), label: label.into(), primary: false, enabled, icon: None }
 }
 
 /// A document with one picture selected with the Selection tool, and the page's task bar action
@@ -217,4 +217,39 @@ fn a_task_bar_popover_outlasts_a_moments_other_selection() {
     out.textures_delta.clear();
     frames(&mut app, &ctx, 2);
     assert!(widget(&mut app, &ctx, "Set Up").is_none(), "Escape closes it");
+}
+
+/// A button with one of the app's icons shows the icon, its label its name to a screen reader and
+/// its tooltip, and the page hears its click as any button's; disabled, it isn't heard. An icon the
+/// app doesn't have shows the label.
+#[test]
+fn a_button_with_an_icon_is_named_by_its_label_and_heard() {
+    let mut app = picture_with_action(None);
+    let row = |enabled: bool| HostPanel {
+        id: "fill".into(),
+        title: "Generative Fill".into(),
+        anchor: HostPanelAnchor::Dock,
+        content: vec![HostItem::Row(vec![
+            button("paint", "Paint Inpaint Mask", true),
+            HostButton { icon: Some("trash-2".into()), ..button("remove", "Remove", enabled) },
+            HostButton { icon: Some("no-such-icon".into()), ..button("other", "Other", true) },
+        ])],
+    };
+    show_panel(&mut app, row(true));
+    let ctx = egui::Context::default();
+    frames(&mut app, &ctx, 2);
+    app.run("window.panel", json!({"panel": "host:fill"})).unwrap();
+    frames(&mut app, &ctx, 3);
+    assert!(widget(&mut app, &ctx, "Other").is_some(), "an unknown icon shows its label");
+    click(&mut app, &ctx, "Remove");
+    assert!(
+        matches!(app.ui.host_panels.events.as_slice(), [HostPanelEvent::Click { panel, id, .. }] if panel == "fill" && id == "remove"),
+        "{:?}",
+        app.ui.host_panels.events
+    );
+    app.ui.host_panels.events.clear();
+    show_panel(&mut app, row(false));
+    frames(&mut app, &ctx, 2);
+    click(&mut app, &ctx, "Remove");
+    assert!(app.ui.host_panels.events.is_empty(), "disabled, it isn't heard");
 }
