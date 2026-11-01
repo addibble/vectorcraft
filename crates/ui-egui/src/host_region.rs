@@ -282,8 +282,10 @@ pub(crate) fn interact(app: &mut VectorcraftApp, ui: &Ui, xf: &Xf) {
             ui.ctx().set_cursor_icon(icon);
         }
         let _ = rect;
+        // Where the press began, not where the pointer is once the drag is recognized (a few
+        // points on): a corner is taken where it was pressed.
         if resp.drag_started()
-            && let Some(p) = pointer
+            && let Some(p) = ui.input(|i| i.pointer.press_origin()).or(pointer)
             && (corner_at(p).is_some() || inside(&corners, p))
             && let Some(from) = relative(app, xf, p)
             && let Some(region) = &app.ui.host_region.region
