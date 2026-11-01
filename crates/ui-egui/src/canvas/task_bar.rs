@@ -288,6 +288,8 @@ pub(super) fn task_bar(app: &mut VectorcraftApp, ui: &mut Ui, xf: &Xf) {
                             );
                         }
                         ui.painter().galley(pos2(r.left() + inset, r.center().y - galley.size().y / 2.0), galley, ink);
+                        // Named for screen readers (and `ui.widgets`), its state with it.
+                        resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, action.enabled, action.label.as_str()));
                         let resp = resp.on_hover_text(action.label.as_str());
                         if action.enabled && resp.clicked() {
                             host_clicked = Some(action.id.clone());
