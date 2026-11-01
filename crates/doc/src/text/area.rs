@@ -31,7 +31,7 @@ impl VerticalAlign {
 
 /// Area Type Options › Text Flow: the order text fills the cells of area type with several rows
 /// and columns.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum TextFlow {
     /// Down each column's rows, then on to the next column (the default, and what a document
