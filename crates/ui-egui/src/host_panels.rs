@@ -61,6 +61,9 @@ pub struct HostButton {
     pub label: String,
     pub primary: bool,
     pub enabled: bool,
+    /// One of the app's icons, drawn in place of the label (which becomes its tooltip and its
+    /// name to a screen reader); none, or one the app doesn't have, and the label is shown.
+    pub icon: Option<String>,
 }
 
 /// A row of a host panel's list, with its buttons.
@@ -246,6 +249,9 @@ fn text_item(ui: &mut Ui, text: &str, tone: Tone) {
 
 /// A button of a host panel, primary or flat; true when clicked (never while disabled).
 fn button(ui: &mut Ui, b: &HostButton) -> bool {
+    if let Some(icon) = b.icon.as_deref().filter(|i| !b.primary && crate::icons::exists(i)) {
+        return widgets::icon_button_enabled(ui, icon, &b.label, false, b.enabled, 22.0).clicked() && b.enabled;
+    }
     if b.primary {
         return widgets::primary_button_enabled(ui, &b.label, b.enabled).clicked();
     }
