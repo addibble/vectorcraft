@@ -14,6 +14,7 @@ pub(crate) fn normalize_panel(input: &str) -> Option<&'static str> {
         .find(|(id, label)| name.eq_ignore_ascii_case(id) || name.eq_ignore_ascii_case(label))
         .map(|(id, _)| id)
         .or_else(|| crate::panels::library_panel::intern(input))
+        .or_else(|| crate::host_panels::intern(input))
 }
 
 /// An optional `{key?: bool}` param: none when it is omitted or null (the commands then toggle).
