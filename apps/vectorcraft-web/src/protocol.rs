@@ -342,6 +342,11 @@ fn panel_button(b: &Json) -> Result<HostButton, String> {
         label: panel_text(b, "label", MAX_PANEL_LABEL_CHARS, true)?,
         primary: panel_flag(b, "primary", false)?,
         enabled: panel_flag(b, "enabled", true)?,
+        icon: match b.get("icon") {
+            None | Some(Json::Null) => None,
+            Some(Json::String(s)) if !s.is_empty() && s.chars().count() <= MAX_ACTION_ICON_CHARS => Some(s.clone()),
+            _ => return Err(format!("vectorcraft:panel: a button's `icon` is a string of at most {MAX_ACTION_ICON_CHARS} characters")),
+        },
     })
 }
 
@@ -676,7 +681,10 @@ mod tests {
         assert_eq!((p.id.as_str(), p.title.as_str(), p.anchor), ("fill", "Generative Fill", HostPanelAnchor::TaskBar));
         assert_eq!(p.content.len(), 7);
         assert_eq!(p.content[0], HostItem::Text { text: "Paint black over what to replace.".into(), tone: Tone::Hint });
-        assert_eq!(p.content[1], HostItem::Button(HostButton { id: "setup".into(), label: "Set Up".into(), primary: true, enabled: true }));
+        assert_eq!(
+            p.content[1],
+            HostItem::Button(HostButton { id: "setup".into(), label: "Set Up".into(), primary: true, enabled: true, icon: None })
+        );
         assert!(matches!(&p.content[2], HostItem::Row(r) if r.len() == 2 && !r[1].enabled));
         assert!(matches!(&p.content[3], HostItem::TextArea { max_chars: 2000, value, .. } if value == "Keep her face"));
         assert!(matches!(&p.content[4], HostItem::Checkbox { checked: true, enabled: true, .. }));
@@ -886,5 +894,14 @@ mod tests {
         let long = format!("a/{}", "x".repeat(MAX_ENTRY_NAME_CHARS));
         assert!(recovery_entries(Some(vec![(Some(long), Some(vec![]))])).unwrap_err().contains("`name`"));
         assert!(recovery_entries(Some(vec![(Some("a/b".into()), None)])).unwrap_err().contains("`bytes`"));
+    }
+
+    #[test]
+    fn reads_a_panel_buttons_icon() {
+        let read = |icon: Json| panel_button(&serde_json::json!({"id": "remove", "label": "Remove", "icon": icon}));
+        assert_eq!(read(Json::Null).unwrap().icon, None);
+        assert_eq!(read(serde_json::json!("trash-2")).unwrap().icon.as_deref(), Some("trash-2"));
+        assert!(read(serde_json::json!(3)).unwrap_err().contains("`icon`"));
+        assert!(read(serde_json::json!("")).unwrap_err().contains("`icon`"));
     }
 }
