@@ -17,7 +17,7 @@ pub struct Open {
 }
 
 /// The messages the parent may send.
-pub const FROM_PARENT: [&str; 7] = [
+pub const FROM_PARENT: [&str; 8] = [
     "vectorcraft:open",
     "vectorcraft:configure",
     "vectorcraft:saved",
@@ -25,6 +25,7 @@ pub const FROM_PARENT: [&str; 7] = [
     "vectorcraft:taskBar",
     "vectorcraft:panel",
     "vectorcraft:region",
+    "vectorcraft:masks",
 ];
 
 /// Whether the bridge reads a message at all: one of [`FROM_PARENT`] from the parent window, on
@@ -526,6 +527,28 @@ pub fn region(f: RegionFields) -> Result<RegionMessage, String> {
     Ok(RegionMessage::Set { image, rect, overlay, editable })
 }
 
+/// A `vectorcraft:masks`: one image's opacity mask shown tinted, or none.
+#[derive(Debug, PartialEq)]
+pub enum MasksMessage {
+    Show { image: u64 },
+    Clear,
+}
+
+/// Check a `vectorcraft:masks` the bridge accepted: `{ clear: true }`, or `{ image }`, an object's
+/// id (a whole number). Whether `image` is an image is the app's to say. The error is the text of
+/// the `vectorcraft:failed` reply, and nothing changes.
+pub fn masks(clear: Field<bool>, image: Field<f64>) -> Result<MasksMessage, String> {
+    match clear {
+        Field::Given(true) => return Ok(MasksMessage::Clear),
+        Field::Wrong => return Err("vectorcraft:masks's `clear` is a boolean".to_string()),
+        _ => {}
+    }
+    match image {
+        Field::Given(n) if n.is_finite() && n.fract() == 0.0 && (0.0..=MAX_SAVE_ID).contains(&n) => Ok(MasksMessage::Show { image: n as u64 }),
+        _ => Err("vectorcraft:masks needs `image`, an image's id (a whole number)".to_string()),
+    }
+}
+
 /// What the bridge last told the parent, so it tells it again only when it changes (the selection,
 /// `vectorcraft:selection`).
 #[derive(Debug, Default)]
@@ -1006,5 +1029,16 @@ mod tests {
         assert_eq!(read(serde_json::json!("trash-2")).unwrap().icon.as_deref(), Some("trash-2"));
         assert!(read(serde_json::json!(3)).unwrap_err().contains("`icon`"));
         assert!(read(serde_json::json!("")).unwrap_err().contains("`icon`"));
+    }
+
+    #[test]
+    fn reads_masks_and_refuses_the_wrong_shape() {
+        assert_eq!(masks(Field::Given(true), Field::Absent), Ok(MasksMessage::Clear));
+        assert_eq!(masks(Field::Absent, Field::Given(12.0)), Ok(MasksMessage::Show { image: 12 }));
+        assert!(masks(Field::Wrong, Field::Given(12.0)).unwrap_err().contains("`clear`"));
+        for image in [Field::Absent, Field::Wrong, Field::Given(1.5), Field::Given(-1.0), Field::Given(f64::NAN)] {
+            assert!(masks(Field::Absent, image).unwrap_err().contains("`image`"));
+        }
+        assert!(accepts("https://a.example", "https://a.example", true, Some("vectorcraft:masks")));
     }
 }
