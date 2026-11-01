@@ -181,3 +181,40 @@ fn a_text_area_keeps_what_is_typed() {
     show_panel(&mut app, panel("from the page"));
     assert_eq!(app.ui.host_panels.texts.get("ask/instructions").map(String::as_str), Some("from the page"));
 }
+
+/// A task bar popover stays open while a step selects something else for a moment (and its button
+/// isn't drawn), and comes back with the picture's button; Escape closes it.
+#[test]
+fn a_task_bar_popover_outlasts_a_moments_other_selection() {
+    let mut app = picture_with_action(Some("fill"));
+    let image = app.session.active().unwrap().selection.objects[0].0;
+    show_panel(
+        &mut app,
+        HostPanel {
+            id: "fill".into(),
+            title: "Generative Fill".into(),
+            anchor: HostPanelAnchor::TaskBar,
+            content: vec![HostItem::Button(button("setup", "Set Up", true))],
+        },
+    );
+    let ctx = egui::Context::default();
+    frames(&mut app, &ctx, 2);
+    click(&mut app, &ctx, "Generative Fill");
+    assert!(widget(&mut app, &ctx, "Set Up").is_some());
+    let r = app.run("shape.rectangle", json!({"x": 10, "y": 10, "width": 30, "height": 30})).unwrap();
+    app.run("select.set", json!({"ids": [r["id"]]})).unwrap();
+    frames(&mut app, &ctx, 3);
+    app.run("select.set", json!({"ids": [image]})).unwrap();
+    frames(&mut app, &ctx, 3);
+    assert!(widget(&mut app, &ctx, "Set Up").is_some(), "open again with the picture's button");
+    let mut raw = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1600.0, 900.0))), ..Default::default() };
+    raw.events.push(egui::Event::Key { key: egui::Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: Default::default() });
+    app.raw_input_hook(&ctx, &mut raw);
+    let mut out = ctx.run_ui(raw, |ui| {
+        app.logic(ui.ctx());
+        app.ui(ui);
+    });
+    out.textures_delta.clear();
+    frames(&mut app, &ctx, 2);
+    assert!(widget(&mut app, &ctx, "Set Up").is_none(), "Escape closes it");
+}
