@@ -361,6 +361,10 @@ fn show_panel(app: &mut VectorcraftApp, params: &Value) -> Result<Value, String>
     if !layout.contains(&panel.to_string()) && !app.ui.docking_hidden.contains_key(panel) && crate::panels::library_panel::parse(panel).is_some() {
         return crate::panels::library_panel::float(app, panel);
     }
+    // A host page's panel floats the first time it shows, as a library panel does.
+    if !layout.contains(&panel.to_string()) && !app.ui.docking_hidden.contains_key(panel) && crate::host_panels::is_host(panel) {
+        return app.run("window.panel.float", json!({ "panel": panel, "height": 320 }));
+    }
     let value = if app.ui.docking_hidden.contains_key(panel) {
         restore_hidden_group(app, panel)?
     } else {
@@ -1383,6 +1387,7 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
             return tl!("Canvas").to_string();
         }
         crate::panels::library_panel::tab_label(self.app, id)
+            .or_else(|| crate::host_panels::docked(self.app, id).map(|p| p.title))
             .or_else(|| crate::state::all_panels().find(|p| p.0 == id).map(|p| tl!(p.1).to_string()))
             .unwrap_or_else(|| id.clone())
     }
