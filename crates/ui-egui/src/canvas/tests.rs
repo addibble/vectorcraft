@@ -9891,7 +9891,7 @@ fn the_task_bar_shows_the_pages_actions_for_the_selections_they_name() {
     app.ui.host_task_bar =
         vec![host_action("crop", Image, false, true), host_action("subject", Image, true, true), host_action("frame", ClipGroup, true, true)];
     let ctx = egui::Context::default();
-    let mut shown = |app: &mut VectorcraftApp, ids: &[vectorcraft_doc::NodeId]| {
+    let shown = |app: &mut VectorcraftApp, ids: &[vectorcraft_doc::NodeId]| {
         app.session.execute("select.set", &json!({"ids": ids.iter().map(|id| id.0).collect::<Vec<_>>()})).unwrap();
         task_bar_labels(app, &ctx).into_iter().map(|(t, _)| t).filter(|t| t.starts_with("Do ")).collect::<Vec<_>>()
     };
@@ -9918,7 +9918,7 @@ fn the_task_bar_hands_a_click_on_a_pages_action_to_the_page() {
     app.session.execute("select.set", &json!({"ids": [linked.0]})).unwrap();
     let ctx = egui::Context::default();
     let revision = app.session.active().unwrap().revision;
-    let mut click = |app: &mut VectorcraftApp, label: &str| {
+    let click = |app: &mut VectorcraftApp, label: &str| {
         let (_, at) = task_bar_labels(app, &ctx).into_iter().find(|(t, _)| t == label).expect("the action shows");
         let at = at.center();
         let button = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
