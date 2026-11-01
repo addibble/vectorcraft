@@ -777,6 +777,10 @@ pub struct UiState {
     /// the clicks and changes the page hasn't heard yet ([`crate::host_panels`]).
     #[serde(skip)]
     pub host_panels: crate::host_panels::HostPanels,
+    /// The region an embedding page marked on an image (`vectorcraft:region`), and where its box
+    /// was let go since the page last heard ([`crate::host_region`]).
+    #[serde(skip)]
+    pub host_region: crate::host_region::HostRegionState,
     /// The page's task bar actions clicked since the page last heard them: each action's id and
     /// the selected objects as they were when it was clicked (`vectorcraft:taskBarAction`).
     #[serde(skip)]
@@ -1174,6 +1178,7 @@ impl Default for UiState {
             host_task_bar: Vec::new(),
             host_task_bar_clicked: Vec::new(),
             host_panels: Default::default(),
+            host_region: Default::default(),
             host_closing: None,
             host_titles: Vec::new(),
             layers_panel: Default::default(),

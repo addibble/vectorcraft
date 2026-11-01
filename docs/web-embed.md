@@ -40,7 +40,9 @@ Every message is a plain object with a string `type`. VectorCraft posts only to 
 | `vectorcraft:selection` | to the parent | `ids` (array of numbers) | The selected objects changed (the active document's; none with no document open). |
 | `vectorcraft:panel` | from the parent | `id`, `title`, `anchor` (`taskBar` or `dock`), `content` (array of items); or `id` and `close: true` | Host-only: a panel the host page fills, drawn with VectorCraft's widgets. |
 | `vectorcraft:panelEvent` | to the parent | `panel`, `id` (strings), `kind` (`click` or `change`), `selection` (array of numbers, a click) or `value` (a change) | Host-only: the user clicked a button or changed a field of a host panel. |
-| `vectorcraft:failed` | to the parent | `error` (string) | Before `ready`: the app couldn't start. After `ready`: the last `vectorcraft:open`, `vectorcraft:configure`, `vectorcraft:saved`, `vectorcraft:recoveryEntries`, `vectorcraft:taskBar` or `vectorcraft:panel` was refused; the app keeps running. |
+| `vectorcraft:region` | from the parent | `image` (number), `rect` (`{left, top, right, bottom}`), `overlay` (PNG bytes, optional), `editable` (boolean, optional); or `clear: true` | Host-only: a box (and a picture over the image) the host page marks on an image. |
+| `vectorcraft:regionChanged` | to the parent | `image` (number), `rect` (`{left, top, right, bottom}`) | Host-only: the user let the region's box go here. |
+| `vectorcraft:failed` | to the parent | `error` (string) | Before `ready`: the app couldn't start. After `ready`: the last `vectorcraft:open`, `vectorcraft:configure`, `vectorcraft:saved`, `vectorcraft:recoveryEntries`, `vectorcraft:taskBar`, `vectorcraft:panel` or `vectorcraft:region` was refused; the app keeps running. |
 
 **`vectorcraft:ready`** comes once, when the app has started. `version` is the app's version (`CARGO_PKG_VERSION`). A host that has heard neither `ready` nor `failed` after a reasonable time should assume the app couldn't start. The commonest reason is a browser without WebGPU or WebGL2.
 
@@ -144,6 +146,14 @@ anchors alone doesn't change it.
 Ids are 1 to 100 characters and unique in the panel (a row's buttons within the row); labels and titles at most 100 characters. A page fills at most 8 panels. A message of any other shape is refused with `vectorcraft:failed`, and nothing changes; fields it doesn't name are ignored.
 
 **`vectorcraft:panelEvent`** tells the page what the user did: `{ panel, id, kind: "click", selection }` for a button (never a disabled one), with the objects selected then; `{ panel, id, kind: "change", value }` for a checkbox (its new boolean) or a text area (its text, each frame it changes and once more as it loses the keyboard).
+
+### A host region on an image (host-only)
+
+**`vectorcraft:region`** marks a box on one image of the active document: `{ image, rect: { left, top, right, bottom }, overlay?, editable? }`. `image` is the image's id (as `document.inspect` and `select.set` use), `rect` is in the image's own relative units (0 to 1 from its top-left corner), `overlay` is a PNG (at most 8 MB and 4,096 pixels a side) laid over the whole image with its own alpha, and `editable` (default `false`) lets the user move and resize the box. There is one region at a time: a new message replaces it, and `{ clear: true }` takes it away. An `image` that isn't an image of the active document is refused with `vectorcraft:failed`.
+
+Both are drawn through the image's own placement, over the art and under the selection's handles, so they follow the image moved, scaled or rotated and the view zoomed, turned or scrolled. When the image is in a clip group whose clip path is a rectangle square to the screen, they are clipped to it. They are drawn only while the document they were marked in is active and the image is there.
+
+While the image (or the clip group holding it) is selected with the Selection or Direct Selection tool, an editable box's inside drags it and its corners resize it, before the tool sees the pointer; it stays inside the image and at least 5% of it on each side. Letting go posts **`vectorcraft:regionChanged`** `{ image, rect }` once; Escape during a drag puts the box back and posts nothing. None of it is the document's: no undo step, nothing saved, the document not marked changed.
 
 ## Who is heard
 

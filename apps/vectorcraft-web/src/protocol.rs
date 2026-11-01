@@ -17,8 +17,15 @@ pub struct Open {
 }
 
 /// The messages the parent may send.
-pub const FROM_PARENT: [&str; 6] =
-    ["vectorcraft:open", "vectorcraft:configure", "vectorcraft:saved", "vectorcraft:recoveryEntries", "vectorcraft:taskBar", "vectorcraft:panel"];
+pub const FROM_PARENT: [&str; 7] = [
+    "vectorcraft:open",
+    "vectorcraft:configure",
+    "vectorcraft:saved",
+    "vectorcraft:recoveryEntries",
+    "vectorcraft:taskBar",
+    "vectorcraft:panel",
+    "vectorcraft:region",
+];
 
 /// Whether the bridge reads a message at all: one of [`FROM_PARENT`] from the parent window, on
 /// the page's own origin. Anything else is ignored without a reply, so another page learns nothing.
@@ -461,6 +468,64 @@ pub fn room_for_panel(known: bool, count: usize) -> Result<(), String> {
     if known || count < MAX_PANELS { Ok(()) } else { Err(format!("vectorcraft:panel: at most {MAX_PANELS} panels; close one first")) }
 }
 
+/// A `vectorcraft:region`: a box (and optionally an overlay PNG) on an image, or none.
+#[derive(Debug, PartialEq)]
+pub enum RegionMessage {
+    Set { image: u64, rect: [f64; 4], overlay: Option<Vec<u8>>, editable: bool },
+    Clear,
+}
+
+/// The largest overlay a region carries, in bytes.
+pub const MAX_OVERLAY_BYTES: usize = 8 << 20;
+
+/// A `vectorcraft:region`'s fields as the page sent them.
+#[derive(Debug, Default)]
+pub struct RegionFields {
+    pub clear: Field<bool>,
+    pub image: Field<f64>,
+    /// `rect`'s `left`, `top`, `right` and `bottom`, each if it was a number (`None`: no object).
+    pub rect: Option<[Field<f64>; 4]>,
+    /// `overlay`'s bytes (`Wrong`: not an ArrayBuffer or Uint8Array).
+    pub overlay: Field<Vec<u8>>,
+    pub editable: Field<bool>,
+}
+
+/// Check a `vectorcraft:region` the bridge accepted: `{ clear: true }`, or `{ image, rect: { left,
+/// top, right, bottom }, overlay?, editable? }`: `image` an object's id (a whole number), `rect` in
+/// the image's relative units (0 to 1, left before right, top before bottom), `overlay` a PNG of at
+/// most [`MAX_OVERLAY_BYTES`], `editable` a boolean (false). Whether `image` is one is the app's to
+/// say. The error is the text of the `vectorcraft:failed` reply, and nothing changes.
+pub fn region(f: RegionFields) -> Result<RegionMessage, String> {
+    match f.clear {
+        Field::Given(true) => return Ok(RegionMessage::Clear),
+        Field::Wrong => return Err("vectorcraft:region's `clear` is a boolean".to_string()),
+        _ => {}
+    }
+    let image = match f.image {
+        Field::Given(n) if n.is_finite() && n.fract() == 0.0 && (0.0..=MAX_SAVE_ID).contains(&n) => n as u64,
+        _ => return Err("vectorcraft:region needs `image`, an image's id (a whole number)".to_string()),
+    };
+    let unit = |v: &Field<f64>| match v {
+        Field::Given(n) if n.is_finite() && (0.0..=1.0).contains(n) => Some(*n),
+        _ => None,
+    };
+    let rect =
+        f.rect.as_ref().and_then(|r| Some([unit(&r[0])?, unit(&r[1])?, unit(&r[2])?, unit(&r[3])?])).filter(|r| r[0] < r[2] && r[1] < r[3]).ok_or(
+            "vectorcraft:region needs `rect`, { left, top, right, bottom } from 0 to 1 of the image, left before right and top before bottom",
+        )?;
+    let overlay = match f.overlay {
+        Field::Absent => None,
+        Field::Given(b) if b.len() <= MAX_OVERLAY_BYTES && b.starts_with(b"\x89PNG\r\n\x1a\n") => Some(b),
+        _ => return Err(format!("vectorcraft:region's `overlay` is a PNG of at most {} MB, an ArrayBuffer or Uint8Array", MAX_OVERLAY_BYTES >> 20)),
+    };
+    let editable = match f.editable {
+        Field::Absent => false,
+        Field::Given(b) => b,
+        Field::Wrong => return Err("vectorcraft:region's `editable` is a boolean".to_string()),
+    };
+    Ok(RegionMessage::Set { image, rect, overlay, editable })
+}
+
 /// What the bridge last told the parent, so it tells it again only when it changes (the selection,
 /// `vectorcraft:selection`).
 #[derive(Debug, Default)]
@@ -737,6 +802,44 @@ mod tests {
         assert!(room_for_panel(false, MAX_PANELS - 1).is_ok());
         assert!(room_for_panel(false, MAX_PANELS).unwrap_err().contains("close one first"));
         assert!(room_for_panel(true, MAX_PANELS).is_ok(), "one it has is replaced");
+    }
+
+    fn region_fields(rect: [f64; 4]) -> RegionFields {
+        RegionFields { image: Field::Given(12.0), rect: Some(rect.map(Field::Given)), ..Default::default() }
+    }
+
+    #[test]
+    fn reads_a_region_on_an_image() {
+        assert!(accepts("https://cloud.example", "https://cloud.example", true, Some("vectorcraft:region")));
+        let png = b"\x89PNG\r\n\x1a\nrest".to_vec();
+        let mut f = region_fields([0.1, 0.2, 0.5, 0.6]);
+        f.overlay = Field::Given(png.clone());
+        f.editable = Field::Given(true);
+        assert_eq!(region(f).unwrap(), RegionMessage::Set { image: 12, rect: [0.1, 0.2, 0.5, 0.6], overlay: Some(png), editable: true });
+        assert_eq!(
+            region(region_fields([0.0, 0.0, 1.0, 1.0])).unwrap(),
+            RegionMessage::Set { image: 12, rect: [0.0, 0.0, 1.0, 1.0], overlay: None, editable: false }
+        );
+        assert_eq!(region(RegionFields { clear: Field::Given(true), ..Default::default() }).unwrap(), RegionMessage::Clear);
+    }
+
+    #[test]
+    fn refuses_a_region_of_the_wrong_shape() {
+        assert!(region(RegionFields { rect: Some([0.0, 0.0, 1.0, 1.0].map(Field::Given)), ..Default::default() }).unwrap_err().contains("`image`"));
+        assert!(region(RegionFields { image: Field::Given(1.5), ..region_fields([0.0, 0.0, 1.0, 1.0]) }).is_err());
+        assert!(region(RegionFields { image: Field::Given(3.0), rect: None, ..Default::default() }).unwrap_err().contains("`rect`"));
+        assert!(region(region_fields([0.5, 0.0, 0.5, 1.0])).is_err(), "no width");
+        assert!(region(region_fields([0.0, 0.6, 1.0, 0.2])).is_err(), "top below bottom");
+        assert!(region(region_fields([-0.1, 0.0, 1.0, 1.0])).is_err());
+        assert!(region(region_fields([0.0, 0.0, 1.1, 1.0])).is_err());
+        assert!(region(region_fields([0.0, 0.0, f64::NAN, 1.0])).is_err());
+        let with_overlay = |o: Field<Vec<u8>>| region(RegionFields { overlay: o, ..region_fields([0.0, 0.0, 1.0, 1.0]) });
+        assert!(with_overlay(Field::Given(b"GIF89a".to_vec())).unwrap_err().contains("PNG"));
+        assert!(with_overlay(Field::Wrong).is_err());
+        let mut big = b"\x89PNG\r\n\x1a\n".to_vec();
+        big.resize(MAX_OVERLAY_BYTES + 1, 0);
+        assert!(with_overlay(Field::Given(big)).is_err());
+        assert!(region(RegionFields { editable: Field::Wrong, ..region_fields([0.0, 0.0, 1.0, 1.0]) }).unwrap_err().contains("`editable`"));
     }
 
     #[test]
