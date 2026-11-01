@@ -49,6 +49,9 @@
 //!   (and a picture over the image) on one image, or `{ clear: true }` (`protocol::region`,
 //!   `vectorcraft_ui_egui::host_region`).
 //! - `vectorcraft:regionChanged` (to the parent): `{ image, rect }`, where the user let the box go.
+//! - `vectorcraft:masks` (from the parent, host-only): `{ image }`, that image's opacity mask
+//!   shown as two tints (its white art red, the rest green), or `{ clear: true }`
+//!   (`protocol::masks`, `vectorcraft_ui_egui::host_region`).
 //! - `vectorcraft:failed` (to the parent): `{ error }`. Before `ready`, the app couldn't start;
 //!   after it, the last message from the parent was refused (the app keeps running).
 //!
@@ -96,6 +99,8 @@ pub struct Bridge {
     panels: Rc<RefCell<Vec<protocol::PanelMessage>>>,
     /// The last `vectorcraft:region` heard, until the next frame applies it.
     region: Rc<RefCell<Option<protocol::RegionMessage>>>,
+    /// The last `vectorcraft:masks` heard, until the next frame applies it.
+    masks: Rc<RefCell<Option<protocol::MasksMessage>>>,
 }
 
 impl Bridge {
@@ -122,6 +127,7 @@ impl Bridge {
             selection: Rc::default(),
             panels: Rc::default(),
             region: Rc::default(),
+            masks: Rc::default(),
         })
     }
 
@@ -170,6 +176,15 @@ impl Bridge {
                 }
             }
             Some(protocol::RegionMessage::Clear) => vectorcraft_ui_egui::host_region::clear_region(app),
+            None => {}
+        }
+        match self.masks.borrow_mut().take() {
+            Some(protocol::MasksMessage::Show { image }) => {
+                if let Err(error) = vectorcraft_ui_egui::host_region::set_masks(app, image) {
+                    self.post_failed(&error);
+                }
+            }
+            Some(protocol::MasksMessage::Clear) => vectorcraft_ui_egui::host_region::clear_masks(app),
             None => {}
         }
         let panels = std::mem::take(&mut *self.panels.borrow_mut());
@@ -342,6 +357,19 @@ impl Bridge {
                     }
                     Err(error) => {
                         log::warn!("refused the page's configuration: {error}");
+                        bridge.post_failed(&error);
+                    }
+                }
+                return;
+            }
+            if string(&data, "type").as_deref() == Some("vectorcraft:masks") {
+                match protocol::masks(boolean(&data, "clear"), number(&data, "image")) {
+                    Ok(message) => {
+                        *bridge.masks.borrow_mut() = Some(message);
+                        wake();
+                    }
+                    Err(error) => {
+                        log::warn!("refused the page's masks: {error}");
                         bridge.post_failed(&error);
                     }
                 }
