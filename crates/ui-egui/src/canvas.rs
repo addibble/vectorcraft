@@ -352,6 +352,8 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
         }
         original_path_overlay(app, &painter, &xf);
 
+        // An embedding page's region on an image, over the art and under the selection's handles.
+        crate::host_region::draw(app, ui, &painter, &xf);
         let overlays = selection_visuals(app, &painter, &xf, (hidden_chars, selection_marks, hover_still), revolve_edit, view_info);
         draw_overlays(&painter, &xf, &overlays, &t, HandleLook::of(&app.session.prefs));
         if !revolve_edit {
@@ -382,6 +384,7 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
     }
     if app.ui.screen_mode < 3 {
         crate::free_transform::show(app, ui, xf.rect);
+        crate::host_region::interact(app, ui, &xf);
     }
     artboard_name_editor(app, ui, &xf);
     if resp.hovered() {
