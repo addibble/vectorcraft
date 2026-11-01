@@ -116,6 +116,19 @@ fn the_region_follows_the_image_and_the_view() {
     assert!((zoomed[0].distance(zoomed[2]) - 2.0 * turned[0].distance(turned[2])).abs() < 0.5);
 }
 
+/// A corner is taken within its grip, never past a quarter of the box's shorter side: a small box,
+/// seen zoomed out, is moved by its middle.
+#[test]
+fn a_small_box_is_moved_by_its_middle() {
+    use crate::host_region::grip_corner;
+    let big = [pos2(0.0, 0.0), pos2(100.0, 0.0), pos2(100.0, 80.0), pos2(0.0, 80.0)];
+    assert_eq!(grip_corner(&big, pos2(96.0, 76.0)), Some(2));
+    assert_eq!(grip_corner(&big, pos2(50.0, 40.0)), None);
+    let small = [pos2(0.0, 0.0), pos2(12.0, 0.0), pos2(12.0, 12.0), pos2(0.0, 12.0)];
+    assert_eq!(grip_corner(&small, pos2(6.0, 6.0)), None, "its middle moves it");
+    assert_eq!(grip_corner(&small, pos2(11.0, 11.0)), Some(2));
+}
+
 /// Dragging moves the box, a corner resizes it, kept inside the image and at least 5% of it.
 #[test]
 fn the_box_keeps_inside_the_image_and_to_its_smallest() {
