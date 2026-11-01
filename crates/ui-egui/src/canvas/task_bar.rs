@@ -174,6 +174,27 @@ pub(super) fn task_bar(app: &mut VectorcraftApp, ui: &mut Ui, xf: &Xf) {
         }
         items.push((tl!("Duplicate"), "copy", "edit.duplicate", none()));
     }
+    // The embedding page's own actions for this selection (`vectorcraft:taskBar`), after the bar's.
+    let host: Vec<crate::state::HostTaskBarAction> = if on_artboards || n != 1 {
+        vec![]
+    } else {
+        let linked = |o: &vectorcraft_doc::Node| matches!(&o.kind, NodeKind::Image(im) if im.link.is_some());
+        // A clip group's picture: the one image it holds directly (none when it holds two).
+        let clipped = first.as_ref().filter(|_| is_clip_group).and_then(|f| {
+            let mut images = f.children().into_iter().flatten().filter(|c| matches!(c.kind, NodeKind::Image(_)));
+            images.next().filter(|_| images.next().is_none())
+        });
+        app.ui
+            .host_task_bar
+            .iter()
+            .filter(|a| match a.when {
+                crate::state::HostTaskBarWhen::Image => is_image && (!a.linked || first.as_ref().is_some_and(|f| linked(f))),
+                crate::state::HostTaskBarWhen::ClipGroup => is_clip_group && (!a.linked || clipped.is_some_and(|c| linked(c))),
+            })
+            .cloned()
+            .collect()
+    };
+    let bar_options = more_options(app);
     // The paints the Fill and Stroke proxies show, "?" when the selected objects' paints differ.
     let (fill, stroke) = crate::panels::current_paints(app);
     let (fill_mixed, stroke_mixed) = crate::panels::mixed_paints(app, ui.ctx());
@@ -183,7 +204,9 @@ pub(super) fn task_bar(app: &mut VectorcraftApp, ui: &mut Ui, xf: &Xf) {
     // rotated).
     let lowest = xf.quad(b).iter().map(|c| c.y).fold(f32::NEG_INFINITY, f32::max);
     let anchor = pos2(xf.to_screen(b.center()).x, lowest);
-    let est_w = 150.0 + items.iter().map(|(l, _, _, _)| l.len() as f32 * 7.2 + 44.0).sum::<f32>();
+    let est_w = 150.0
+        + items.iter().map(|(l, _, _, _)| l.len() as f32 * 7.2 + 44.0).sum::<f32>()
+        + host.iter().map(|a| a.label.len() as f32 * 7.2 + 44.0).sum::<f32>();
     // Its place under the selection, then where the handle moved it, kept on the canvas (with the
     // bar's size last frame, the estimate before it first shows).
     let under = pos2(anchor.x - est_w / 2.0, anchor.y + 28.0);
@@ -207,9 +230,9 @@ pub(super) fn task_bar(app: &mut VectorcraftApp, ui: &mut Ui, xf: &Xf) {
     if place.pinned && place.pin_at.is_none() {
         place.pin_at = place.shown_at;
     }
-    let pinned = place.pinned;
     let mut moved = Vec2::ZERO;
     let mut run: Option<(&str, serde_json::Value)> = None;
+    let mut host_clicked: Option<String> = None;
     let mut show_swatches = false;
     egui::Area::new(id).order(egui::Order::Middle).fixed_pos(pos).show(ui.ctx(), |ui| {
         egui::Frame::NONE
@@ -241,6 +264,33 @@ pub(super) fn task_bar(app: &mut VectorcraftApp, ui: &mut Ui, xf: &Xf) {
                         ui.painter().galley(pos2(r.left() + 30.0, r.center().y - galley.size().y / 2.0), galley, t.text_strong);
                         if resp.clicked() {
                             run = Some((*cmd, params.clone()));
+                        }
+                    }
+                    // The page's actions, drawn as the bar's own; a disabled one dimmed, its hover
+                    // text kept, and not clickable. An icon the app doesn't have leaves the label alone.
+                    for action in &host {
+                        let icon = action.icon.as_deref().filter(|i| crate::icons::exists(i));
+                        let ink = if action.enabled { t.text_strong } else { t.text_dim };
+                        let galley = ui.painter().layout_no_wrap(action.label.clone(), egui::FontId::proportional(13.0), ink);
+                        let inset = if icon.is_some() { 30.0 } else { 10.0 };
+                        let sense = if action.enabled { Sense::click() } else { Sense::hover() };
+                        let (r, resp) = ui.allocate_exact_size(vec2(galley.size().x + inset + 8.0, 30.0), sense);
+                        if action.enabled && resp.hovered() {
+                            ui.painter().rect_filled(r, CornerRadius::same(3), t.hover);
+                        }
+                        ui.painter().rect_stroke(r, CornerRadius::same(3), Stroke::new(1.0, t.button_border), StrokeKind::Inside);
+                        if let Some(icon) = icon {
+                            crate::icons::paint(
+                                ui,
+                                icon,
+                                egui::Rect::from_min_size(r.min + vec2(8.0, 7.0), vec2(16.0, 16.0)),
+                                if action.enabled { t.icon } else { t.text_dim },
+                            );
+                        }
+                        ui.painter().galley(pos2(r.left() + inset, r.center().y - galley.size().y / 2.0), galley, ink);
+                        let resp = resp.on_hover_text(action.label.as_str());
+                        if action.enabled && resp.clicked() {
+                            host_clicked = Some(action.id.clone());
                         }
                     }
                     // The selected objects' Fill, Stroke, Recolor Artwork and Lock (a basic shape's
@@ -288,17 +338,14 @@ pub(super) fn task_bar(app: &mut VectorcraftApp, ui: &mut Ui, xf: &Xf) {
                     let more = widgets::icon_button(ui, "ellipsis", tl!("More Options"), false, 30.0);
                     egui::Popup::menu(&more).show(|ui| {
                         ui.set_min_width(170.0);
-                        let bar = [
-                            (tl!("Hide Bar"), "window.taskBar", false),
-                            (tl!("Pin Bar Position"), "window.taskBar.pin", pinned),
-                            (tl!("Reset Bar Position"), "window.taskBar.reset", false),
-                        ];
-                        for (label, cmd, checked) in bar {
-                            if widgets::menu_item(ui, label, true, checked) {
+                        for (label, cmd, checked) in &bar_options {
+                            if widgets::menu_item(ui, label, true, *checked) {
                                 run = Some((cmd, json!({})));
                             }
                         }
-                        ui.separator();
+                        if !bar_options.is_empty() {
+                            ui.separator();
+                        }
                         if widgets::menu_item(ui, tl!("Show Properties Panel"), true, false) {
                             run = Some(("window.panel", json!({"panel": "properties"})));
                         }
@@ -306,6 +353,11 @@ pub(super) fn task_bar(app: &mut VectorcraftApp, ui: &mut Ui, xf: &Xf) {
                 });
             });
     });
+    // A page's action is the page's to run: it hears the click with what was selected.
+    if let Some(id) = host_clicked {
+        let selected = app.session.active().map(|st| st.selection.objects.clone()).unwrap_or_default();
+        app.ui.host_task_bar_clicked.push((id, selected));
+    }
     if moved != Vec2::ZERO {
         let to = keep_in(pos + moved);
         let place = &mut app.ui.task_bar_place;
@@ -339,6 +391,20 @@ pub(super) fn task_bar(app: &mut VectorcraftApp, ui: &mut Ui, xf: &Xf) {
         Some((c, p)) => crate::menus::invoke(app, c, p),
         None => {}
     }
+}
+
+/// The bar's own items in its More Options menu (label, command, checked), less those an embedding
+/// page hid (`vectorcraft:configure`'s `hide`), as the menus leave them out: a page whose actions
+/// are on the bar hides Hide Bar, so the user can't lose them.
+pub(crate) fn more_options(app: &VectorcraftApp) -> Vec<(&'static str, &'static str, bool)> {
+    [
+        (tl!("Hide Bar"), "window.taskBar", false),
+        (tl!("Pin Bar Position"), "window.taskBar.pin", app.ui.task_bar_place.pinned),
+        (tl!("Reset Bar Position"), "window.taskBar.reset", false),
+    ]
+    .into_iter()
+    .filter(|(_, cmd, _)| !crate::menus::host_hidden(app, cmd))
+    .collect()
 }
 
 /// The Contextual Task Bar's Image Trace button: a trace with the Default preset.

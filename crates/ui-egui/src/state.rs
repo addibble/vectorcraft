@@ -348,6 +348,33 @@ pub struct ReplaceFontWarning {
     pub styles: Vec<(String, String)>,
 }
 
+/// An action an embedding page put on the Contextual Task Bar (`vectorcraft:taskBar`): drawn like
+/// the bar's own buttons, a click is handed to the page with the selection, never run here.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HostTaskBarAction {
+    /// The page's name for it, unique among its actions.
+    pub id: String,
+    /// What the button says, already in the user's language.
+    pub label: String,
+    /// An icon's name ([`crate::icons`]); none, or one the app doesn't have, draws the label alone.
+    pub icon: Option<String>,
+    /// The selection it shows for.
+    pub when: HostTaskBarWhen,
+    /// Shown only for a linked picture: the image itself, or a clip group's one image.
+    pub linked: bool,
+    /// Drawn dimmed and not clickable when false.
+    pub enabled: bool,
+}
+
+/// The selections a page's task bar action shows for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HostTaskBarWhen {
+    /// One image selected, with the Selection, Direct Selection or Group Selection tool.
+    Image,
+    /// One clip group selected.
+    ClipGroup,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct UiState {
@@ -739,6 +766,14 @@ pub struct UiState {
     /// The close waiting for the embedding page to store a document's save (`saveOnClose`).
     #[serde(skip)]
     pub host_closing: Option<crate::unsaved::HostClose>,
+    /// The embedding page's own actions on the Contextual Task Bar (`vectorcraft:taskBar`,
+    /// docs/web-embed.md), shown after the bar's own for the selections they name.
+    #[serde(skip)]
+    pub host_task_bar: Vec<HostTaskBarAction>,
+    /// The page's task bar actions clicked since the page last heard them: each action's id and
+    /// the selected objects as they were when it was clicked (`vectorcraft:taskBarAction`).
+    #[serde(skip)]
+    pub host_task_bar_clicked: Vec<(String, Vec<vectorcraft_doc::NodeId>)>,
     /// The titles the host gave documents it opened ([`crate::OpenArrival::title`]), shown on
     /// their tabs in place of their names.
     #[serde(skip)]
@@ -1129,6 +1164,8 @@ impl Default for UiState {
             host_hidden_menus: Vec::new(),
             host_hide_mark: false,
             host_save_on_close: false,
+            host_task_bar: Vec::new(),
+            host_task_bar_clicked: Vec::new(),
             host_closing: None,
             host_titles: Vec::new(),
             layers_panel: Default::default(),

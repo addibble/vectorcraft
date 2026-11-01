@@ -11011,3 +11011,115 @@ fn auto_spell_check_is_a_toggle_of_the_canvas_lines() {
     assert_eq!(count(&mut app), 0, "off");
     assert!(app.canvas.spelling.lines.is_empty(), "no node is kept");
 }
+
+/// A document with one embedded picture and one linked one (a PNG written beside the test), each
+/// framed in a clip group, the Selection tool chosen: the cases a page's task bar actions name.
+/// Answers the two pictures' and the two frames' ids, embedded first.
+fn pictures_for_host_actions(app: &mut VectorcraftApp) -> [vectorcraft_doc::NodeId; 4] {
+    app.session.execute("file.new", &json!({"width": 400, "height": 300})).unwrap();
+    let img = image::RgbaImage::from_pixel(20, 20, image::Rgba([90, 120, 200, 255]));
+    let mut png = vec![];
+    img.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).unwrap();
+    let dir = std::env::temp_dir().join(format!("vectorcraft-host-actions-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("linked.png");
+    std::fs::write(&file, &png).unwrap();
+    app.run("file.place", json!({"name": "embedded.png", "dataBase64": vectorcraft_format::base64_encode(&png), "link": false, "at": [100, 150]}))
+        .unwrap();
+    let embedded = app.session.active().unwrap().selection.objects[0];
+    app.run("file.place", json!({"path": file.to_string_lossy(), "link": true, "at": [300, 150]})).unwrap();
+    let linked = app.session.active().unwrap().selection.objects[0];
+    let mut frames = vec![];
+    for (picture, x) in [(embedded, 95.0), (linked, 295.0)] {
+        let r = app.session.execute("shape.rectangle", &json!({"x": x, "y": 145, "width": 10, "height": 10})).unwrap();
+        let rect = vectorcraft_doc::NodeId(r["id"].as_u64().unwrap());
+        app.session.execute("select.set", &json!({"ids": [rect.0, picture.0]})).unwrap();
+        app.run("object.clippingMask.make", json!({})).unwrap();
+        frames.push(app.session.active().unwrap().selection.objects[0]);
+    }
+    app.select_tool("selection");
+    [embedded, linked, frames[0], frames[1]]
+}
+
+fn host_action(id: &str, when: crate::state::HostTaskBarWhen, linked: bool, enabled: bool) -> crate::state::HostTaskBarAction {
+    crate::state::HostTaskBarAction { id: id.into(), label: format!("Do {id}"), icon: None, when, linked, enabled }
+}
+
+/// An embedding page's task bar actions (`vectorcraft:taskBar`) show after the bar's own, only for
+/// the selection each names: `image` for one picture with the Selection or Direct Selection tool,
+/// never a path or two objects; `clipGroup` for a clip group; `linked` only for a linked picture
+/// (a clip group's by the one picture it holds).
+#[test]
+fn the_task_bar_shows_the_pages_actions_for_the_selections_they_name() {
+    use crate::state::HostTaskBarWhen::{ClipGroup, Image};
+    let mut app = VectorcraftApp::new(Session::new(), Default::default());
+    let [embedded, linked, embedded_frame, linked_frame] = pictures_for_host_actions(&mut app);
+    app.ui.host_task_bar =
+        vec![host_action("crop", Image, false, true), host_action("subject", Image, true, true), host_action("frame", ClipGroup, true, true)];
+    let ctx = egui::Context::default();
+    let mut shown = |app: &mut VectorcraftApp, ids: &[vectorcraft_doc::NodeId]| {
+        app.session.execute("select.set", &json!({"ids": ids.iter().map(|id| id.0).collect::<Vec<_>>()})).unwrap();
+        task_bar_labels(app, &ctx).into_iter().map(|(t, _)| t).filter(|t| t.starts_with("Do ")).collect::<Vec<_>>()
+    };
+    assert_eq!(shown(&mut app, &[embedded]), ["Do crop"], "an embedded picture: the linked-only action stays out");
+    assert_eq!(shown(&mut app, &[linked]), ["Do crop", "Do subject"]);
+    app.select_tool("directSelection");
+    assert_eq!(shown(&mut app, &[linked]), ["Do crop", "Do subject"], "with Direct Selection too");
+    app.select_tool("selection");
+    assert_eq!(shown(&mut app, &[linked_frame]), ["Do frame"], "a linked picture's clip group");
+    assert!(shown(&mut app, &[embedded_frame]).is_empty(), "an embedded picture's clip group: linked-only stays out");
+    assert!(shown(&mut app, &[embedded, linked]).is_empty(), "two objects");
+    let r = app.session.execute("shape.rectangle", &json!({"x": 10, "y": 10, "width": 30, "height": 30})).unwrap();
+    assert!(shown(&mut app, &[vectorcraft_doc::NodeId(r["id"].as_u64().unwrap())]).is_empty(), "a path");
+}
+
+/// A click on a page's action is the page's: it is recorded with the selection as it was, for the
+/// page to hear, and runs nothing here. A disabled action is drawn but records no click.
+#[test]
+fn the_task_bar_hands_a_click_on_a_pages_action_to_the_page() {
+    use crate::state::HostTaskBarWhen::Image;
+    let mut app = VectorcraftApp::new(Session::new(), Default::default());
+    let [_, linked, ..] = pictures_for_host_actions(&mut app);
+    app.ui.host_task_bar = vec![host_action("off", Image, false, false), host_action("crop", Image, false, true)];
+    app.session.execute("select.set", &json!({"ids": [linked.0]})).unwrap();
+    let ctx = egui::Context::default();
+    let revision = app.session.active().unwrap().revision;
+    let mut click = |app: &mut VectorcraftApp, label: &str| {
+        let (_, at) = task_bar_labels(app, &ctx).into_iter().find(|(t, _)| t == label).expect("the action shows");
+        let at = at.center();
+        let button = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+        frame(app, &ctx, vec![egui::Event::PointerMoved(at)]);
+        frame(app, &ctx, vec![button(true)]);
+        frame(app, &ctx, vec![button(false)]);
+    };
+    click(&mut app, "Do off");
+    assert!(app.ui.host_task_bar_clicked.is_empty(), "a disabled action records no click");
+    click(&mut app, "Do crop");
+    assert_eq!(app.ui.host_task_bar_clicked, vec![("crop".to_string(), vec![linked])]);
+    assert_eq!(app.session.active().unwrap().revision, revision, "nothing ran in the document");
+}
+
+/// The bar's More Options leaves out what the page hid, as the menus do: a page that keeps its
+/// actions on the bar hides Hide Bar, so the user can't lose them.
+#[test]
+fn the_task_bar_more_options_leave_out_what_the_page_hid() {
+    let mut app = VectorcraftApp::new(Session::new(), Default::default());
+    let commands = |app: &VectorcraftApp| super::task_bar::more_options(app).into_iter().map(|(_, c, _)| c).collect::<Vec<_>>();
+    assert_eq!(commands(&app), ["window.taskBar", "window.taskBar.pin", "window.taskBar.reset"]);
+    app.ui.host_hidden = vec!["window.taskBar".into()];
+    assert_eq!(commands(&app), ["window.taskBar.pin", "window.taskBar.reset"]);
+}
+
+/// What a page is told is selected: the active document's objects by id, none without a document.
+#[test]
+fn the_selection_a_page_hears_is_the_objects_selected() {
+    let mut app = VectorcraftApp::new(Session::new(), Default::default());
+    assert!(app.selected_ids().is_empty(), "no document");
+    app.session.execute("file.new", &json!({"width": 200, "height": 100})).unwrap();
+    let r = app.session.execute("shape.rectangle", &json!({"x": 10, "y": 10, "width": 30, "height": 30})).unwrap();
+    let id = r["id"].as_u64().unwrap();
+    app.session.execute("select.set", &json!({"ids": [id]})).unwrap();
+    assert_eq!(app.selected_ids(), [id]);
+    app.session.execute("select.none", &json!({})).unwrap();
+    assert!(app.selected_ids().is_empty());
+}
