@@ -10,7 +10,7 @@ use vectorcraft_geom::Point;
 
 use crate::canvas::Xf;
 use crate::control::{ControlRequest, Outcome};
-use crate::host_region::{box_on_screen, clear_region, dragged, set_region};
+use crate::host_region::{box_on_screen, clear_masks, clear_region, dragged, mask_tints, set_masks, set_region};
 use crate::{Services, VectorcraftApp};
 
 fn request(app: &mut VectorcraftApp, ctx: &egui::Context, method: &str, params: Value) -> Value {
@@ -238,4 +238,48 @@ fn a_corner_drag_resizes_the_box() {
     let (_, r) = std::mem::take(&mut app.ui.host_region.changed)[0];
     assert!((r[0] - 0.25).abs() < 1e-6 && (r[1] - 0.25).abs() < 1e-6, "its top left stayed: {r:?}");
     assert!(r[2] < 0.7 && r[3] < 0.7, "its bottom right came in: {r:?}");
+}
+
+/// The page's masks (`vectorcraft:masks`): the image's opacity mask, one that doesn't clip, drawn
+/// as tints over the image's own pixels, its white art red (preserve) and its black art green
+/// (inpaint), the rest clear; an image with no mask has none; anything but an image is refused.
+#[test]
+fn an_images_opacity_mask_is_shown_as_red_and_green_tints() {
+    let ctx = egui::Context::default();
+    let mut app = VectorcraftApp::new(Session::new(), Services::default());
+    app.run("file.new", json!({"width": 400, "height": 300})).unwrap();
+    let img = image::RgbaImage::from_pixel(200, 100, image::Rgba([90, 120, 200, 255]));
+    let mut png = vec![];
+    img.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).unwrap();
+    // The picture at (100, 100)–(300, 200).
+    app.run("file.place", json!({"name": "p.png", "dataBase64": vectorcraft_format::base64_encode(&png), "link": false, "at": [200, 150]})).unwrap();
+    let image = app.session.active().unwrap().selection.objects[0];
+    assert!(mask_tints(&app.session.active().unwrap().doc, image).is_none(), "no mask, no tints");
+    for (id, p) in [
+        ("transparency.makeOpacityMask", json!({"ids": [image.0], "clip": false})),
+        ("select.none", json!({})),
+        ("paint.setStroke", json!({"none": true})),
+        ("paint.setFill", json!({"color": "#ffffff"})),
+        ("path.blob", json!({"points": [[120, 120], [180, 120]], "size": 20})),
+        ("select.none", json!({})),
+        ("paint.setFill", json!({"color": "#000000"})),
+        ("path.blob", json!({"points": [[220, 180], [280, 180]], "size": 20})),
+        ("transparency.stopEditingOpacityMask", json!({})),
+    ] {
+        app.run(id, p).unwrap();
+    }
+    let tints = mask_tints(&app.session.active().unwrap().doc, image).expect("tints");
+    assert_eq!(tints.size, [200, 100], "the image's own pixels");
+    let at = |x: usize, y: usize| tints.pixels[y * 200 + x];
+    let (preserve, inpaint, clear) = (at(50, 20), at(150, 80), at(100, 50));
+    assert!(preserve.r() > preserve.g() && preserve.a() > 0, "white art red: {preserve:?}");
+    assert!(inpaint.g() > inpaint.r() && inpaint.a() > 0, "black art green: {inpaint:?}");
+    assert_eq!(clear.a(), 0, "the rest clear");
+
+    set_masks(&mut app, image.0).unwrap();
+    frame(&mut app, &ctx, vec![]);
+    let r = app.run("shape.rectangle", json!({"x": 0, "y": 0, "width": 10, "height": 10})).unwrap();
+    assert!(set_masks(&mut app, r["id"].as_u64().unwrap()).unwrap_err().contains("not an image"));
+    clear_masks(&mut app);
+    assert!(app.ui.host_region.masks.is_none());
 }
