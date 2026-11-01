@@ -253,3 +253,25 @@ fn a_button_with_an_icon_is_named_by_its_label_and_heard() {
     click(&mut app, &ctx, "Remove");
     assert!(app.ui.host_panels.events.is_empty(), "disabled, it isn't heard");
 }
+
+/// A host panel floats tall enough for a form the first time it shows, and showing it again while
+/// it is in front keeps it there (its page shows it from a button pressed to see it).
+#[test]
+fn a_host_panel_shown_again_stays_in_front() {
+    let mut app = picture_with_action(None);
+    let panel = HostPanel {
+        id: "fill".into(),
+        title: "Generative Fill".into(),
+        anchor: HostPanelAnchor::Dock,
+        content: vec![HostItem::Row(vec![button("go", "Generate", true)])],
+    };
+    show_panel(&mut app, panel);
+    let ctx = egui::Context::default();
+    frames(&mut app, &ctx, 2);
+    app.run("window.panel", json!({"panel": "host:fill"})).unwrap();
+    frames(&mut app, &ctx, 3);
+    assert!(widget(&mut app, &ctx, "Generate").is_some(), "the panel shows");
+    app.run("window.panel", json!({"panel": "host:fill"})).unwrap();
+    frames(&mut app, &ctx, 3);
+    assert!(widget(&mut app, &ctx, "Generate").is_some(), "shown again, it stays");
+}
