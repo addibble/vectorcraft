@@ -436,7 +436,7 @@ fn draw_host_actions(app: &mut VectorcraftApp, ui: &mut Ui, t: &Tokens, host: &[
         resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, action.enabled, action.label.as_str()));
         let resp = resp.on_hover_text(action.label.as_str());
         if let Some(panel) = action.panel.as_deref().and_then(|id| crate::host_panels::task_bar_panel(app, id)) {
-            widgets::popover(&resp, action.enabled && resp.clicked(), |ui| crate::host_panels::show(app, ui, &panel));
+            crate::host_panels::task_bar_popover(app, &resp, action.enabled && resp.clicked(), &panel);
         } else if action.enabled && resp.clicked() {
             clicked = Some(action.id.clone());
         }
