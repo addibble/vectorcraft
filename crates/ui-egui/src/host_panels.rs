@@ -99,6 +99,10 @@ pub struct HostPanels {
     pub texts: HashMap<String, String>,
     pub focused: Option<String>,
     pub events: Vec<HostPanelEvent>,
+    /// The task bar popover open, by its panel's id. Kept here, not by the frame it was last drawn
+    /// in, so a step that selects something else for a moment (the page's own, run on the
+    /// selection) doesn't close it: only its button, Escape or a click outside it does.
+    pub open: Option<String>,
 }
 
 fn key(panel: &str, field: &str) -> String {
@@ -279,6 +283,31 @@ fn text_area(ui: &mut Ui, state: &mut HostPanels, panel: &str, id: &str, label: 
         state.events.push(HostPanelEvent::Change { panel: panel.to_string(), id: id.to_string(), value: Value::String(text.clone()) });
     }
     state.texts.insert(k, text);
+}
+
+/// Panel `panel`'s popover under its task bar button `resp`: opened and closed by the button
+/// (`toggle`), closed by Escape or a press outside it (and outside the popups it opened), and
+/// otherwise kept open, also through frames the button isn't drawn in.
+pub(crate) fn task_bar_popover(app: &mut VectorcraftApp, resp: &egui::Response, toggle: bool, panel: &HostPanel) {
+    let ctx = &resp.ctx;
+    let is_open = app.ui.host_panels.open.as_deref() == Some(panel.id.as_str());
+    let mut open = if toggle {
+        !is_open
+    } else {
+        let click = ctx.input(|i| i.pointer.any_click().then(|| i.pointer.interact_pos()).flatten());
+        let elsewhere = click.is_some_and(|p| !resp.rect.contains(p) && ctx.layer_id_at(p).is_none_or(|l| l.order != egui::Order::Foreground));
+        is_open && !elsewhere && !ctx.input(|i| i.key_pressed(egui::Key::Escape))
+    };
+    if open {
+        let id = egui::Id::unique("host-panel-popover").with(&panel.id);
+        egui::Popup::menu(resp).id(id).open_bool(&mut open).close_behavior(egui::PopupCloseBehavior::IgnoreClicks).show(|ui| show(app, ui, panel));
+    }
+    let state = &mut app.ui.host_panels;
+    if open {
+        state.open = Some(panel.id.clone());
+    } else if is_open {
+        state.open = None;
+    }
 }
 
 /// A task bar action's popover: panel `id` when the page has one anchored to the task bar.
