@@ -80,3 +80,32 @@ fn ui_set_sizes_the_painted_tool_cursors_within_bounds() {
         assert_eq!(app.cursor_scale, 2.5, "a refused size leaves it");
     }
 }
+
+/// A host page's task bar action is a button screen readers (and so `ui.widgets`) name, so a script
+/// clicks it by its label as a person does.
+#[test]
+fn ui_widgets_names_the_host_pages_task_bar_actions() {
+    let mut app = VectorcraftApp::new(Session::new(), Services::default());
+    app.run("file.new", json!({"width": 400, "height": 300})).unwrap();
+    let img = image::RgbaImage::from_pixel(20, 20, image::Rgba([90, 120, 200, 255]));
+    let mut png = vec![];
+    img.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).unwrap();
+    app.run("file.place", json!({"name": "p.png", "dataBase64": vectorcraft_format::base64_encode(&png), "link": false, "at": [200, 150]})).unwrap();
+    app.select_tool("selection");
+    app.ui.host_task_bar = vec![crate::state::HostTaskBarAction {
+        id: "crop".into(),
+        label: "Crop to Subject".into(),
+        icon: None,
+        when: crate::state::HostTaskBarWhen::Image,
+        linked: false,
+        enabled: true,
+    }];
+    let ctx = egui::Context::default();
+    frames(&mut app, &ctx, 2);
+    request(&mut app, &ctx, "ui.widgets", json!({}));
+    frames(&mut app, &ctx, 2);
+    let answer = request(&mut app, &ctx, "ui.widgets", json!({"label": "Crop to Subject"}));
+    let found = named(&answer, "Crop to Subject");
+    assert_eq!(found.len(), 1, "{answer}");
+    assert_eq!(found[0]["role"], "Button");
+}
