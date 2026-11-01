@@ -216,6 +216,15 @@ fn relative(app: &VectorcraftApp, xf: &Xf, p: Pos2) -> Option<Point> {
     Some(Point::new(px.x / w, px.y / h))
 }
 
+/// The corner of the box on screen `q` a press at `p` takes, if any: within [`GRIP`] of it, and
+/// within a quarter of the box's shorter side, so a small box (zoomed out) is still moved by its
+/// middle rather than resized.
+pub fn grip_corner(q: &[Pos2; 4], p: Pos2) -> Option<usize> {
+    let shortest = (0..4).map(|i| q[i].distance(q[(i + 1) % 4])).fold(f32::INFINITY, f32::min);
+    let reach = GRIP.min(shortest / 4.0);
+    q.iter().position(|c| c.distance(p) <= reach)
+}
+
 /// The box moved by its inside, or a corner of it moved, to `to` (relative units).
 pub fn dragged(held_start: Rel, from: Point, to: Point, corner: Option<usize>) -> Rel {
     let [l, t, r, b] = held_start;
@@ -262,7 +271,7 @@ pub(crate) fn interact(app: &mut VectorcraftApp, ui: &Ui, xf: &Xf) {
     egui::Area::new(egui::Id::unique("host-region")).order(egui::Order::Middle).fixed_pos(area.min).show(ui.ctx(), |ui| {
         let (rect, resp) = ui.allocate_exact_size(area.size(), Sense::drag());
         let pointer = resp.interact_pointer_pos().or(resp.hover_pos());
-        let corner_at = |p: Pos2| corners.iter().position(|c| c.distance(p) <= GRIP);
+        let corner_at = |p: Pos2| grip_corner(&corners, p);
         if let Some(p) = resp.hover_pos() {
             let icon = match corner_at(p) {
                 Some(0 | 2) => egui::CursorIcon::ResizeNwSe,
