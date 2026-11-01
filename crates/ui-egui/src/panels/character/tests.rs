@@ -226,6 +226,7 @@ fn kerning_at_a_caret_sets_the_pair_not_the_whole_text() {
     assert_eq!((kerning(&app, 1), kerning(&app, 2), kerning(&app, 3)), (Some(-50.0), Some(30.0), Some(30.0)));
 }
 
+#[cfg(feature = "translations")]
 #[test]
 fn character_kerning_setter_and_automatic_pair_value() {
     let german = crate::i18n::Lang::from_code("de").unwrap();

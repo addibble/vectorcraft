@@ -167,6 +167,7 @@ fn assert_delete_dialog(app: &VectorcraftApp, message: &str) {
 const IN_USE: &str = "Strokes use one or more of these brushes. Take the brushes off those strokes and delete the brushes?";
 
 /// Deleting several unused brushes asks one question about the selection, with no count in it.
+#[cfg(feature = "translations")]
 #[test]
 fn deleting_five_brushes_uses_one_selection_question() {
     let mut app = VectorcraftApp::new(Session::new(), Default::default());

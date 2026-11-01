@@ -63,6 +63,7 @@ fn generate_css_shows_the_document_while_nothing_is_selected() {
 
 /// The note on unnamed objects left out uses the form the language's plural rule picks for the
 /// count.
+#[cfg(feature = "translations")]
 #[test]
 fn the_unnamed_objects_note_uses_each_count_form() {
     let note = |code: &str, n: u64| {

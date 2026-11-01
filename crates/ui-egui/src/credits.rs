@@ -577,6 +577,9 @@ mod tests {
 
     /// #4944: in the table, the header row (the sort buttons) stays put while the rows scroll
     /// under it.
+    // The columns are sized by the interface faces' metrics; egui's built-in fonts lay them out
+    // differently.
+    #[cfg(feature = "interface-fonts")]
     #[test]
     fn the_table_header_stays_above_scrolling_rows() {
         let first = sorted(CONTRIBUTORS, NameMode::Username, SortKey::FirstCommit, true).first().map(|c| c.name(NameMode::Username)).unwrap();

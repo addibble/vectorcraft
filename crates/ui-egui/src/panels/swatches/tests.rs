@@ -266,6 +266,7 @@ fn delete_asks_then_removes_the_selection_and_unlinks_art() {
 }
 
 /// The prompt for several swatches and groups gives the form the language's plural rule picks for the count.
+#[cfg(feature = "translations")]
 #[test]
 fn deleting_several_swatches_uses_each_count_form() {
     let mut app = app();
