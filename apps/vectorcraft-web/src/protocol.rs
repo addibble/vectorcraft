@@ -1,6 +1,9 @@
 //! The rules of the embedding protocol (`host`, `docs/web-embed.md`), kept free of browser types so
 //! they are tested natively: which messages the bridge reads, and what a `vectorcraft:open`, a
-//! `vectorcraft:configure`, a `vectorcraft:saved` and a `vectorcraft:recoveryEntries` must carry.
+//! `vectorcraft:configure`, a `vectorcraft:saved`, a `vectorcraft:recoveryEntries` and a
+//! `vectorcraft:taskBar` must carry.
+
+use vectorcraft_ui_egui::{HostTaskBarAction, HostTaskBarWhen};
 
 /// What a `vectorcraft:open` delivers: a file to open like one picked with File › Open.
 #[derive(Debug, PartialEq, Eq)]
@@ -13,7 +16,8 @@ pub struct Open {
 }
 
 /// The messages the parent may send.
-pub const FROM_PARENT: [&str; 4] = ["vectorcraft:open", "vectorcraft:configure", "vectorcraft:saved", "vectorcraft:recoveryEntries"];
+pub const FROM_PARENT: [&str; 5] =
+    ["vectorcraft:open", "vectorcraft:configure", "vectorcraft:saved", "vectorcraft:recoveryEntries", "vectorcraft:taskBar"];
 
 /// Whether the bridge reads a message at all: one of [`FROM_PARENT`] from the parent window, on
 /// the page's own origin. Anything else is ignored without a reply, so another page learns nothing.
@@ -213,6 +217,85 @@ pub fn recovery_entries(entries: Option<Vec<EntryFields>>) -> Result<Vec<(String
         .collect()
 }
 
+/// The most actions a page puts on the Contextual Task Bar, and the longest id, label and icon name.
+pub const MAX_TASK_BAR_ACTIONS: usize = 16;
+pub const MAX_ACTION_ID_CHARS: usize = 100;
+pub const MAX_ACTION_LABEL_CHARS: usize = 60;
+pub const MAX_ACTION_ICON_CHARS: usize = 64;
+
+/// A `vectorcraft:taskBar` action's fields as the page sent them. Fields it doesn't name are never
+/// read.
+#[derive(Debug, Default)]
+pub struct TaskBarActionFields {
+    pub id: Field<String>,
+    pub label: Field<String>,
+    pub icon: Field<String>,
+    pub when: Field<String>,
+    pub linked: Field<bool>,
+    pub enabled: Field<bool>,
+}
+
+/// Check a `vectorcraft:taskBar` the bridge accepted: `actions` is an array (`None`: not one, or
+/// longer than [`MAX_TASK_BAR_ACTIONS`]) of `{ id, label, icon?, when, linked?, enabled? }`: `id`
+/// 1 to [`MAX_ACTION_ID_CHARS`] characters and unique, `label` 1 to [`MAX_ACTION_LABEL_CHARS`],
+/// `icon` at most [`MAX_ACTION_ICON_CHARS`], `when` `image` or `clipGroup`, `linked` (false) and
+/// `enabled` (true) booleans. The list replaces the page's last whole; an empty one clears it. The
+/// error is the text of the `vectorcraft:failed` reply, and nothing changes.
+pub fn task_bar(actions: Option<Vec<TaskBarActionFields>>) -> Result<Vec<HostTaskBarAction>, String> {
+    let Some(actions) = actions.filter(|a| a.len() <= MAX_TASK_BAR_ACTIONS) else {
+        return Err(format!(
+            "vectorcraft:taskBar needs `actions`, an array of at most {MAX_TASK_BAR_ACTIONS} {{ id, label, icon?, when, linked?, enabled? }}"
+        ));
+    };
+    let mut out: Vec<HostTaskBarAction> = Vec::with_capacity(actions.len());
+    for (i, f) in actions.into_iter().enumerate() {
+        let text = |field: Field<String>, key: &str, max: usize| match field {
+            Field::Given(v) if !v.trim().is_empty() && v.chars().count() <= max => Ok(v),
+            _ => Err(format!("vectorcraft:taskBar's action {i} needs `{key}`, a string of 1 to {max} characters")),
+        };
+        let flag = |field: Field<bool>, key: &str, default: bool| match field {
+            Field::Absent => Ok(default),
+            Field::Given(b) => Ok(b),
+            Field::Wrong => Err(format!("vectorcraft:taskBar's action {i}: `{key}` is a boolean")),
+        };
+        let id = text(f.id, "id", MAX_ACTION_ID_CHARS)?;
+        if out.iter().any(|a| a.id == id) {
+            return Err(format!("vectorcraft:taskBar's actions each need their own `id`: {id} is there twice"));
+        }
+        let icon = match f.icon {
+            Field::Absent => None,
+            Field::Given(v) if v.chars().count() <= MAX_ACTION_ICON_CHARS => Some(v).filter(|v| !v.trim().is_empty()),
+            _ => return Err(format!("vectorcraft:taskBar's action {id}: `icon` is a string of at most {MAX_ACTION_ICON_CHARS} characters")),
+        };
+        let when = match f.when {
+            Field::Given(w) if w == "image" => HostTaskBarWhen::Image,
+            Field::Given(w) if w == "clipGroup" => HostTaskBarWhen::ClipGroup,
+            _ => return Err(format!("vectorcraft:taskBar's action {id} needs `when`, `image` or `clipGroup`")),
+        };
+        let label = text(f.label, "label", MAX_ACTION_LABEL_CHARS)?;
+        let linked = flag(f.linked, "linked", false)?;
+        let enabled = flag(f.enabled, "enabled", true)?;
+        out.push(HostTaskBarAction { id, label, icon, when, linked, enabled });
+    }
+    Ok(out)
+}
+
+/// What the bridge last told the parent, so it tells it again only when it changes (the selection,
+/// `vectorcraft:selection`).
+#[derive(Debug, Default)]
+pub struct Reported<T>(Option<T>);
+
+impl<T: PartialEq> Reported<T> {
+    /// `now` when it differs from what was last reported (and is taken as reported), else nothing.
+    pub fn changed(&mut self, now: T) -> Option<&T> {
+        if self.0.as_ref() == Some(&now) {
+            return None;
+        }
+        self.0 = Some(now);
+        self.0.as_ref()
+    }
+}
+
 impl Field<String> {
     /// A blank string counts as left out.
     fn into_non_empty(self) -> Self {
@@ -312,6 +395,93 @@ mod tests {
     fn refuses_an_open_without_bytes() {
         let error = open(Some("Logo.svg".into()), None, Field::Absent).err();
         assert!(error.as_deref().is_some_and(|e| e.contains("`bytes`") && e.contains("Logo.svg")), "{error:?}");
+    }
+
+    fn action(id: &str, when: &str) -> TaskBarActionFields {
+        TaskBarActionFields {
+            id: Field::Given(id.into()),
+            label: Field::Given(format!("Do {id}")),
+            when: Field::Given(when.into()),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn accepts_a_task_bar_from_the_parent_on_the_same_origin() {
+        assert!(accepts("https://cloud.example", "https://cloud.example", true, Some("vectorcraft:taskBar")));
+        assert!(!accepts("https://cloud.example", "https://evil.example", true, Some("vectorcraft:taskBar")));
+        assert!(!accepts("https://cloud.example", "https://cloud.example", false, Some("vectorcraft:taskBar")));
+    }
+
+    #[test]
+    fn reads_the_pages_task_bar_actions() {
+        let mut crop = action("crop", "image");
+        crop.icon = Field::Given("dc-pf-crop".into());
+        crop.linked = Field::Given(true);
+        let mut off = action("expand", "clipGroup");
+        off.enabled = Field::Given(false);
+        let actions = task_bar(Some(vec![crop, off])).unwrap();
+        assert_eq!(
+            actions,
+            vec![
+                HostTaskBarAction {
+                    id: "crop".into(),
+                    label: "Do crop".into(),
+                    icon: Some("dc-pf-crop".into()),
+                    when: HostTaskBarWhen::Image,
+                    linked: true,
+                    enabled: true
+                },
+                HostTaskBarAction {
+                    id: "expand".into(),
+                    label: "Do expand".into(),
+                    icon: None,
+                    when: HostTaskBarWhen::ClipGroup,
+                    linked: false,
+                    enabled: false
+                },
+            ]
+        );
+        // An empty list clears the page's actions; a blank icon is none.
+        assert_eq!(task_bar(Some(vec![])).unwrap(), vec![]);
+        let mut blank = action("a", "image");
+        blank.icon = Field::Given(" ".into());
+        assert_eq!(task_bar(Some(vec![blank])).unwrap()[0].icon, None);
+    }
+
+    #[test]
+    fn refuses_a_task_bar_of_the_wrong_shape() {
+        assert!(task_bar(None).unwrap_err().contains("`actions`"));
+        assert!(task_bar(Some((0..=MAX_TASK_BAR_ACTIONS).map(|i| action(&i.to_string(), "image")).collect())).is_err());
+        assert!(task_bar(Some((0..MAX_TASK_BAR_ACTIONS).map(|i| action(&i.to_string(), "image")).collect())).is_ok());
+        let with = |change: &dyn Fn(&mut TaskBarActionFields)| {
+            let mut a = action("a", "image");
+            change(&mut a);
+            task_bar(Some(vec![a]))
+        };
+        assert!(with(&|a| a.id = Field::Absent).unwrap_err().contains("`id`"));
+        assert!(with(&|a| a.id = Field::Given(" ".into())).is_err());
+        assert!(with(&|a| a.id = Field::Given("x".repeat(MAX_ACTION_ID_CHARS + 1))).is_err());
+        assert!(with(&|a| a.id = Field::Given("x".repeat(MAX_ACTION_ID_CHARS))).is_ok());
+        assert!(with(&|a| a.label = Field::Wrong).unwrap_err().contains("`label`"));
+        assert!(with(&|a| a.label = Field::Given("x".repeat(MAX_ACTION_LABEL_CHARS + 1))).is_err());
+        assert!(with(&|a| a.icon = Field::Wrong).unwrap_err().contains("`icon`"));
+        assert!(with(&|a| a.icon = Field::Given("x".repeat(MAX_ACTION_ICON_CHARS + 1))).is_err());
+        assert!(with(&|a| a.when = Field::Given("path".into())).unwrap_err().contains("`when`"));
+        assert!(with(&|a| a.when = Field::Absent).is_err());
+        assert!(with(&|a| a.linked = Field::Wrong).unwrap_err().contains("`linked`"));
+        assert!(with(&|a| a.enabled = Field::Wrong).unwrap_err().contains("`enabled`"));
+        assert!(task_bar(Some(vec![action("a", "image"), action("a", "clipGroup")])).unwrap_err().contains("twice"));
+    }
+
+    #[test]
+    fn reports_again_only_what_changed() {
+        let mut selection = Reported::default();
+        assert_eq!(selection.changed(Vec::<u64>::new()), Some(&vec![]), "the first is always told");
+        assert_eq!(selection.changed(vec![]), None);
+        assert_eq!(selection.changed(vec![7]), Some(&vec![7]));
+        assert_eq!(selection.changed(vec![7]), None);
+        assert_eq!(selection.changed(vec![]), Some(&vec![]));
     }
 
     #[test]

@@ -34,6 +34,12 @@
 //!   entries it keeps (those of earlier pages), which join the ones held, and the copies a crash
 //!   left behind among them are offered (Recover Documents). A malformed one is refused with
 //!   `vectorcraft:failed`, and none of it is taken.
+//! - `vectorcraft:taskBar` (from the parent, host-only): `{ actions: [{ id, label, icon?, when,
+//!   linked?, enabled? }] }`, the page's own buttons on the Contextual Task Bar for the selections
+//!   `when` names (`image`, `clipGroup`), replacing the last list whole (`protocol::task_bar`).
+//! - `vectorcraft:taskBarAction` (to the parent): `{ id, selection }`, one of the page's actions
+//!   clicked, with the objects selected when it was.
+//! - `vectorcraft:selection` (to the parent): `{ ids }` whenever the selected objects change.
 //! - `vectorcraft:failed` (to the parent): `{ error }`. Before `ready`, the app couldn't start;
 //!   after it, the last message from the parent was refused (the app keeps running).
 //!
@@ -73,6 +79,10 @@ pub struct Bridge {
     recovery: Option<Arc<ParentStore>>,
     /// The parent gave recovery entries the app hasn't offered yet.
     offer: Rc<Cell<bool>>,
+    /// The last `vectorcraft:taskBar` heard, until the next frame applies it.
+    task_bar: Rc<RefCell<Option<Vec<vectorcraft_ui_egui::HostTaskBarAction>>>>,
+    /// The selection last reported to the parent (`vectorcraft:selection`).
+    selection: Rc<RefCell<protocol::Reported<Vec<u64>>>>,
 }
 
 impl Bridge {
@@ -95,6 +105,8 @@ impl Bridge {
             answers: Rc::default(),
             recovery: None,
             offer: Rc::default(),
+            task_bar: Rc::default(),
+            selection: Rc::default(),
         })
     }
 
@@ -133,6 +145,9 @@ impl Bridge {
             app.ui.host_save_on_close = c.save_on_close;
             app.session.save_recovered_in_place = c.save_recovered_in_place;
         }
+        if let Some(actions) = self.task_bar.borrow_mut().take() {
+            app.ui.host_task_bar = actions;
+        }
         let answers = std::mem::take(&mut *self.answers.borrow_mut());
         for a in answers {
             vectorcraft_ui_egui::unsaved::host_saved(app, a.id, &a.name, a.ok, a.error.as_deref());
@@ -157,6 +172,32 @@ impl Bridge {
     pub fn report_link(&self, app: &mut VectorcraftApp) {
         if std::mem::take(&mut app.ui.host_empty_link_clicked) {
             self.send(&[("type", "vectorcraft:emptyLink".into())]);
+        }
+    }
+
+    /// After each frame: tell the parent which of its task bar actions were clicked, each with the
+    /// objects selected when it was (`vectorcraft:taskBarAction`).
+    pub fn report_task_bar(&self, app: &mut VectorcraftApp) {
+        for (id, selected) in std::mem::take(&mut app.ui.host_task_bar_clicked) {
+            let ids = js_sys::Array::new();
+            for node in selected {
+                // A JavaScript number holds the id exactly: ids never come near 2^53.
+                ids.push(&JsValue::from_f64(node.0 as f64));
+            }
+            self.send(&[("type", "vectorcraft:taskBarAction".into()), ("id", id.into()), ("selection", ids.into())]);
+        }
+    }
+
+    /// After each frame: tell the parent when the selected objects change, the active document's
+    /// (none while no document is open), the first time after the first frame.
+    pub fn report_selection(&self, app: &VectorcraftApp) {
+        let mut reported = self.selection.borrow_mut();
+        if let Some(now) = reported.changed(app.selected_ids()) {
+            let ids = js_sys::Array::new();
+            for id in now {
+                ids.push(&JsValue::from_f64(*id as f64));
+            }
+            self.send(&[("type", "vectorcraft:selection".into()), ("ids", ids.into())]);
         }
     }
 
@@ -216,6 +257,19 @@ impl Bridge {
                     }
                     Err(error) => {
                         log::warn!("refused the page's configuration: {error}");
+                        bridge.post_failed(&error);
+                    }
+                }
+                return;
+            }
+            if string(&data, "type").as_deref() == Some("vectorcraft:taskBar") {
+                match protocol::task_bar(actions(&data)) {
+                    Ok(actions) => {
+                        *bridge.task_bar.borrow_mut() = Some(actions);
+                        wake();
+                    }
+                    Err(error) => {
+                        log::warn!("refused the page's task bar actions: {error}");
                         bridge.post_failed(&error);
                     }
                 }
@@ -367,6 +421,32 @@ fn entries(data: &JsValue) -> Option<Vec<protocol::EntryFields>> {
         return None;
     }
     Some(array.iter().map(|e| (string(&e, "name"), bytes(&e))).collect())
+}
+
+/// A `vectorcraft:taskBar`'s `actions`: each action's fields as far as they read (`None`: not an
+/// array, or one too long to read: `protocol::task_bar` refuses it).
+fn actions(data: &JsValue) -> Option<Vec<protocol::TaskBarActionFields>> {
+    let v = js_sys::Reflect::get(data, &JsValue::from_str("actions")).ok()?;
+    if !js_sys::Array::is_array(&v) {
+        return None;
+    }
+    let array = js_sys::Array::from(&v);
+    if array.length() as usize > protocol::MAX_TASK_BAR_ACTIONS {
+        return None;
+    }
+    Some(
+        array
+            .iter()
+            .map(|a| protocol::TaskBarActionFields {
+                id: field(&a, "id"),
+                label: field(&a, "label"),
+                icon: field(&a, "icon"),
+                when: field(&a, "when"),
+                linked: boolean(&a, "linked"),
+                enabled: boolean(&a, "enabled"),
+            })
+            .collect(),
+    )
 }
 
 /// `bytes` as an `ArrayBuffer` or `Uint8Array`.
