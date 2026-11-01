@@ -42,7 +42,8 @@ Every message is a plain object with a string `type`. VectorCraft posts only to 
 | `vectorcraft:panelEvent` | to the parent | `panel`, `id` (strings), `kind` (`click` or `change`), `selection` (array of numbers, a click) or `value` (a change) | Host-only: the user clicked a button or changed a field of a host panel. |
 | `vectorcraft:region` | from the parent | `image` (number), `rect` (`{left, top, right, bottom}`), `overlay` (PNG bytes, optional), `editable` (boolean, optional); or `clear: true` | Host-only: a box (and a picture over the image) the host page marks on an image. |
 | `vectorcraft:regionChanged` | to the parent | `image` (number), `rect` (`{left, top, right, bottom}`) | Host-only: the user let the region's box go here. |
-| `vectorcraft:failed` | to the parent | `error` (string) | Before `ready`: the app couldn't start. After `ready`: the last `vectorcraft:open`, `vectorcraft:configure`, `vectorcraft:saved`, `vectorcraft:recoveryEntries`, `vectorcraft:taskBar`, `vectorcraft:panel` or `vectorcraft:region` was refused; the app keeps running. |
+| `vectorcraft:masks` | from the parent | `image` (number); or `clear: true` | Host-only: the image's opacity mask shown as two tints over it, its white art red and the rest green. |
+| `vectorcraft:failed` | to the parent | `error` (string) | Before `ready`: the app couldn't start. After `ready`: the last `vectorcraft:open`, `vectorcraft:configure`, `vectorcraft:saved`, `vectorcraft:recoveryEntries`, `vectorcraft:taskBar`, `vectorcraft:panel`, `vectorcraft:region` or `vectorcraft:masks` was refused; the app keeps running. |
 
 **`vectorcraft:ready`** comes once, when the app has started. `version` is the app's version (`CARGO_PKG_VERSION`). A host that has heard neither `ready` nor `failed` after a reasonable time should assume the app couldn't start. The commonest reason is a browser without WebGPU or WebGL2.
 
@@ -154,6 +155,8 @@ Ids are 1 to 100 characters and unique in the panel (a row's buttons within the 
 Both are drawn through the image's own placement, over the art and under the selection's handles, so they follow the image moved, scaled or rotated and the view zoomed, turned or scrolled. When the image is in a clip group whose clip path is a rectangle square to the screen, they are clipped to it. They are drawn only while the document they were marked in is active and the image is there.
 
 While the image (or the clip group holding it) is selected with the Selection or Direct Selection tool, an editable box's inside drags it and its corners resize it, before the tool sees the pointer; it stays inside the image and at least 5% of it on each side. Letting go posts **`vectorcraft:regionChanged`** `{ image, rect }` once; Escape during a drag puts the box back and posts nothing. None of it is the document's: no undo step, nothing saved, the document not marked changed.
+
+**`vectorcraft:masks`** `{ image }` shows that image's opacity mask as two tints over it, drawn from the mask as it is now and through the image's placement (clipped by its frame, as the region is): the mask's white art red and its other art green, the rest clear. A host page uses it for a mask that doesn't clip, whose white and black art are two masks of its own. There is one at a time; `{ clear: true }` takes it away; an `image` that isn't an image of the active document is refused. Nothing is the document's.
 
 ## Who is heard
 
