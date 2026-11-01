@@ -151,6 +151,13 @@ impl VectorcraftApp {
         b
     }
 
+    /// The active document's selected objects, by id (none while no document is open): what an
+    /// embedding page is told is selected (`vectorcraft:selection`). Anchors picked out of a path
+    /// selected whole don't change it.
+    pub fn selected_ids(&self) -> Vec<u64> {
+        self.session.active().map(|st| st.selection.objects.iter().map(|id| id.0).collect()).unwrap_or_default()
+    }
+
     /// The selection's visual bounds (strokes included, effects left out), square to the page:
     /// measured once per revision, as the canvas reads it every frame (a traced photo selects a
     /// group of hundreds of thousands of paths).

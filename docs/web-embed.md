@@ -35,7 +35,10 @@ Every message is a plain object with a string `type`. VectorCraft posts only to 
 | `vectorcraft:recoveryWrite` | to the parent | `name` (string), `bytes` (`ArrayBuffer`, transferred) | With `&recovery=parent`: keep Data Recovery entry `name`, replacing any of that name. |
 | `vectorcraft:recoveryRemove` | to the parent | `name` (string) | With `&recovery=parent`: delete entry `name` (one that isn't there is no error). |
 | `vectorcraft:recoveryEntries` | from the parent | `entries` (array of `{name, bytes}`) | With `&recovery=parent`: the entries the parent keeps; recovery copies a crash left among them are offered. |
-| `vectorcraft:failed` | to the parent | `error` (string) | Before `ready`: the app couldn't start. After `ready`: the last `vectorcraft:open`, `vectorcraft:configure`, `vectorcraft:saved` or `vectorcraft:recoveryEntries` was refused; the app keeps running. |
+| `vectorcraft:taskBar` | from the parent | `actions` (array of `{id, label, icon?, when, linked?, enabled?}`) | Host-only: the host page's own buttons on the Contextual Task Bar, for the selections `when` names. |
+| `vectorcraft:taskBarAction` | to the parent | `id` (string), `selection` (array of numbers) | Host-only: the user clicked action `id`, with these objects selected. |
+| `vectorcraft:selection` | to the parent | `ids` (array of numbers) | The selected objects changed (the active document's; none with no document open). |
+| `vectorcraft:failed` | to the parent | `error` (string) | Before `ready`: the app couldn't start. After `ready`: the last `vectorcraft:open`, `vectorcraft:configure`, `vectorcraft:saved`, `vectorcraft:recoveryEntries` or `vectorcraft:taskBar` was refused; the app keeps running. |
 
 **`vectorcraft:ready`** comes once, when the app has started. `version` is the app's version (`CARGO_PKG_VERSION`). A host that has heard neither `ready` nor `failed` after a reasonable time should assume the app couldn't start. The commonest reason is a browser without WebGPU or WebGL2.
 
@@ -88,6 +91,35 @@ On the web Data Recovery (Preferences › File Handling › Data Recovery) keeps
 At most 100,000 entries per message, each name up to 300 characters with a single `/` between non-blank parts. A message of any other shape, or one sent without `&recovery=parent`, is refused with `vectorcraft:failed`, and none of it is taken. Without `&recovery=parent` nothing changes: the copies stay in local storage and the recovery messages are never sent.
 
 **`vectorcraft:dirty`** is sent after the first frame and then whenever the answer changes, so the first one is usually `dirty: false`. `true` means at least one open document has unsaved changes.
+
+### Task bar actions (host-only)
+
+These messages are for one host page and are not offered to other embedders: they let the page put
+its own buttons on the Contextual Task Bar, the floating bar under the selection, for actions the
+page runs itself.
+
+**`vectorcraft:taskBar`** gives the page's actions, `{ actions: [{ id, label, icon?, when, linked?, enabled? }] }`, at most 16. Each message replaces the last list whole; an empty array clears it.
+
+- `id` (1 to 100 characters) is the page's name for the action, unique in the list.
+- `label` (1 to 60 characters) is what the button says, already in the user's language.
+- `icon` (optional, up to 64 characters) names one of VectorCraft's icons; a name it doesn't have draws the label alone.
+- `when` is `image` (one image selected, with the Selection, Direct Selection or Group Selection tool) or `clipGroup` (one clip group selected). Never with the Artboard tool.
+- `linked` (optional, default `false`) shows the action only for a linked picture: the image itself, or the one image a clip group holds directly.
+- `enabled` (optional, default `true`): a disabled action is drawn dimmed and doesn't click. Send the list again to turn it on.
+
+The actions come after the bar's own, before the Fill and Stroke chips. They are not commands, so
+`hide` doesn't touch them; `hide` does leave out the bar's More Options items it names, so a page
+that hides `window.taskBar` keeps the user from hiding the bar and its actions with it. A message of
+any other shape is refused with `vectorcraft:failed`, and nothing changes; fields it doesn't name are
+ignored.
+
+**`vectorcraft:taskBarAction`** tells the page an action was clicked: `{ id, selection }`, the
+objects selected when it was, by the ids `document.inspect` and `select.set` use. VectorCraft runs
+nothing itself.
+
+**`vectorcraft:selection`** tells the page whenever the selected objects change, `{ ids }`: the
+active document's, `[]` while none is open, the first one after the first frame. Selecting a path's
+anchors alone doesn't change it.
 
 ## Who is heard
 
