@@ -109,7 +109,7 @@ use vectorcraft_engine::file_access::{self, AutomationRoots};
 use vectorcraft_engine::{Session, ViewInfo};
 
 pub use control::{ControlRequest, ControlResponse, Ticket as ControlTicket};
-pub use state::{UiState, View};
+pub use state::{HostTaskBarAction, HostTaskBarWhen, UiState, View};
 pub use sysclip::{ClipboardProbeFactory, SystemClipboard};
 
 mod app;
