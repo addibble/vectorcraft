@@ -186,25 +186,7 @@ pub(super) fn task_bar(app: &mut VectorcraftApp, ui: &mut Ui, xf: &Xf) {
         items.push((tl!("Duplicate"), "copy", "edit.duplicate", none()));
     }
     // The embedding page's own actions for this selection (`vectorcraft:taskBar`), after the bar's.
-    let host: Vec<crate::state::HostTaskBarAction> = if on_artboards || n != 1 {
-        vec![]
-    } else {
-        let linked = |o: &vectorcraft_doc::Node| matches!(&o.kind, NodeKind::Image(im) if im.link.is_some());
-        // A clip group's picture: the one image it holds directly (none when it holds two).
-        let clipped = first.as_ref().filter(|_| is_clip_group).and_then(|f| {
-            let mut images = f.children().into_iter().flatten().filter(|c| matches!(c.kind, NodeKind::Image(_)));
-            images.next().filter(|_| images.next().is_none())
-        });
-        app.ui
-            .host_task_bar
-            .iter()
-            .filter(|a| match a.when {
-                crate::state::HostTaskBarWhen::Image => is_image && (!a.linked || first.as_ref().is_some_and(|f| linked(f))),
-                crate::state::HostTaskBarWhen::ClipGroup => is_clip_group && (!a.linked || clipped.is_some_and(|c| linked(c))),
-            })
-            .cloned()
-            .collect()
-    };
+    let host = host_actions(app, first.as_ref().filter(|_| !on_artboards && n == 1), is_image, is_clip_group);
     let bar_options = more_options(app);
     // The paints the Fill and Stroke proxies show, "?" when the selected objects' paints differ.
     let (fill, stroke) = crate::panels::current_paints(app);
@@ -278,35 +260,7 @@ pub(super) fn task_bar(app: &mut VectorcraftApp, ui: &mut Ui, xf: &Xf) {
                             run = Some((*cmd, params.clone()));
                         }
                     }
-                    // The page's actions, drawn as the bar's own; a disabled one dimmed, its hover
-                    // text kept, and not clickable. An icon the app doesn't have leaves the label alone.
-                    for action in &host {
-                        let icon = action.icon.as_deref().filter(|i| crate::icons::exists(i));
-                        let ink = if action.enabled { t.text_strong } else { t.text_dim };
-                        let galley = ui.painter().layout_no_wrap(action.label.clone(), egui::FontId::proportional(13.0), ink);
-                        let inset = if icon.is_some() { 30.0 } else { 10.0 };
-                        let sense = if action.enabled { Sense::click() } else { Sense::hover() };
-                        let (r, resp) = ui.allocate_exact_size(vec2(galley.size().x + inset + 8.0, 30.0), sense);
-                        if action.enabled && resp.hovered() {
-                            ui.painter().rect_filled(r, CornerRadius::same(3), t.hover);
-                        }
-                        ui.painter().rect_stroke(r, CornerRadius::same(3), Stroke::new(1.0, t.button_border), StrokeKind::Inside);
-                        if let Some(icon) = icon {
-                            crate::icons::paint(
-                                ui,
-                                icon,
-                                egui::Rect::from_min_size(r.min + vec2(8.0, 7.0), vec2(16.0, 16.0)),
-                                if action.enabled { t.icon } else { t.text_dim },
-                            );
-                        }
-                        ui.painter().galley(pos2(r.left() + inset, r.center().y - galley.size().y / 2.0), galley, ink);
-                        // Named for screen readers (and `ui.widgets`), its state with it.
-                        resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, action.enabled, action.label.as_str()));
-                        let resp = resp.on_hover_text(action.label.as_str());
-                        if action.enabled && resp.clicked() {
-                            host_clicked = Some(action.id.clone());
-                        }
-                    }
+                    host_clicked = draw_host_actions(ui, &t, &host);
                     // The selected objects' Fill, Stroke, Recolor Artwork and Lock (a basic shape's
                     // properties instead), left out with the Artboard tool.
                     if !on_artboards {
@@ -367,11 +321,7 @@ pub(super) fn task_bar(app: &mut VectorcraftApp, ui: &mut Ui, xf: &Xf) {
                 });
             });
     });
-    // A page's action is the page's to run: it hears the click with what was selected.
-    if let Some(id) = host_clicked {
-        let selected = app.session.active().map(|st| st.selection.objects.clone()).unwrap_or_default();
-        app.ui.host_task_bar_clicked.push((id, selected));
-    }
+    record_host_click(app, host_clicked);
     if moved != Vec2::ZERO {
         let to = keep_in(pos + moved);
         let place = &mut app.ui.task_bar_place;
@@ -417,6 +367,76 @@ fn center_on_path_items(app: &VectorcraftApp, items: &mut Vec<(&'static str, &'s
             items.push((label, icon, id, json!({})));
         }
     }
+}
+
+/// A page's action is the page's to run: it hears the click with what was selected.
+fn record_host_click(app: &mut VectorcraftApp, clicked: Option<String>) {
+    if let Some(id) = clicked {
+        let selected = app.session.active().map(|st| st.selection.objects.clone()).unwrap_or_default();
+        app.ui.host_task_bar_clicked.push((id, selected));
+    }
+}
+
+/// The embedding page's actions (`vectorcraft:taskBar`) for the one object selected, `first` (none
+/// with the Artboard tool or several selected):
+/// those for an image when it is one, for a clip group when it is one, and those `linked` only for
+/// a linked picture (the image, or the one image a clip group holds directly).
+fn host_actions(
+    app: &VectorcraftApp,
+    first: Option<&vectorcraft_doc::Node>,
+    is_image: bool,
+    is_clip_group: bool,
+) -> Vec<crate::state::HostTaskBarAction> {
+    if first.is_none() {
+        return vec![];
+    }
+    let linked = |o: &vectorcraft_doc::Node| matches!(&o.kind, NodeKind::Image(im) if im.link.is_some());
+    let clipped = first.filter(|_| is_clip_group).and_then(|f| {
+        let mut images = f.children().into_iter().flatten().filter(|c| matches!(c.kind, NodeKind::Image(_)));
+        images.next().filter(|_| images.next().is_none())
+    });
+    app.ui
+        .host_task_bar
+        .iter()
+        .filter(|a| match a.when {
+            crate::state::HostTaskBarWhen::Image => is_image && (!a.linked || first.is_some_and(linked)),
+            crate::state::HostTaskBarWhen::ClipGroup => is_clip_group && (!a.linked || clipped.is_some_and(|c| linked(c))),
+        })
+        .cloned()
+        .collect()
+}
+
+/// The page's actions drawn as the bar's own buttons, each named for screen readers (and
+/// `ui.widgets`); a disabled one dimmed, its hover text kept, and not clickable. An icon the app
+/// doesn't have leaves the label alone. Answers the id of the one clicked.
+fn draw_host_actions(ui: &mut Ui, t: &Tokens, host: &[crate::state::HostTaskBarAction]) -> Option<String> {
+    let mut clicked = None;
+    for action in host {
+        let icon = action.icon.as_deref().filter(|i| crate::icons::exists(i));
+        let ink = if action.enabled { t.text_strong } else { t.text_dim };
+        let galley = ui.painter().layout_no_wrap(action.label.clone(), egui::FontId::proportional(13.0), ink);
+        let inset = if icon.is_some() { 30.0 } else { 10.0 };
+        let sense = if action.enabled { Sense::click() } else { Sense::hover() };
+        let (r, resp) = ui.allocate_exact_size(vec2(galley.size().x + inset + 8.0, 30.0), sense);
+        if action.enabled && resp.hovered() {
+            ui.painter().rect_filled(r, CornerRadius::same(3), t.hover);
+        }
+        ui.painter().rect_stroke(r, CornerRadius::same(3), Stroke::new(1.0, t.button_border), StrokeKind::Inside);
+        if let Some(icon) = icon {
+            crate::icons::paint(
+                ui,
+                icon,
+                egui::Rect::from_min_size(r.min + vec2(8.0, 7.0), vec2(16.0, 16.0)),
+                if action.enabled { t.icon } else { t.text_dim },
+            );
+        }
+        ui.painter().galley(pos2(r.left() + inset, r.center().y - galley.size().y / 2.0), galley, ink);
+        resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, action.enabled, action.label.as_str()));
+        if action.enabled && resp.on_hover_text(action.label.as_str()).clicked() {
+            clicked = Some(action.id.clone());
+        }
+    }
+    clicked
 }
 
 /// The bar's own items in its More Options menu (label, command, checked), less those an embedding
