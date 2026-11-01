@@ -6,6 +6,11 @@
 //! selected with the Selection or Direct Selection tool, the box is dragged by its inside and
 //! resized by its corners, and the page hears where it was let go (`vectorcraft:regionChanged`).
 //! Nothing here is the document's: no undo step, nothing saved, the tool untouched.
+//!
+//! The page may also show one image's opacity mask as two tints (`vectorcraft:masks`): its white
+//! art red and its black art green, the host page's preserve and inpaint masks. They are drawn
+//! from the mask as it is now, through the image's placement, so a stroke painted while the mask
+//! is edited shows once it is made.
 
 use std::sync::Arc;
 
@@ -60,7 +65,17 @@ impl std::fmt::Debug for HostRegion {
 pub struct HostRegionState {
     pub region: Option<HostRegion>,
     pub changed: Vec<(NodeId, Rel)>,
+    /// The image whose opacity mask the page shows tinted (`vectorcraft:masks`), and its document.
+    pub masks: Option<(u64, NodeId)>,
 }
+
+/// The tint of the mask's white art (the page's preserve mask) and of the rest (its inpaint mask).
+const PRESERVE_TINT: [f64; 3] = [0.92, 0.16, 0.16];
+const INPAINT_TINT: [f64; 3] = [0.10, 0.76, 0.34];
+/// How much of the picture shows through a tint.
+const TINT_ALPHA: f32 = 0.45;
+/// The tint picture's long side, in pixels.
+const TINT_SIDE: u32 = 512;
 
 /// What a drag of the box holds: what it started as, and which part of it is held.
 #[derive(Clone, Copy, Debug)]
@@ -116,6 +131,116 @@ pub fn clear_region(app: &mut VectorcraftApp) {
     app.ui.host_region.region = None;
 }
 
+/// Show image `image` of the active document's opacity mask tinted, in place of any other. An id
+/// that isn't an image of the active document is refused; an image with no mask shows nothing
+/// until it has one.
+pub fn set_masks(app: &mut VectorcraftApp, image: u64) -> Result<(), String> {
+    let st = app.session.active().ok_or("vectorcraft:masks needs a document open")?;
+    let id = NodeId(image);
+    if !st.doc.node(id).is_some_and(|n| matches!(n.kind, NodeKind::Image(_))) {
+        return Err(format!("vectorcraft:masks: {image} is not an image of the active document"));
+    }
+    app.ui.host_region.masks = Some((st.uid, id));
+    Ok(())
+}
+
+/// Take the tinted mask away.
+pub fn clear_masks(app: &mut VectorcraftApp) {
+    app.ui.host_region.masks = None;
+}
+
+/// Every paint's colour in `art` (serialized) made a tint: white art the preserve tint, any other
+/// the inpaint tint.
+fn tinted(art: &mut serde_json::Value) {
+    match art {
+        serde_json::Value::Object(map) => {
+            if let Some(color) = map.get_mut("color").filter(|c| c.get("model").is_some()) {
+                let [r, g, b] = if is_white(color) { PRESERVE_TINT } else { INPAINT_TINT };
+                *color = serde_json::json!({ "model": "rgb", "r": r, "g": g, "b": b });
+            }
+            map.values_mut().for_each(tinted);
+        }
+        serde_json::Value::Array(items) => items.iter_mut().for_each(tinted),
+        _ => {}
+    }
+}
+
+/// Whether a serialized colour is white, to a hundredth.
+fn is_white(color: &serde_json::Value) -> bool {
+    let at = |k: &str| color.get(k).and_then(serde_json::Value::as_f64);
+    let all = |keys: &[&str], ok: fn(f64) -> bool| keys.iter().all(|k| at(k).is_some_and(ok));
+    match color.get("model").and_then(serde_json::Value::as_str) {
+        Some("rgb") => all(&["r", "g", "b"], |v| v >= 0.99),
+        Some("gray") => all(&["k"], |v| v <= 0.01),
+        Some("cmyk") => all(&["c", "m", "y", "k"], |v| v <= 0.01),
+        Some("lab") => all(&["l"], |v| v >= 99.0),
+        _ => false,
+    }
+}
+
+/// Image `image`'s opacity mask as tints over the image's own pixels (at most [`TINT_SIDE`] on its
+/// long side, straight alpha): none when it has no mask, or a disabled one.
+pub fn mask_tints(doc: &vectorcraft_doc::Document, image: NodeId) -> Option<egui::ColorImage> {
+    use std::cell::RefCell;
+    thread_local! {
+        static RENDERER: RefCell<vectorcraft_render::Renderer> = RefCell::new(vectorcraft_render::Renderer::new());
+    }
+    let node = doc.node(image)?;
+    let NodeKind::Image(im) = &node.kind else { return None };
+    let mask = node.extras().mask.as_deref().filter(|m| !m.disabled)?;
+    let mut art = serde_json::to_value(&*mask.art).ok()?;
+    tinted(&mut art);
+    let art: vectorcraft_doc::Node = serde_json::from_value(art).ok()?;
+    let (iw, ih) = (f64::from(im.width.max(1)), f64::from(im.height.max(1)));
+    let k = (f64::from(TINT_SIDE) / iw.max(ih)).min(1.0);
+    let (w, h) = ((iw * k).round().clamp(1.0, f64::from(TINT_SIDE)) as u16, (ih * k).round().clamp(1.0, f64::from(TINT_SIDE)) as u16);
+    let det = im.xf.determinant();
+    if !det.is_finite() || det.abs() < 1e-12 {
+        return None;
+    }
+    let view = Affine::scale_non_uniform(f64::from(w) / iw, f64::from(h) / ih) * im.xf.inverse();
+    let drawn = RENDERER.with(|r| r.borrow_mut().render_node(doc, &Arc::new(art), w, h, view))?;
+    let mut pixels = drawn.to_straight();
+    for px in pixels.chunks_exact_mut(4) {
+        if let Some(a) = px.get_mut(3) {
+            *a = (f32::from(*a) * TINT_ALPHA).round() as u8;
+        }
+    }
+    Some(egui::ColorImage::from_rgba_unmultiplied([usize::from(w), usize::from(h)], &pixels))
+}
+
+/// The tinted mask, over the image's quad and clipped by its frame. Its texture is made again only
+/// when the document changes, and not during a drag or a stroke (the last one stays until it ends).
+fn draw_masks(app: &VectorcraftApp, ui: &Ui, painter: &egui::Painter, xf: &Xf) {
+    let Some((doc, image)) = app.ui.host_region.masks else { return };
+    let Some(st) = app.session.active().filter(|st| st.uid == doc) else { return };
+    let Some(NodeKind::Image(im)) = st.doc.node(image).map(|n| &n.kind) else { return };
+    let (place, w, h) = (im.xf, f64::from(im.width.max(1)), f64::from(im.height.max(1)));
+    let (slot, key) = (egui::Id::unique("host-masks"), (st.uid, image.0));
+    let busy = st.interaction.is_some() || app.session.tool_busy();
+    let cached: Option<((u64, u64), u64, Option<egui::TextureHandle>)> = ui.ctx().data(|d| d.get_temp(slot));
+    let texture = match cached {
+        Some((k, rev, tex)) if k == key && (rev == st.revision || busy) => tex,
+        _ => {
+            let tex = mask_tints(&st.doc, image).map(|img| ui.ctx().load_texture("host-masks", img, egui::TextureOptions::LINEAR));
+            ui.ctx().data_mut(|d| d.insert_temp(slot, (key, st.revision, tex.clone())));
+            tex
+        }
+    };
+    let Some(texture) = texture else { return };
+    let painter = match frame_clip(&st.doc, image, xf) {
+        Some(clip) => painter.with_clip_rect(clip.intersect(painter.clip_rect())),
+        None => painter.clone(),
+    };
+    let mut mesh = egui::Mesh::with_texture(texture.id());
+    let uv = [egui::pos2(0.0, 0.0), egui::pos2(1.0, 0.0), egui::pos2(1.0, 1.0), egui::pos2(0.0, 1.0)];
+    for ((x, y), uv) in [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)].into_iter().zip(uv) {
+        mesh.vertices.push(egui::epaint::Vertex { pos: on_screen(xf, place, w, h, x, y), uv, color: Color32::WHITE });
+    }
+    mesh.indices = vec![0, 1, 2, 0, 2, 3];
+    painter.add(egui::Shape::mesh(mesh));
+}
+
 /// The region's image's placement (pixel space into the document) and size, while the region's
 /// document is active and its image is still there.
 fn placement(app: &VectorcraftApp) -> Option<(&HostRegion, Affine, f64, f64)> {
@@ -142,8 +267,12 @@ pub fn box_on_screen(app: &VectorcraftApp, xf: &Xf) -> Option<[Pos2; 4]> {
 /// none otherwise, and then it is drawn whole.
 fn clip_rect(app: &VectorcraftApp, xf: &Xf) -> Option<egui::Rect> {
     let region = app.ui.host_region.region.as_ref()?;
-    let st = app.session.active()?;
-    let parent = st.doc.node(st.doc.parent_of(region.image)?)?;
+    frame_clip(&app.session.active()?.doc, region.image, xf)
+}
+
+/// The screen rectangle of the clip path of the clip group holding `image`, as [`clip_rect`] says.
+fn frame_clip(doc: &vectorcraft_doc::Document, image: NodeId, xf: &Xf) -> Option<egui::Rect> {
+    let parent = doc.node(doc.parent_of(image)?)?;
     if !matches!(parent.kind, NodeKind::Group { clip: true, .. }) || xf.rot.rem_euclid(std::f64::consts::FRAC_PI_2).abs() > 1e-9 {
         return None;
     }
@@ -156,6 +285,7 @@ fn clip_rect(app: &VectorcraftApp, xf: &Xf) -> Option<egui::Rect> {
 /// The region over the art, before the selection's handles: the page's overlay on the image's
 /// quad, then the box (with corner handles when it can be edited).
 pub(crate) fn draw(app: &mut VectorcraftApp, ui: &Ui, painter: &egui::Painter, xf: &Xf) {
+    draw_masks(app, ui, painter, xf);
     let Some((region, place, w, h)) = placement(app) else { return };
     let quad = [
         on_screen(xf, place, w, h, 0.0, 0.0),
