@@ -898,6 +898,27 @@ fn malformed_doc_fails_cleanly() {
     assert_eq!(s.doc().unwrap().history.undo.len(), 5, "failed places leave no undo step");
 }
 
+/// On wasm32 cfb keeps its clock in JavaScript (web-time), so the Word 97-2003 reader is a default
+/// feature an embedder without JavaScript leaves out, and the apps, which build the engine without
+/// its defaults, turn it on.
+#[test]
+fn the_word_reader_is_a_feature_the_apps_turn_on() {
+    let manifest = include_str!("../../Cargo.toml");
+    assert!(manifest.contains(r#"cfb = { version = "0.15", optional = true }"#), "cfb is the word-doc feature's");
+    assert!(manifest.contains(r#"default = ["bundled-fonts", "word-doc"]"#), "the engine reads Word documents by default");
+    let apps = [
+        include_str!("../../../../apps/vectorcraft/Cargo.toml"),
+        include_str!("../../../../apps/vectorcraft-cli/Cargo.toml"),
+        include_str!("../../../../apps/vectorcraft-web/Cargo.toml"),
+    ];
+    for app in apps {
+        assert!(
+            app.contains(r#"vectorcraft-engine = { workspace = true, features = ["bundled-fonts", "word-doc"] }"#),
+            "an app places no Word documents"
+        );
+    }
+}
+
 #[test]
 fn doc_styles_are_worked_out_once_however_many_paragraphs_use_them() {
     // Two chains of 32 styles, each with 21,000 character properties: paragraph styles 0 to 31
