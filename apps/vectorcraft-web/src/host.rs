@@ -45,6 +45,10 @@
 //!   close: true }` (`protocol::panel`, `vectorcraft_ui_egui::host_panels`).
 //! - `vectorcraft:panelEvent` (to the parent): `{ panel, id, kind, selection | value }`, a click or a
 //!   change in one of the page's panels.
+//! - `vectorcraft:region` (from the parent, host-only): `{ image, rect, overlay?, editable? }`, a box
+//!   (and a picture over the image) on one image, or `{ clear: true }` (`protocol::region`,
+//!   `vectorcraft_ui_egui::host_region`).
+//! - `vectorcraft:regionChanged` (to the parent): `{ image, rect }`, where the user let the box go.
 //! - `vectorcraft:failed` (to the parent): `{ error }`. Before `ready`, the app couldn't start;
 //!   after it, the last message from the parent was refused (the app keeps running).
 //!
@@ -90,6 +94,8 @@ pub struct Bridge {
     selection: Rc<RefCell<protocol::Reported<Vec<u64>>>>,
     /// The `vectorcraft:panel` messages heard, until the next frame applies them in order.
     panels: Rc<RefCell<Vec<protocol::PanelMessage>>>,
+    /// The last `vectorcraft:region` heard, until the next frame applies it.
+    region: Rc<RefCell<Option<protocol::RegionMessage>>>,
 }
 
 impl Bridge {
@@ -115,6 +121,7 @@ impl Bridge {
             task_bar: Rc::default(),
             selection: Rc::default(),
             panels: Rc::default(),
+            region: Rc::default(),
         })
     }
 
@@ -155,6 +162,15 @@ impl Bridge {
         }
         if let Some(actions) = self.task_bar.borrow_mut().take() {
             app.ui.host_task_bar = actions;
+        }
+        match self.region.borrow_mut().take() {
+            Some(protocol::RegionMessage::Set { image, rect, overlay, editable }) => {
+                if let Err(error) = vectorcraft_ui_egui::host_region::set_region(app, image, rect, overlay.as_deref(), editable) {
+                    self.post_failed(&error);
+                }
+            }
+            Some(protocol::RegionMessage::Clear) => vectorcraft_ui_egui::host_region::clear_region(app),
+            None => {}
         }
         let panels = std::mem::take(&mut *self.panels.borrow_mut());
         for message in panels {
@@ -246,6 +262,17 @@ impl Bridge {
         }
     }
 
+    /// After each frame: tell the parent where the user let its region's box go
+    /// (`vectorcraft:regionChanged`).
+    pub fn report_region(&self, app: &mut VectorcraftApp) {
+        for (image, [left, top, right, bottom]) in std::mem::take(&mut app.ui.host_region.changed) {
+            let Some(rect) = message(&[("left", left.into()), ("top", top.into()), ("right", right.into()), ("bottom", bottom.into())]) else {
+                continue;
+            };
+            self.send(&[("type", "vectorcraft:regionChanged".into()), ("image", JsValue::from_f64(image.0 as f64)), ("rect", rect.into())]);
+        }
+    }
+
     /// After each frame: tell the parent when the selected objects change, the active document's
     /// (none while no document is open), the first time after the first frame.
     pub fn report_selection(&self, app: &VectorcraftApp) {
@@ -315,6 +342,31 @@ impl Bridge {
                     }
                     Err(error) => {
                         log::warn!("refused the page's configuration: {error}");
+                        bridge.post_failed(&error);
+                    }
+                }
+                return;
+            }
+            if string(&data, "type").as_deref() == Some("vectorcraft:region") {
+                let rect = js_sys::Reflect::get(&data, &JsValue::from_str("rect")).ok().filter(|r| r.is_object());
+                let fields = protocol::RegionFields {
+                    clear: boolean(&data, "clear"),
+                    image: number(&data, "image"),
+                    rect: rect.map(|r| [number(&r, "left"), number(&r, "top"), number(&r, "right"), number(&r, "bottom")]),
+                    overlay: match js_sys::Reflect::get(&data, &JsValue::from_str("overlay")) {
+                        Ok(v) if v.is_undefined() || v.is_null() => protocol::Field::Absent,
+                        Ok(v) => buffer(&v).map_or(protocol::Field::Wrong, protocol::Field::Given),
+                        Err(_) => protocol::Field::Wrong,
+                    },
+                    editable: boolean(&data, "editable"),
+                };
+                match protocol::region(fields) {
+                    Ok(message) => {
+                        *bridge.region.borrow_mut() = Some(message);
+                        wake();
+                    }
+                    Err(error) => {
+                        log::warn!("refused the page's region: {error}");
                         bridge.post_failed(&error);
                     }
                 }
@@ -525,11 +577,15 @@ fn actions(data: &JsValue) -> Option<Vec<protocol::TaskBarActionFields>> {
 
 /// `bytes` as an `ArrayBuffer` or `Uint8Array`.
 fn bytes(data: &JsValue) -> Option<Vec<u8>> {
-    let bytes = js_sys::Reflect::get(data, &JsValue::from_str("bytes")).ok()?;
+    buffer(&js_sys::Reflect::get(data, &JsValue::from_str("bytes")).ok()?)
+}
+
+/// A value's bytes when it is an `ArrayBuffer` or `Uint8Array`.
+fn buffer(bytes: &JsValue) -> Option<Vec<u8>> {
     if let Some(array) = bytes.dyn_ref::<js_sys::Uint8Array>() {
         Some(array.to_vec())
     } else if bytes.is_instance_of::<js_sys::ArrayBuffer>() {
-        Some(js_sys::Uint8Array::new(&bytes).to_vec())
+        Some(js_sys::Uint8Array::new(bytes).to_vec())
     } else {
         None
     }
