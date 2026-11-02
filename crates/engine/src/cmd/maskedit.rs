@@ -128,10 +128,26 @@ fn first_masked(st: &crate::DocState) -> Option<NodeId> {
 }
 
 /// Enter mask editing for `id` (one undo step) and isolate the editing layer. Returns the layer.
+/// A saved document stays saved: the editing layer is never saved.
 fn start(s: &mut Session, id: NodeId) -> Result<NodeId> {
+    let before = saved_state(s)?;
     let layer = s.edit("Edit Opacity Mask", |d, sel| begin(d, sel, id))?;
     show_editing(s, Some(layer))?;
+    kept_saved(s, before)?;
     Ok(layer)
+}
+
+/// The document before an edit that saving leaves out, and whether it was saved.
+fn saved_state(s: &Session) -> Result<(Arc<Document>, bool)> {
+    let st = s.doc()?;
+    Ok((st.doc.clone(), !st.is_dirty()))
+}
+
+/// After entering or leaving mask editing: a document saved before it stays saved
+/// ([`crate::DocState::saved_content_kept`]); what was painted meanwhile has already made it modified.
+fn kept_saved(s: &mut Session, (before, was_saved): (Arc<Document>, bool)) -> Result<()> {
+    s.doc_mut()?.saved_content_kept(&before, was_saved);
+    Ok(())
 }
 
 fn view_mask(s: &mut Session, p: &Value) -> Result<Value> {
@@ -186,11 +202,13 @@ pub(crate) fn begin(d: &mut Document, sel: &mut Selection, id: NodeId) -> Result
 pub(crate) fn leave(s: &mut Session, _: &Value) -> Result<Value> {
     let Some(me) = s.doc()?.doc.mask_edit else { return Err(bad("transparency.stopEditingOpacityMask", "not editing an opacity mask")) };
     s.end_text_edit();
+    let before = saved_state(s)?;
     s.edit("Stop Editing Opacity Mask", |d, sel| {
         finish(d, sel);
         Ok(())
     })?;
     show_editing(s, None)?;
+    kept_saved(s, before)?;
     Ok(json!({ "id": me.object.0 }))
 }
 
@@ -269,6 +287,31 @@ mod tests {
     use serde_json::json;
 
     use crate::{NodeId, Session};
+
+    /// Entering and leaving mask editing changes nothing that is saved: a saved document stays
+    /// saved (both are still undo steps), and art drawn meanwhile makes it modified, also after.
+    #[test]
+    fn a_saved_document_stays_saved_while_a_mask_is_only_looked_at() {
+        let mut s = Session::new();
+        s.execute("file.new", &json!({"width": 300, "height": 300})).unwrap();
+        let obj = s.execute("shape.rectangle", &json!({"x": 0, "y": 0, "width": 200, "height": 200})).unwrap()["id"].as_u64().unwrap();
+        s.execute("select.set", &json!({"ids": [obj]})).unwrap();
+        s.execute("transparency.makeOpacityMask", &json!({"clip": false})).unwrap();
+        if s.doc().unwrap().doc.mask_edit.is_some() {
+            s.execute("transparency.stopEditingOpacityMask", &json!({})).unwrap();
+        }
+        s.doc_mut().unwrap().mark_saved();
+        let dirty = |s: &Session| s.doc().unwrap().is_dirty();
+        s.execute("transparency.editOpacityMask", &json!({"id": obj})).unwrap();
+        assert!(!dirty(&s), "entering mask editing leaves a saved document saved");
+        s.execute("transparency.stopEditingOpacityMask", &json!({})).unwrap();
+        assert!(!dirty(&s), "and so does leaving it");
+        s.execute("transparency.editOpacityMask", &json!({"id": obj})).unwrap();
+        s.execute("shape.ellipse", &json!({"x": 20, "y": 20, "width": 40, "height": 40})).unwrap();
+        assert!(dirty(&s), "art drawn in the mask is an edit to save");
+        s.execute("transparency.stopEditingOpacityMask", &json!({})).unwrap();
+        assert!(dirty(&s), "and leaving keeps it modified");
+    }
 
     #[test]
     fn edit_mask_art_in_place() {
