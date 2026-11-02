@@ -347,6 +347,15 @@ impl DocState {
             self.mark_saved();
         }
     }
+    /// Note that the edit that replaced `before` changed nothing that is saved (entering or leaving
+    /// an edit mode, whose temporary layer saving leaves out): a document that was saved before it
+    /// (`was_saved`) stays saved, as [`DocState::change_unsaved`] keeps it, though the edit keeps its
+    /// undo step.
+    pub(crate) fn saved_content_kept(&mut self, before: &Arc<Document>, was_saved: bool) {
+        if was_saved && !Arc::ptr_eq(before, &self.doc) {
+            self.unsaved_changes.replaced(Arc::downgrade(before), &self.doc);
+        }
+    }
     /// Keep what interaction `it` (taken from this document) changed, as one undo step.
     pub(crate) fn keep_interaction(&mut self, it: Interaction) {
         if !Arc::ptr_eq(&it.doc, &self.doc) {
