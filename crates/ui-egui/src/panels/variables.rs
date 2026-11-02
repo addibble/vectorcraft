@@ -517,6 +517,8 @@ mod tests {
     /// kind and about variables that make it refuse the file show in the status bar, and so does
     /// its refusal of a header that is another variable's name; all three are translated in every
     /// language but English.
+    // Reads catalogs other than English.
+    #[cfg(feature = "translations")]
     #[test]
     fn the_export_data_sets_warning_shows_in_the_status_bar() {
         use crate::i18n::{Lang, message};
