@@ -221,15 +221,20 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui, p: &HostPanel) {
                 }
                 HostItem::Separator => widgets::divider(ui),
                 HostItem::List(items) => {
+                    // Each row's buttons keep their place at its right, and its text wraps in the
+                    // width left beside them, so a long row never pushes a button out of the panel.
                     for it in items {
-                        ui.horizontal_wrapped(|ui| {
-                            text_item(ui, &it.text, it.tone);
-                            for b in &it.buttons {
-                                if button(ui, b) {
-                                    click(&format!("{}/{}", it.id, b.id), &mut state.events);
+                        egui::Sides::new().shrink_left().wrap().show(
+                            ui,
+                            |ui| text_item(ui, &it.text, it.tone),
+                            |ui| {
+                                for b in it.buttons.iter().rev() {
+                                    if button(ui, b) {
+                                        click(&format!("{}/{}", it.id, b.id), &mut state.events);
+                                    }
                                 }
-                            }
-                        });
+                            },
+                        );
                     }
                 }
             }
