@@ -123,7 +123,10 @@ pub(crate) fn keep_app_keys() {
         }
         e.prevent_default();
         if !app {
-            press_on_canvas(&e);
+            // Pressed again once this listener has returned: the press on the canvas reaches this
+            // listener too, which can't run inside itself.
+            let press = e.clone();
+            wasm_bindgen_futures::spawn_local(async move { press_on_canvas(&press) });
         }
     });
     if let Err(e) = window.add_event_listener_with_callback_and_bool("keydown", on_key.as_ref().unchecked_ref(), true) {
