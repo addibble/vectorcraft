@@ -21,18 +21,24 @@ pub use export::{EXPORT_CANCELLED, cancel_exports, export, export_for_screens, e
 pub(crate) use export::{
     export_files, exported_with_notes, file_url, open_in_app, open_original, reveal_path, run_to_file, save_command_output_named,
 };
+#[cfg(test)]
+pub(crate) use open::open_file;
 pub(crate) use open::report_installed;
 pub(crate) use open::{EXPORT_PRESETS, import_presets, open_with_on, opened};
 pub use open::{
     MAX_RECENT_FILES, OpensAs, ask_revert, install_module, install_plugin, new_from_template, note_recent, open_bytes, open_dialog, open_document,
     open_path, open_path_with, open_reporting, open_with, opens_as, place_bytes, recent_files, report_open_error,
 };
+// For the catalog tests, which read the translations.
+#[cfg(all(test, feature = "translations"))]
+pub(crate) use open::opened_with_notes;
 #[cfg(test)]
-pub(crate) use open::{open_file, opened_with_notes};
+pub(crate) use save::report_write_error;
 pub use save::{ask_format_options, ask_pdf_options, remember_active_artboard, remember_view, save, save_pdf};
 pub(crate) use save::{export_path, is_web, report_saved, target_path, write_named, write_reporting, write_to};
-#[cfg(test)]
-pub(crate) use save::{report_write_error, saved_status};
+// For the catalog tests, which read the translations.
+#[cfg(all(test, feature = "translations"))]
+pub(crate) use save::saved_status;
 
 #[cfg(test)]
 mod tests {
