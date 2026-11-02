@@ -275,3 +275,49 @@ fn a_host_panel_shown_again_stays_in_front() {
     frames(&mut app, &ctx, 3);
     assert!(widget(&mut app, &ctx, "Generate").is_some(), "shown again, it stays");
 }
+
+/// The full rect (x, y, width, height) of the widget named `label` the last frames drew.
+fn widget_rect(app: &mut VectorcraftApp, ctx: &egui::Context, label: &str) -> Option<[f64; 4]> {
+    request(app, ctx, "ui.widgets", json!({}));
+    frames(app, ctx, 2);
+    let answer = request(app, ctx, "ui.widgets", json!({"label": label}));
+    let found = answer["result"]["widgets"].as_array()?.iter().find(|w| w["label"] == label)?.clone();
+    let r: Vec<f64> = found["rect"].as_array()?.iter().filter_map(Value::as_f64).collect();
+    Some([*r.first()?, *r.get(1)?, *r.get(2)?, *r.get(3)?])
+}
+
+/// A list row's buttons stay at its right, beside its text however long: the text wraps in the
+/// width they leave, so no button is pushed out of the panel or onto a line of its own.
+#[test]
+fn a_list_rows_buttons_stay_beside_its_text_however_long() {
+    let mut app = picture_with_action(None);
+    let long = "Lockheed Martin F-22 Raptor on spades-ace: Waiting for an Agent. “Continue the sky to every edge of the card and keep the aircraft exactly as it is.”";
+    let row = |id: &str, text: &str| crate::host_panels::HostListItem {
+        id: id.into(),
+        text: text.into(),
+        tone: Tone::Plain,
+        buttons: vec![button("cancel", &format!("Cancel {id}"), true)],
+    };
+    show_panel(
+        &mut app,
+        HostPanel {
+            id: "queue".into(),
+            title: "Queue".into(),
+            anchor: HostPanelAnchor::Dock,
+            content: vec![HostItem::List(vec![row("one", long), row("two", "Short")])],
+        },
+    );
+    let ctx = egui::Context::default();
+    frames(&mut app, &ctx, 2);
+    app.run("window.panel", json!({"panel": "host:queue"})).unwrap();
+    frames(&mut app, &ctx, 3);
+    let [ax, ay, aw, ah] = widget_rect(&mut app, &ctx, "Cancel one").expect("the long row's Cancel shows");
+    let [bx, by, bw, _] = widget_rect(&mut app, &ctx, "Cancel two").expect("the short row's Cancel shows");
+    // Both at the rows' right edge, inside the window, whatever their text's length.
+    assert!(((ax + aw) - (bx + bw)).abs() < 0.5, "the Cancels share the rows' right edge ({} and {})", ax + aw, bx + bw);
+    assert!(ax + aw <= 1600.0 && ax > 0.0);
+    // The long row's text wraps beside its Cancel: the next row starts lines below it.
+    assert!(by - ay > 2.0 * ah, "the long row is several lines high ({} between the rows)", by - ay);
+    click(&mut app, &ctx, "Cancel one");
+    assert!(matches!(app.ui.host_panels.events.last(), Some(HostPanelEvent::Click { id, .. }) if id == "one/cancel"));
+}
