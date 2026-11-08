@@ -195,9 +195,18 @@ fn draw(b: &mut dyn Backend, a: &Args, label: &str, create: Step<'_>, mut made: 
 
 pub(super) fn draw_path(b: &mut dyn Backend, a: &Args) -> Result<Value, String> {
     let mut p = json!({});
-    if let Some(d) = a.get("d").and_then(Value::as_str) {
-        p["d"] = json!(d);
+    // As path.create takes them: null is absent, and a `d` that is not text is path.create's to
+    // refuse, by what is wrong with it.
+    let kinds = a.get("kinds").filter(|k| !k.is_null());
+    if let Some(d) = a.get("d").filter(|d| !d.is_null()) {
+        p["d"] = d.clone();
+        if let Some(kinds) = kinds {
+            p["kinds"] = kinds.clone();
+        }
     } else {
+        if kinds.is_some() {
+            return Err("`kinds` goes with `d`".into());
+        }
         let pts = a.get("points").and_then(Value::as_array).ok_or("give `points` or `d`")?;
         let mut anchors = vec![];
         for (i, pt) in pts.iter().enumerate() {

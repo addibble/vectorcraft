@@ -234,6 +234,7 @@ pub fn tool_definitions() -> Vec<Value> {
                 with_draw_options(json!({
                     "points": {"type": "array", "description": "Anchors: [x,y] pairs or {x, y, in?, out?, smooth?} objects", "items": {"anyOf": [{"type": "array", "items": {"type": "number"}, "minItems": 2}, {"type": "object"}]}},
                     "d": string("SVG path data (alternative to points), e.g. \"M0 0 L100 0 L50 80 Z\""),
+                    "kinds": string("With d only: each anchor's kind, c (corner) or s (smooth), one letter per anchor, a space between subpaths. With kinds, d is read as a saved file reads it (a closing point near but not at the start is an anchor of its own); without, a closing point within 1e-7 of the start folds into it, and anchors are smooth where their handles line up, except in an open subpath another follows (corners)"),
                     "closed": {"type": "boolean", "description": "Close the path (points only)"},
                     "fill": paint_schema("Fill"),
                     "stroke": paint_schema("Stroke"),

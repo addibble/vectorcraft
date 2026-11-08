@@ -1,7 +1,7 @@
 use serde_json::json;
 
 use super::*;
-use vectorcraft_geom::Point;
+use vectorcraft_geom::{AnchorKind, PathData, Point};
 use vectorcraft_tools::{PointerEvent, PointerKind, ToolKey};
 
 mod actionset;
@@ -1521,6 +1521,184 @@ fn path_create_with_path_data_refuses_closed_given_as_text() {
         let NodeKind::Path { path, .. } = &s.doc().unwrap().doc.node(id).unwrap().kind else { panic!("a path") };
         assert_eq!((path.subpaths.len(), path.anchor_count(), path.is_closed()), (1, 3, false), "closed: {closed}");
     }
+}
+
+/// `path.create` reads `d`'s geometry as a saved file's (an arc one cubic per quarter turn with
+/// half a degree of grace); its closing rule and kinds depend on `kinds`: with it, as a saved
+/// file reads them, without, as path data written by hand (a closing point within 1e-7 of the
+/// start folded in, kinds from the handles, as it always has). Path data it cannot read, or that
+/// draws nothing, is refused with what is wrong.
+#[test]
+fn path_create_reads_path_data_as_a_file_does() {
+    let mut s = session();
+    let made = |s: &mut Session, p: Value| {
+        let id = NodeId(s.execute("path.create", &p).unwrap()["id"].as_u64().unwrap());
+        let NodeKind::Path { path, .. } = &s.doc().unwrap().doc.node(id).unwrap().kind else { panic!("a path") };
+        path.clone()
+    };
+    let geometry = |p: &PathData| p.subpaths.iter().flat_map(|s| &s.anchors).map(|a| (a.h_in, a.p, a.h_out)).collect::<Vec<_>>();
+    let kinds =
+        |p: &PathData| p.subpaths.iter().flat_map(|s| &s.anchors).map(|a| if a.kind == AnchorKind::Smooth { 's' } else { 'c' }).collect::<String>();
+    for (d, smooth) in [
+        ("M0 0A1000 1000 0 1 1 10 0", "csssc"),
+        ("M0 0A5 5 0 0 1 10 0", "csc"),
+        ("M0 0C10 10 50 10 60 0S110 -10 120 0", "csc"),
+        ("M0 0Q30 30 60 0T120 0Z", "csc"),
+        ("m10 10h20v20h-20z m5 5 l1 1", "cccccc"),
+        // Was smooth by its handles before path data went through the file's reader, and still is.
+        ("M0 0C1 1 9 1 10 0C11 -1 19 -1 20 0", "csc"),
+        ("M0 5C0 2.24 2.24 0 5 0C7.76 0 10 2.24 10 5C10 7.76 7.76 10 5 10C2.24 10 0 7.76 0 5Z", "ssss"),
+        ("M0 0A5 5 0 0 1 10 0A5 5 0 0 1 0 0Z", "ssss"),
+        // An open subpath a move ends keeps its corners, as it always has; the last is inferred.
+        ("M0 0C0 10 20 10 20 0C20 -10 40 -10 40 0M50 50L60 60", "ccccc"),
+        ("M50 50L60 60M0 0C0 10 20 10 20 0C20 -10 40 -10 40 0", "cccsc"),
+        // An arc's joins in an open subpath another follows: corners, as from_bezpath made them.
+        ("M0 0A5 5 0 0 1 10 0M50 50L60 60", "ccccc"),
+    ] {
+        let by_file = vectorcraft_geom::notation::parse_path_data(d, None).unwrap();
+        let path = made(&mut s, json!({"d": d}));
+        assert_eq!(geometry(&path), geometry(&by_file), "{d}");
+        assert_eq!(kinds(&path), smooth, "{d}");
+        // What PathData::from_bezpath made of the same data, where kurbo reads it as SVG does.
+        if !d.contains(['A', 'S', 'T']) {
+            assert_eq!(path, PathData::from_bezpath(&vectorcraft_geom::BezPath::from_svg(d).unwrap()), "{d}");
+        }
+    }
+    // `kinds` says each anchor's kind, as in a file, the anchors counted as a file holds them: a
+    // `d` and `kinds` as a file saved before the near closing case was written them.
+    assert_eq!(kinds(&made(&mut s, json!({"d": "M0 0L10 0L10 10", "kinds": "csc"}))), "csc");
+    assert_eq!(kinds(&made(&mut s, json!({"d": "M0 0L10 0L10 10L0 5e-8Z", "kinds": "cscc"}))), "cscc");
+    // Without kinds the same d folds its closing point within 1e-7, as written by hand; with
+    // kinds it is a saved file's d, every anchor counted.
+    assert_eq!(made(&mut s, json!({"d": "M0 0L10 0L10 10L0 5e-8Z"})).anchor_count(), 3);
+    assert!(s.execute("path.create", &json!({"d": "M0 0L10 0L10 10L0 5e-8Z", "kinds": "csc"})).is_err());
+    assert_eq!(kinds(&made(&mut s, json!({"d": "M0 0C1 1 9 1 10 0C11 -1 19 -1 20 0", "kinds": "ccc"}))), "ccc");
+    for (p, why) in [
+        (json!({"d": "M0 0R1 1"}), "`R` is not path data"),
+        (json!({"d": "M0 0L1 1", "kinds": "c"}), "`kinds` gives subpath 0 1 letters but it has 2 anchors"),
+        (json!({"d": "M0 0L1 1", "kinds": 5}), "`kinds` must be a string"),
+        (json!({"d": 5}), "`d` must be a string"),
+        (json!({"d": ""}), "need at least one anchor"),
+        (json!({"d": "  "}), "need at least one anchor"),
+        (json!({"anchors": [{"x": 0, "y": 0}], "kinds": "c"}), "`kinds` goes with `d`"),
+    ] {
+        let err = s.execute("path.create", &p).unwrap_err().to_string();
+        assert!(err.contains(why), "{p}: {err}");
+    }
+}
+
+proptest::proptest! {
+    #![proptest_config(proptest::prelude::ProptestConfig { cases: 256, failure_persistence: None, ..proptest::prelude::ProptestConfig::default() })]
+
+    /// Over path data kurbo reads to the end (M, L, C, Q, H and V either case, numbers without a
+    /// leading `+`, `Z` followed by a move, a segment or the end), `path.create` without `kinds`
+    /// makes what PathData::from_bezpath made of it, kinds included.
+    #[test]
+    fn path_create_is_from_bezpath_where_kurbo_reads_all_of_it(d in arb_kurbo_path()) {
+        let mut s = session();
+        let id = NodeId(s.execute("path.create", &json!({"d": d})).unwrap()["id"].as_u64().unwrap());
+        let NodeKind::Path { path, .. } = &s.doc().unwrap().doc.node(id).unwrap().kind else { panic!("a path") };
+        proptest::prop_assert_eq!(path, &PathData::from_bezpath(&vectorcraft_geom::BezPath::from_svg(&d).unwrap()), "{}", d);
+    }
+}
+
+/// One step of a subpath `arb_kurbo_subpath` writes: its command, relative or not, its numbers.
+#[derive(Clone, Debug)]
+enum KurboStep {
+    Line(bool, (f64, f64)),
+    Curve(bool, (f64, f64), (f64, f64), (f64, f64)),
+    /// A curve whose first control point reflects the last curve's second, so the handles at the
+    /// join line up (written as `C` with the reflected point, as kurbo reads `C` as given).
+    Smooth((f64, f64), (f64, f64)),
+    Quad(bool, (f64, f64), (f64, f64)),
+    Horizontal(bool, f64),
+    Vertical(bool, f64),
+}
+
+/// Path data kurbo reads to the end: subpaths of segments (M, L, C, Q, H and V either case,
+/// numbers without a leading `+`), each begun by a move (`M`, or `m` from where the last one left
+/// off) or, after a `Z`, by its first segment alone, and ended by nothing, `Z`, a line back to
+/// exactly its start then `Z`, a relative line back (a rounding error off, as relative data ends)
+/// then `z`, or a line to 5e-8 off its start then `Z`. Curves whose first control point reflects
+/// the last one's second make joins whose handles line up.
+fn arb_kurbo_path() -> impl proptest::strategy::Strategy<Value = String> {
+    use proptest::prelude::*;
+    let n = || (-1000i32..1000).prop_map(|n| f64::from(n) / 10.0);
+    let pt = move || (n(), n());
+    let step = prop_oneof![
+        (any::<bool>(), pt()).prop_map(|(r, p)| KurboStep::Line(r, p)),
+        (any::<bool>(), pt(), pt(), pt()).prop_map(|(r, a, b, c)| KurboStep::Curve(r, a, b, c)),
+        (pt(), pt()).prop_map(|(b, c)| KurboStep::Smooth(b, c)),
+        (any::<bool>(), pt(), pt()).prop_map(|(r, a, b)| KurboStep::Quad(r, a, b)),
+        (any::<bool>(), n()).prop_map(|(r, x)| KurboStep::Horizontal(r, x)),
+        (any::<bool>(), n()).prop_map(|(r, y)| KurboStep::Vertical(r, y)),
+    ];
+    let sub = (pt(), any::<bool>(), any::<bool>(), proptest::collection::vec(step, 0..5), 0u8..5);
+    proptest::collection::vec(sub, 1..4).prop_map(|subs| {
+        let mut d = String::new();
+        // Where the reader is, the subpath's start, and whether the last subpath was closed (so a
+        // segment may follow its Z without a move).
+        let (mut at, mut start, mut closed) = ((0.0f64, 0.0f64), (0.0f64, 0.0f64), false);
+        let abs = |at: (f64, f64), rel: bool, p: (f64, f64)| if rel { (at.0 + p.0, at.1 + p.1) } else { p };
+        for (i, (move_to, rel_move, no_move, steps, ending)) in subs.into_iter().enumerate() {
+            if i > 0 && closed && no_move && !steps.is_empty() {
+                // After Z the current point is the closed subpath's start; the segments go on from it.
+                at = start;
+            } else if rel_move {
+                let delta = (move_to.0 - at.0, move_to.1 - at.1);
+                d += &format!("m{} {}", delta.0, delta.1);
+                at = (at.0 + delta.0, at.1 + delta.1);
+                start = at;
+            } else {
+                d += &format!("M{} {}", move_to.0, move_to.1);
+                (at, start) = (move_to, move_to);
+            }
+            // The last curve's second control point, which a reflected curve reflects.
+            let mut c2 = None::<(f64, f64)>;
+            for step in steps {
+                match step {
+                    KurboStep::Line(r, p) => {
+                        d += &format!("{}{} {}", if r { 'l' } else { 'L' }, p.0, p.1);
+                        (at, c2) = (abs(at, r, p), None);
+                    }
+                    KurboStep::Curve(r, a, b, p) => {
+                        d += &format!("{}{} {} {} {} {} {}", if r { 'c' } else { 'C' }, a.0, a.1, b.0, b.1, p.0, p.1);
+                        (at, c2) = (abs(at, r, p), Some(abs(at, r, b)));
+                    }
+                    KurboStep::Smooth(b, p) => {
+                        let prev = c2.unwrap_or(at);
+                        let a = (at.0 + (at.0 - prev.0), at.1 + (at.1 - prev.1));
+                        d += &format!("C{} {} {} {} {} {}", a.0, a.1, b.0, b.1, p.0, p.1);
+                        (at, c2) = (p, Some(b));
+                    }
+                    KurboStep::Quad(r, q, p) => {
+                        d += &format!("{}{} {} {} {}", if r { 'q' } else { 'Q' }, q.0, q.1, p.0, p.1);
+                        (at, c2) = (abs(at, r, p), None);
+                    }
+                    KurboStep::Horizontal(r, x) => {
+                        d += &format!("{}{x}", if r { 'h' } else { 'H' });
+                        (at, c2) = ((if r { at.0 + x } else { x }, at.1), None);
+                    }
+                    KurboStep::Vertical(r, y) => {
+                        d += &format!("{}{y}", if r { 'v' } else { 'V' });
+                        (at, c2) = ((at.0, if r { at.1 + y } else { y }), None);
+                    }
+                }
+            }
+            closed = true;
+            match ending {
+                1 => d += "Z",
+                2 => d += &format!("L{} {}Z", start.0, start.1),
+                3 => d += &format!("l{} {}z", start.0 - at.0, start.1 - at.1),
+                4 => d += &format!("L{} {}Z", start.0 + 5e-8, start.1),
+                _ => closed = false,
+            }
+            if closed {
+                at = start;
+            }
+        }
+        d
+    })
 }
 
 /// #1824: with anchors selected with Direct Selection, the Transform panel's X/Y/W/H
