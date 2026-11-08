@@ -195,7 +195,7 @@ impl Renderer {
         let mips = f.opts.image_mips;
         let Some((key, pm)) = blob_pixmap(&supplied.blob, !mips) else { return };
         let (key, pm) = ink::ink_image(&key, &pm, f.ink, Some(&supplied.blob), !mips);
-        let pm = if mips { image_mip(&key, pm, unit) } else { pm };
+        let (_, pm) = if mips { image_mip(key, pm, unit) } else { (key, pm) };
         let sx = im.width as f64 / pm.width().max(1) as f64;
         let sy = im.height as f64 / pm.height().max(1) as f64;
         let quality = if f.opts.smooth_images { peniko::ImageQuality::Medium } else { peniko::ImageQuality::Low };
