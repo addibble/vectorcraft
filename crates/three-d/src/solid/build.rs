@@ -1,4 +1,4 @@
-use super::rings::{MAX_PIECES, MAX_PLANE_POINTS, MAX_SOLID_POINTS, inset, left, rings, signed_area};
+use super::rings::{MAX_PIECES, MAX_PLANE_POINTS, MAX_SOLID_POINTS, inset, left, resolved, rings, signed_area};
 use super::{Bevel, Extrude, Facet, FillRule, MAX_FACES, PathData, Point, Rect, Revolve, V3, View, eye_distance, perspective_scale};
 
 /// Turns 3D points into document points and shades faces for one view.
@@ -376,7 +376,8 @@ pub fn extrude(path: &PathData, rule: FillRule, bounds: Rect, options: Extrude, 
     if o.depth <= 0.0 {
         return plane(path, rule, bounds, view);
     }
-    let rings = rings(path, rule, bounds.width().max(bounds.height()), MAX_SOLID_POINTS)?;
+    let (path, rule) = resolved(path, rule);
+    let rings = rings(&path, rule, bounds.width().max(bounds.height()), MAX_SOLID_POINTS)?;
     let camera = Camera::new(view, bounds, o.depth);
     let mut b = Builder { camera: &camera, closed: o.cap, facets: vec![] };
     let steps = steps(&o);
@@ -429,7 +430,8 @@ pub fn extrude(path: &PathData, rule: FillRule, bounds: Rect, options: Extrude, 
 /// shape's own, so that every part of one object turns about the same point).
 pub fn plane(path: &PathData, rule: FillRule, bounds: Rect, view: View) -> Result<Vec<Facet>, String> {
     check_bounds(bounds)?;
-    let rings = rings(path, rule, bounds.width().max(bounds.height()), MAX_PLANE_POINTS)?;
+    let (path, rule) = resolved(path, rule);
+    let rings = rings(&path, rule, bounds.width().max(bounds.height()), MAX_PLANE_POINTS)?;
     let camera = Camera::new(view, bounds, 0.0);
     let mut b = Builder { camera: &camera, closed: false, facets: vec![] };
     let contours: Vec<Vec<V3>> = rings.iter().map(|r| r.iter().map(|p| camera.place(*p, 0.0)).collect()).collect();
