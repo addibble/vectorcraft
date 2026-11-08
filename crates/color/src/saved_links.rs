@@ -160,7 +160,7 @@ mod tests {
     #[test]
     fn a_solid_paint_without_its_colour_or_a_link_is_refused() {
         let err = serde_json::from_value::<Paint>(json!({"type": "solid"})).unwrap_err().to_string();
-        assert!(err.contains("needs its color"), "{err}");
+        assert!(err.contains("missing field `color`"), "{err}");
         assert!(serde_json::from_value::<Paint>(json!({"type": "solid", "swatch": "Accent"})).is_ok());
     }
 
