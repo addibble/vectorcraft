@@ -185,6 +185,7 @@ fn export_all_open_documents_writes_each_to_the_folder_picked() {
 /// #4921: Batch Trace Folder from Object › Plug-ins › Document Tools asks for the folder of images,
 /// then the destination, traces each image there and reports the count (a status the catalogs
 /// translate); cancelling either does nothing.
+#[cfg(feature = "translations")]
 #[test]
 fn batch_trace_folder_asks_for_both_folders() {
     let dir = folder("batch-trace");
