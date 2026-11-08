@@ -12,7 +12,7 @@ use crate::{Document, NodeId};
 
 /// One asset: what it is called (its files' names) and the objects it exports, cropped to their
 /// visual bounds.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ExportAsset {
     pub id: u64,
     pub name: String,
