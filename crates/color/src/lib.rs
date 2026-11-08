@@ -356,24 +356,21 @@ pub fn keep_model(orig: Color, new: Color) -> Color {
     new.in_model(orig.model())
 }
 
-/// What fills or strokes an object. Its serde (see [`saved_links`]) also writes and reads a solid
-/// colour linked to a global swatch by the swatch's name.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(remote = "Self", tag = "type", rename_all = "lowercase")]
+/// What fills or strokes an object. Its serde and JSON Schema (see [`saved_links`]) also write and
+/// read a solid colour linked to a global swatch by the swatch's name; the fields' saved form and
+/// its descriptions are on `saved_links`' mirror of this enum, which the compiler holds to it.
+#[derive(Clone, Debug, Default, PartialEq)]
 pub enum Paint {
     #[default]
     None,
     Solid {
         /// The colour shown: with a link, the swatch's colour at `tint` ([`Color::tinted`]). Left
         /// out in a saved file when it is exactly that ([`saved_links`]).
-        #[serde(default = "Color::unresolved")]
         color: Color,
         /// Name of the global swatch this colour is linked to (edits to the swatch update it).
-        #[serde(default, skip_serializing_if = "Option::is_none")]
         swatch: Option<String>,
         /// Tint of the linked swatch (0..1; 1 without a link): a spot tint prints this much of its
         /// plate, and swatch edits keep it.
-        #[serde(default = "full_tint", skip_serializing_if = "is_full_tint")]
         tint: f32,
     },
     Gradient(Box<GradientPaint>),
@@ -381,12 +378,11 @@ pub enum Paint {
         pattern: String,
         /// Pattern space → document placement (Transform Patterns edits it; identity = tiles
         /// anchored at the document origin).
-        #[serde(default, skip_serializing_if = "is_identity")]
         xf: kurbo::Affine,
     },
 }
 
-fn is_identity(a: &kurbo::Affine) -> bool {
+pub(crate) fn is_identity(a: &kurbo::Affine) -> bool {
     *a == kurbo::Affine::IDENTITY
 }
 
