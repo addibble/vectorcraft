@@ -254,7 +254,11 @@ mod kind_de {
                     if let NodeKind::Path { path, live: Some(live), .. } = &mut kind
                         && path.subpaths.is_empty()
                     {
+                        // As many anchors as the path would have had, read with the file's budget.
+                        // The shape makes at most twice its outline's (2,000 for a polygon) or its
+                        // base path's, which was spent as it was read: built, then spent.
                         *path = live.to_path();
+                        vectorcraft_geom::path::spend_anchor_budget(path.anchor_count()).map_err(de::Error::custom)?;
                     }
                     return Ok(kind);
                 }

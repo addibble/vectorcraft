@@ -106,10 +106,17 @@ fn a_live_shape_whose_path_differs_keeps_it_and_a_missing_one_is_rebuilt() {
     let back = load(&serde_json::to_vec(&v).unwrap()).unwrap();
     let NodeKind::Path { path, .. } = &back.layers[0].children().unwrap()[0].kind else { panic!("a path") };
     assert_eq!(*path, ellipse.to_path());
+    // The anchors it rebuilds count against the read's budget as anchors read do.
+    let kind = v["document"]["layers"][0]["kind"]["children"][0]["kind"].clone();
+    let n = ellipse.to_path().anchor_count();
+    let read = |max: usize| vectorcraft_geom::path::with_anchor_budget(max, || serde_json::from_value::<NodeKind>(kind.clone()));
+    assert!(read(n).is_ok());
+    let err = read(n - 1).unwrap_err().to_string();
+    assert!(err.contains("the paths have more than") && err.contains("anchors"), "the budget's refusal: {err}");
 }
 
 #[test]
-fn files_written_by_hand_read_svg_path_data_and_transform_lists() {
+fn files_written_by_hand_read_svg_path_data_every_command_and_transform_lists() {
     let mut d = Document::new(100.0, 100.0);
     path_node(&mut d, PathData::default(), None);
     let mut v: Value = serde_json::from_slice(&save(&d, false)).unwrap();
@@ -119,7 +126,17 @@ fn files_written_by_hand_read_svg_path_data_and_transform_lists() {
     let pts: Vec<Point> = path.subpaths[0].anchors.iter().map(|a| a.p).collect();
     assert_eq!(pts, [Point::new(10.0, 10.0), Point::new(30.0, 10.0), Point::new(30.0, 30.0), Point::new(10.0, 30.0)]);
     assert!(path.subpaths[0].closed);
+    // The rest of SVG's commands read too: a half circle is cubics from (0 0) to exactly (10 0),
+    // saved back as `C` segments.
     v["document"]["layers"][0]["kind"]["children"][0]["kind"]["path"] = json!({"d": "M0 0A5 5 0 0 1 10 0"});
+    let back = load(&serde_json::to_vec(&v).unwrap()).unwrap();
+    let NodeKind::Path { path, .. } = &back.layers[0].children().unwrap()[0].kind else { panic!("a path") };
+    let arc = &path.subpaths[0].anchors;
+    assert!(arc.len() >= 3, "{arc:?}");
+    assert_eq!((arc[0].p, arc[arc.len() - 1].p), (Point::new(0.0, 0.0), Point::new(10.0, 0.0)));
+    let saved = String::from_utf8(save(&back, false)).unwrap();
+    assert!(saved.contains("\"d\":\"M0 0C"), "{saved}");
+    v["document"]["layers"][0]["kind"]["children"][0]["kind"]["path"] = json!({"d": "M0 0R5 5"});
     let err = load(&serde_json::to_vec(&v).unwrap()).unwrap_err().to_string();
-    assert!(err.contains("`A` is not read"), "{err}");
+    assert!(err.contains("`R` is not path data"), "{err}");
 }
