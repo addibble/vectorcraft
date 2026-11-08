@@ -102,7 +102,7 @@ impl<'de> Deserialize<'de> for Paint {
                 if let Paint::Solid { color, swatch: None, .. } = &paint
                     && color.is_unresolved()
                 {
-                    return Err(de::Error::custom("a solid paint needs its color, or the swatch it links to"));
+                    return Err(de::Error::missing_field("color"));
                 }
                 Ok(paint)
             }
