@@ -12,7 +12,107 @@ use serde::de::{self, MapAccess, Visitor};
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::{Color, Paint};
+use crate::{Color, GradientPaint, Paint, full_tint, is_full_tint, is_identity};
+
+// [`Paint`] as a saved file writes it as an object, and the schema of those objects. serde's
+// remote derive takes apart and builds a `Paint` field by field, so this mirror can't drift from
+// it: a field or variant added to one and not the other fails to compile. Its doc comments are
+// the schema's descriptions, which agents read.
+#[derive(Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(remote = "Paint", rename = "Paint", tag = "type", rename_all = "lowercase")]
+enum PaintDef {
+    /// No paint.
+    None,
+    /// A solid colour, linked to a global swatch or not.
+    Solid {
+        /// The colour shown: with a link, the swatch's colour at `tint`. Left out in a saved file
+        /// when it is exactly that (the swatch gives it); required without `swatch`.
+        #[serde(default = "Color::unresolved")]
+        color: Color,
+        /// Name of the global swatch this colour is linked to (edits to the swatch update it).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        swatch: Option<String>,
+        /// Tint of the linked swatch (0..1; 1 without a link): a spot tint prints this much of its
+        /// plate, and swatch edits keep it.
+        #[serde(default = "full_tint", skip_serializing_if = "is_full_tint")]
+        tint: f32,
+    },
+    Gradient(Box<GradientPaint>),
+    /// A pattern swatch, by name.
+    Pattern {
+        pattern: String,
+        /// Pattern space → document placement (Transform Patterns edits it; identity = tiles
+        /// anchored at the document origin).
+        #[serde(default, skip_serializing_if = "is_identity")]
+        xf: kurbo::Affine,
+    },
+}
+
+/// A paint is one of the paint objects or, for a solid colour linked to a global swatch at 100%,
+/// that swatch's name alone (`"fill": "Accent"`), as the reader takes it: the objects' own choice
+/// with the name as one more branch, so a schema walker picks the branch a value is in one step.
+impl schemars::JsonSchema for Paint {
+    fn schema_name() -> String {
+        "Paint".into()
+    }
+
+    fn json_schema(generator: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
+        use schemars::schema::{InstanceType, ObjectValidation, Schema, SchemaObject};
+        let tagged = |schema: &SchemaObject, tag: &str| {
+            schema
+                .object
+                .as_ref()
+                .and_then(|o| o.properties.get("type"))
+                .is_some_and(|t| matches!(t, Schema::Object(t) if t.enum_values.as_deref() == Some(&[serde_json::Value::from(tag)])))
+        };
+        let mut paint = <PaintDef as schemars::JsonSchema>::json_schema(generator).into_object();
+        if let Some(branches) = paint.subschemas.as_mut().and_then(|s| s.one_of.as_mut()) {
+            for branch in branches.iter_mut() {
+                let Schema::Object(solid) = branch else { continue };
+                if !tagged(solid, "solid") {
+                    continue;
+                }
+                // The colour's default is the unresolved colour the swatch fills in, which no
+                // writer may give.
+                if let Some(Schema::Object(color)) = solid.object().properties.get_mut("color") {
+                    color.metadata().default = None;
+                }
+                // A solid colour needs its colour unless it names a swatch, as the reader does.
+                let names_a_swatch = SchemaObject {
+                    object: Some(Box::new(ObjectValidation {
+                        properties: [(
+                            "swatch".to_string(),
+                            SchemaObject { instance_type: Some(InstanceType::String.into()), ..SchemaObject::default() }.into(),
+                        )]
+                        .into(),
+                        required: ["swatch".to_string()].into(),
+                        ..ObjectValidation::default()
+                    })),
+                    ..SchemaObject::default()
+                };
+                let has_a_colour = SchemaObject {
+                    object: Some(Box::new(ObjectValidation { required: ["color".to_string()].into(), ..ObjectValidation::default() })),
+                    ..SchemaObject::default()
+                };
+                let subschemas = solid.subschemas();
+                subschemas.if_schema = Some(Box::new(names_a_swatch.into()));
+                subschemas.else_schema = Some(Box::new(has_a_colour.into()));
+            }
+            let mut name = SchemaObject { instance_type: Some(InstanceType::String.into()), ..SchemaObject::default() };
+            name.metadata().description = Some(
+                "The name of a global swatch: a solid colour linked to it at 100%, which takes its colour from the swatch. Every string is read as a swatch's name; for no paint, write {\"type\": \"none\"}.".into(),
+            );
+            branches.insert(0, name.into());
+        }
+        debug_assert!(
+            paint.subschemas.as_ref().and_then(|s| s.one_of.as_ref()).is_some_and(|b| b.len() == 5),
+            "PaintDef's schema is no longer a choice of the four tagged objects; the name branch and the solid's rule weren't added"
+        );
+        paint.metadata().description =
+            Some("What fills or strokes an object: a paint object, or a global swatch's name for a solid colour linked to it at 100%.".into());
+        paint.into()
+    }
+}
 
 thread_local! {
     static LINKS: RefCell<Option<BTreeMap<String, Color>>> = const { RefCell::new(None) };
@@ -81,7 +181,7 @@ impl Serialize for Paint {
             m.serialize_field("tint", tint)?;
             return m.end();
         }
-        Paint::serialize(self, s)
+        PaintDef::serialize(self, s)
     }
 }
 
@@ -97,7 +197,7 @@ impl<'de> Deserialize<'de> for Paint {
                 Ok(Paint::Solid { color: note_unresolved(), swatch: Some(name.to_string()), tint: 1.0 })
             }
             fn visit_map<A: MapAccess<'de>>(self, map: A) -> Result<Paint, A::Error> {
-                let paint = Paint::deserialize(de::value::MapAccessDeserializer::new(map))?;
+                let paint = PaintDef::deserialize(de::value::MapAccessDeserializer::new(map))?;
                 // Only a linked colour may leave out its value: its swatch gives it.
                 if let Paint::Solid { color, swatch: None, .. } = &paint
                     && color.is_unresolved()
@@ -173,5 +273,30 @@ mod tests {
         // And the table ends with the call, even when it panics.
         let _ = std::panic::catch_unwind(|| with(table(), || panic!("inside")));
         assert!(serde_json::to_value(linked(1.0)).unwrap().is_object());
+    }
+
+    /// The schema describes what the reader takes: a swatch's name alone, or a paint object of one
+    /// of the four kinds, all branches of one choice; a solid object needs its colour unless it
+    /// names a swatch, and no default it advertises is one the reader refuses.
+    #[test]
+    fn the_schema_takes_a_swatch_name_or_a_paint_object() {
+        let schema = serde_json::to_value(schemars::schema_for!(Paint)).unwrap();
+        let branches = schema["oneOf"].as_array().expect("a paint is one choice");
+        assert_eq!(branches[0]["type"], "string");
+        let kinds: Vec<&str> = branches[1..].iter().filter_map(|v| v["properties"]["type"]["enum"][0].as_str()).collect();
+        assert_eq!(kinds, ["none", "solid", "gradient", "pattern"]);
+        assert!(schema["definitions"].get("PaintObject").is_none() && schema["definitions"].get("PaintDef").is_none());
+        let solid = &branches[2];
+        assert_eq!(solid["else"], json!({"required": ["color"]}));
+        assert_eq!(solid["if"]["required"], json!(["swatch"]));
+        assert_eq!(solid["if"]["properties"]["swatch"]["type"], "string", "a null swatch names none: {solid}");
+        assert!(solid["properties"]["color"].get("default").is_none(), "no unresolved colour as a default: {solid}");
+        // Each form the writer produces is the form its branch describes.
+        let links = BTreeMap::from([("Accent".to_string(), accent())]);
+        let by_name = with(links.clone(), || serde_json::to_value(linked(1.0)).unwrap());
+        assert!(by_name.is_string());
+        let tinted = with(links, || serde_json::to_value(linked(0.4)).unwrap());
+        assert_eq!(tinted["type"], "solid");
+        assert!(tinted.get("color").is_none(), "a linked colour leaves its value to the swatch");
     }
 }
