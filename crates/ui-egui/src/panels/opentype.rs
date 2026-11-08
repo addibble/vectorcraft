@@ -347,6 +347,7 @@ mod tests {
 
     /// A set the font names keeps the font's name; a set without one gets the numbered label in
     /// the UI language.
+    #[cfg(feature = "translations")]
     #[test]
     fn stylistic_set_labels_follow_the_ui_language() {
         let named = StylisticSet { number: 1, name: Some("Curved Capitals".into()) };

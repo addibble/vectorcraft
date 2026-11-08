@@ -332,6 +332,7 @@ fn the_missing_links_note_uses_each_count_form() {
 
 /// A long list of fonts left out is cut short in the desktop's status line, so the status bar can
 /// still translate the line. The dialog names every font.
+#[cfg(feature = "translations")]
 #[test]
 fn a_long_list_of_fonts_left_out_is_cut_short_in_the_status() {
     use crate::i18n::{Lang, message};
