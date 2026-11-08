@@ -55,6 +55,7 @@ fn a_catalog_is_its_file_only_with_its_feature() {
 /// literal feature name, so each language has its row here; the test below checks the list
 /// against the registry.
 const FEATURE_ON: [(&str, bool); 27] = [
+    ("hi", cfg!(feature = "lang-hi")),
     ("el", cfg!(feature = "lang-el")),
     ("ja", cfg!(feature = "lang-ja")),
     ("ko", cfg!(feature = "lang-ko")),
@@ -81,7 +82,6 @@ const FEATURE_ON: [(&str, bool); 27] = [
     ("fi", cfg!(feature = "lang-fi")),
     ("tr", cfg!(feature = "lang-tr")),
     ("ca", cfg!(feature = "lang-ca")),
-    ("hi", cfg!(feature = "lang-hi")),
 ];
 
 /// Each catalog is compiled in by the feature named after its file, the row that reads it has the
