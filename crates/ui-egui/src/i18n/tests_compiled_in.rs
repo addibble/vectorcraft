@@ -54,7 +54,7 @@ fn a_catalog_is_its_file_only_with_its_feature() {
 /// Whether each language's feature is on in this build, in the registry's order. `cfg!` takes a
 /// literal feature name, so each language has its row here; the test below checks the list
 /// against the registry.
-const FEATURE_ON: [(&str, bool); 26] = [
+const FEATURE_ON: [(&str, bool); 27] = [
     ("el", cfg!(feature = "lang-el")),
     ("ja", cfg!(feature = "lang-ja")),
     ("ko", cfg!(feature = "lang-ko")),
