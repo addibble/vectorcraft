@@ -550,6 +550,7 @@ mod tests {
 
     /// The notes of a `.ai` whose variable library was read in part, or couldn't be read, are
     /// translated in every language that translated the note they replace.
+    #[cfg(feature = "translations")]
     #[test]
     fn the_notes_of_an_ai_variable_library_are_translated() {
         use crate::i18n::{Lang, message};
