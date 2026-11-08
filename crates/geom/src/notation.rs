@@ -39,17 +39,31 @@
 //! it; a handle no segment carries is at its anchor.
 //!
 //! **Closed subpaths.** `Z` closes a subpath. The closing segment, from the last anchor back to
-//! the first, is left out when it is straight and the last anchor is not at the first anchor's
-//! point; otherwise it is written, ending exactly at the first anchor's point. So a reader, on
-//! `Z`, takes a last anchor at exactly the first anchor's point (same number text) for the end of
-//! the closing segment, not an anchor: it drops it and gives its in handle to the first anchor.
+//! the first, is left out when it is straight and the last anchor is neither at the first
+//! anchor's point nor within [`crate::path::CLOSE_FOLD`] (1e-7) of it; otherwise it is written,
+//! ending exactly at the first anchor's point. So a reader, on `Z`, takes a last anchor at
+//! exactly the first anchor's point (same number text) for the end of the closing segment, not
+//! an anchor: it drops it and gives its in handle to the first anchor
+//! ([`crate::SubPath::fold_closing`]). A file's reader folds only that exact point, whatever
+//! commands the data uses, so a file's anchors are what its `d` says: files written before the
+//! writer wrote the near case hold real last anchors within 1e-7 of the first, and `kinds` written
+//! by hand counts them. Path data written by hand for a command ([`parse_path_data_by_hand`])
+//! folds within 1e-7, as [`crate::PathData::from_bezpath`] does: relative data, as optimizers and
+//! other apps write it, often ends its closing segment a rounding error off the start. The writer
+//! writes the near case's closing segment so that a saved `d` given to such a command keeps its
+//! anchors. A second `Z` right after one
+//! closes nothing and is left out (`ZZ`), and so is an arc back to its own start that would open
+//! a subpath after `Z`; numbers after `Z` are refused (`Z 5 5`), since only a command may follow
+//! it.
 //!
 //! **Not written as `d`** (the structured `subpaths` form is kept): a subpath without anchors, an
 //! open subpath whose first anchor has an in handle or whose last anchor has an out handle (SVG
 //! has no segment to carry them), and coordinates that are not finite.
 //!
 //! **Anchor kinds.** `d` says nothing about how an anchor's handles behave when edited
-//! ([`AnchorKind`]). Every anchor reads as a corner unless `kinds` is given; it is written only
+//! ([`AnchorKind`]). Without `kinds`, an anchor reads as a corner, except the joins the reader
+//! knows are smooth: those inside an arc (`A`) and those `S` or `T` reflect a control point
+//! through (see below); with it, every anchor's kind is its letter. It is written only
 //! when some anchor is smooth, and then has one letter per anchor (`d`'s anchors, after the
 //! closing rule above), subpaths separated by one space.
 //!
@@ -61,8 +75,32 @@
 //!
 //! Readers take everything above and, for data written by hand, a wider part of SVG: relative
 //! commands (`m l h v c z`), `H` and `V`, implicit repeats (pairs after `M` are lines), commas
-//! and any whitespace between numbers, `E` and `+` in numbers, and a command after `Z` without
-//! `M` (it starts at the subpath's first point). `S`, `Q`, `T` and `A` are refused. Transforms
+//! and any whitespace between numbers, `E` and `+` in numbers, a command after `Z` without `M`
+//! (it starts at the subpath's first point), and the rest of SVG's path commands, each read into
+//! the anchors above:
+//!
+//! - `S` and `T` reflect the previous segment's control point as SVG says (the current point when
+//!   the previous command was not `C`/`S`, or `Q`/`T`);
+//! - `Q` and `T` become the cubic with the same curve (handles two thirds of the way to the
+//!   control point);
+//! - `A` becomes one cubic per quarter turn, with half a degree of grace (an arc of up to 90.5°
+//!   is one cubic, up to 180.5° two, and so on to four: from the span alone, whatever rounding
+//!   its angles carry), each the standard approximation of its part of the ellipse (within 0.03%
+//!   of the radius), starting and ending exactly at the arc's end points; angles within 1e-5° of
+//!   a quarter turn are drawn at it, so a half circle's points are exact. As SVG says (SVG 1.1
+//!   F.6.2, F.6.6), an arc with a zero radius is a line, one to its own start point is left out,
+//!   and radii too small to reach are scaled up. An arc whose span is zero but for rounding (its
+//!   ends far closer than its radii) is its chord when small and the whole turn round when
+//!   large; one whose ends are a smallest step apart is its chord. A coordinate that leaves the
+//!   finite range is refused, as everywhere. Flags need no separator (`a10 10 0 1110 10`).
+//!
+//! Anchors read from `d` count against [`crate::path::with_anchor_budget`] as anchors read one
+//! by one do.
+//!
+//! What they read to is written back as `L` and `C`, so a file stays exact from then on. The
+//! joins inside an arc are smooth anchors, and so is the join an `S` or `T` reflects a control
+//! point through (its handles are collinear); the rest are corners. `kinds`, when given, says
+//! every anchor's kind instead, and counts an arc's anchors like any other. Transforms
 //! read SVG transform lists: `matrix`, `translate`, `scale`, `rotate(angle [cx cy])` (quarter
 //! turns exact), `skewX` and `skewY`, separated by whitespace or commas, applied right to left as
 //! SVG does.
@@ -202,7 +240,7 @@ fn push_pair(out: &mut String, p: Point) {
 }
 
 /// The same point bit for bit (so -0 is not 0): what reads back from the same text.
-fn same(a: Point, b: Point) -> bool {
+pub(crate) fn same(a: Point, b: Point) -> bool {
     a.x.to_bits() == b.x.to_bits() && a.y.to_bits() == b.y.to_bits()
 }
 
@@ -242,7 +280,7 @@ pub fn path_data(path: &PathData) -> Option<(String, Option<String>)> {
         }
         if sp.closed {
             let straight = same(last.h_out, last.p) && same(first.h_in, first.p);
-            if !straight || same(last.p, first.p) {
+            if !straight || same(last.p, first.p) || last.p.distance(first.p) < crate::path::CLOSE_FOLD {
                 push_segment(&mut d, last, first);
             }
             d.push('Z');
@@ -257,9 +295,26 @@ pub fn path_data(path: &PathData) -> Option<(String, Option<String>)> {
     Some((d, kinds))
 }
 
-/// Reads SVG path data (and anchor kinds, see the module documentation) into anchors.
+/// Reads SVG path data (and anchor kinds, see the module documentation) into anchors, as a
+/// saved file's path data is read: a closing anchor folds into the start only at exactly its
+/// point, and the kinds are `kinds`' or, without it, the commands' (corners but for the joins
+/// inside an arc and those `S` or `T` reflect through).
 pub fn parse_path_data(d: &str, kinds: Option<&str>) -> Result<PathData, String> {
-    let mut path = PathData { subpaths: Parser { s: d.as_bytes(), i: 0 }.subpaths()? };
+    read_path_data(d, kinds, None)
+}
+
+/// SVG path data written by hand, without kinds, read as [`crate::PathData::from_bezpath`] reads
+/// kurbo's path of it: a closing anchor within [`crate::path::CLOSE_FOLD`] of the start folds into
+/// it, and the kinds are taken from the handles ([`PathData::infer_kinds_from_handles`]). The
+/// geometry is [`parse_path_data`]'s otherwise.
+pub fn parse_path_data_by_hand(d: &str) -> Result<PathData, String> {
+    let mut path = read_path_data(d, None, Some(crate::path::CLOSE_FOLD))?;
+    path.infer_kinds_from_handles();
+    Ok(path)
+}
+
+fn read_path_data(d: &str, kinds: Option<&str>, fold: Option<f64>) -> Result<PathData, String> {
+    let mut path = PathData { subpaths: Parser { s: d.as_bytes(), i: 0, fold }.subpaths()? };
     if let Some(kinds) = kinds {
         let runs: Vec<&str> = kinds.split(' ').collect();
         if runs.len() != path.subpaths.len() {
@@ -281,9 +336,174 @@ pub fn parse_path_data(d: &str, kinds: Option<&str>) -> Result<PathData, String>
     Ok(path)
 }
 
+/// Spend from the read's budget what the `read` anchors held now add to those `spent` so far
+/// (the reader's count never falls: the anchor a `Z` may fold in is not counted until it stays).
+fn settle_anchor_budget(read: usize, spent: &mut usize) -> Result<(), String> {
+    if read > *spent {
+        crate::path::spend_anchor_budget(read - *spent)?;
+        *spent = read;
+    }
+    Ok(())
+}
+
+/// A join whose handles `S` or `T` made collinear by reflection is smooth, as the curve is there.
+fn smooth_join(sp: &mut SubPath, reflected: bool) {
+    if reflected && let Some(a) = sp.anchors.last_mut() {
+        a.kind = AnchorKind::Smooth;
+    }
+}
+
+/// `deg` on the nearest quarter turn when it is within a hundred-thousandth of a degree of it,
+/// so that an arc's quarter turns are drawn with exact sines and cosines (and, for the span, so
+/// that a span that is zero but for rounding is zero). It decides no piece count.
+fn snap_quarter(deg: f64) -> f64 {
+    let quarter = (deg / 90.0).round() * 90.0;
+    if (deg - quarter).abs() <= 1e-5 { quarter } else { deg }
+}
+
+/// The grace, in degrees, an arc's span has over each quarter turn before it takes another cubic:
+/// far above any rounding of the angles, so that the count is the span's alone, and a cubic of
+/// 90.5° still stays within 0.03% of the radius.
+const ARC_PIECE_GRACE: f64 = 0.5;
+
+/// An arc read as cubics `[c1, c2, end]`, the first `len` of them.
+struct ArcCubics {
+    cubics: [[Point; 3]; 4],
+    len: usize,
+}
+
+/// SVG's elliptical arc from `from` to `to` (two distinct points; radii `rx`, `ry` positive and
+/// finite, the ellipse's x axis turned `rotation` degrees) as cubics: one per quarter turn of its
+/// span with half a degree of grace ([`ARC_PIECE_GRACE`], [`crate::shapes::arc_pieces`]), each
+/// [`crate::shapes::arc_handle`]'s approximation of its part of the ellipse, the first starting
+/// at `from` and the last ending exactly at `to`. `Ok(None)` when the arc is its chord: a small
+/// arc whose span is zero but for rounding, or ends a smallest step apart, too close to have a
+/// direction. A large arc whose span is zero but for rounding is the whole turn round. `Err` when
+/// the ellipse itself (radii scaled up past the largest number) leaves the finite range.
+///
+/// The center comes from SVG's endpoint-to-center conversion (SVG 1.1 Appendix F.6.5, SVG 2
+/// "Implementation notes"), radii too small to reach scaled up as F.6.6 says. It is worked in
+/// the unit circle the ellipse maps to, as a unit direction and a distance, and each point is
+/// placed from the start point, so that tiny or huge numbers neither overflow nor underflow on
+/// the way and a far center's rounding does not throw a point off. A point that leaves the finite
+/// range all the same is refused by the reader's own check of every coordinate.
+fn arc_cubics(from: Point, to: Point, rx: f64, ry: f64, rotation: f64, large_arc: bool, sweep: bool) -> Result<Option<ArcCubics>, String> {
+    let (sin, cos) = crate::sin_cos_deg(rotation);
+    // Half the chord, each end halved first so that far-apart ends do not overflow.
+    let half = (from.x * 0.5 - to.x * 0.5, from.y * 0.5 - to.y * 0.5);
+    // The start point from the chord's midpoint, in the ellipse's axes.
+    let (x1, y1) = (cos * half.0 + sin * half.1, -sin * half.0 + cos * half.1);
+    if x1 == 0.0 && y1 == 0.0 {
+        return Ok(None);
+    }
+    // Its direction in unit-circle terms, (x1/rx, y1/ry) normalized, found as (x1, y1·rx/ry) or
+    // (x1·ry/rx, y1) over the larger coordinate so that it neither overflows nor underflows away.
+    let (ua, ub) = {
+        let m = x1.abs().max(y1.abs());
+        let q = ry / rx;
+        let (a, b) = if q >= 1.0 { (x1 / m, y1 / m / q) } else { (x1 / m * q, y1 / m) };
+        let n = a.hypot(b);
+        if n == 0.0 {
+            // The ratio past the number range makes the other coordinate's share nothing, and
+            // this one is zero: the direction is along the other axis.
+            if x1 == 0.0 { (0.0, y1.signum()) } else { (x1.signum(), 0.0) }
+        } else {
+            (a / n, b / n)
+        }
+    };
+    let (mut rx, mut ry) = (rx, ry);
+    let d = (x1 / rx).hypot(y1 / ry);
+    // The center's offset from the midpoint, in unit-circle terms, along the perpendicular of the
+    // start point's direction, and the start point's distance: at the midpoint, the start one
+    // radius away, when the radii have to grow to reach (F.6.6).
+    let (s, dist) = if d >= 1.0 {
+        if d.is_finite() {
+            rx *= d;
+            ry *= d;
+        } else {
+            // rx·d and ry·d without the overflow of d.
+            let ratio = rx / ry;
+            (rx, ry) = (x1.hypot(y1 * ratio), (x1 / ratio).hypot(y1));
+        }
+        if !(rx.is_finite() && ry.is_finite()) {
+            return Err("an arc's ellipse is out of range: its radii, scaled up to reach its end points, pass the largest number".into());
+        }
+        (0.0, 1.0)
+    } else {
+        let s = ((1.0 - d) * (1.0 + d)).sqrt();
+        (if large_arc == sweep { -s } else { s }, d)
+    };
+    let (cu, cv) = (s * ub, -s * ua);
+    let (pa, pb) = (dist * ua, dist * ub);
+    let theta1 = (pb - cv).atan2(pa - cu).to_degrees();
+    let mut delta = snap_quarter((-pb - cv).atan2(-pa - cu).to_degrees() - theta1);
+    if !delta.is_finite() {
+        return Err("an arc's angles are out of range".into());
+    }
+    if sweep && delta < 0.0 {
+        delta += 360.0;
+    } else if !sweep && delta > 0.0 {
+        delta -= 360.0;
+    }
+    // A span far below the radius leaves the two angles equal once rounded: the small arc is
+    // then the chord and the large one the whole turn round.
+    if delta == 0.0 {
+        if !large_arc {
+            return Ok(None);
+        }
+        delta = if sweep { 360.0 } else { -360.0 };
+    }
+    let pieces = crate::shapes::arc_pieces((delta.abs() - ARC_PIECE_GRACE).max(0.0));
+    let theta1 = snap_quarter(theta1);
+    let step = delta / f64::from(pieces);
+    let k = crate::shapes::arc_handle(step);
+    // `p` plus a vector of the unit circle's plane in the path's coordinates; on a radius near
+    // the largest number, a vector that overflows alone though the point it reaches does not is
+    // added in quarters.
+    let place = |p: Point, u: f64, v: f64| {
+        let along = |u: f64, v: f64| {
+            let (x, y) = (u * rx, v * ry);
+            kurbo::Vec2::new(cos * x - sin * y, sin * x + cos * y)
+        };
+        let q = p + along(u, v);
+        if q.is_finite() {
+            return q;
+        }
+        let h = along(u * 0.25, v * 0.25);
+        p + h + h + h + h
+    };
+    let (s1, c1) = crate::sin_cos_deg(theta1);
+    let exact = |deg: f64| crate::quarter_turn(deg).is_some();
+    // The point at `t` degrees, from the start point: cos t − cos θ1 and sin t − sin θ1 taken
+    // directly between quarter turns (exact), else by the sum-to-product identities (no
+    // cancellation when the two are close, as on a huge radius).
+    let point = |t: f64, st: f64, ct: f64| {
+        if exact(t) && exact(theta1) {
+            return place(from, ct - c1, st - s1);
+        }
+        let (sm, cm) = ((t + theta1) / 2.0).to_radians().sin_cos();
+        let sh = ((t - theta1) / 2.0).to_radians().sin();
+        place(from, -2.0 * sm * sh, 2.0 * cm * sh)
+    };
+    let mut out = ArcCubics { cubics: [[Point::ZERO; 3]; 4], len: 0 };
+    let (mut start, mut s0, mut c0) = (from, s1, c1);
+    for (i, slot) in (1..=pieces).zip(out.cubics.iter_mut()) {
+        let t = theta1 + step * f64::from(i);
+        let (st, ct) = crate::sin_cos_deg(t);
+        let end = if i == pieces { to } else { point(t, st, ct) };
+        *slot = [place(start, -s0 * k, c0 * k), place(end, st * k, -ct * k), end];
+        (start, s0, c0) = (end, st, ct);
+        out.len += 1;
+    }
+    Ok(Some(out))
+}
+
 struct Parser<'a> {
     s: &'a [u8],
     i: usize,
+    /// How a closing anchor folds into the start ([`SubPath::fold_closing`]): `None`, only at
+    /// exactly its point (files); `Some(t)`, nearer than `t` (path data written by hand).
+    fold: Option<f64>,
 }
 
 impl Parser<'_> {
@@ -338,6 +558,18 @@ impl Parser<'_> {
         Ok(x)
     }
 
+    /// An arc's flag: `0` or `1`, which needs no separator after it (`a10 10 0 1110 10`).
+    fn flag(&mut self) -> Result<bool, String> {
+        self.skip_separators();
+        let flag = match self.s.get(self.i) {
+            Some(b'0') => false,
+            Some(b'1') => true,
+            _ => return Err(format!("an arc's flag (0 or 1) was expected at byte {}", self.i)),
+        };
+        self.i += 1;
+        Ok(flag)
+    }
+
     fn pair(&mut self, rel: bool, from: Point) -> Result<Point, String> {
         let p = Point::new(self.number()?, self.number()?);
         Ok(if rel { from + p.to_vec2() } else { p })
@@ -349,7 +581,21 @@ impl Parser<'_> {
         // The current point, and the first point of the current (or last closed) subpath.
         let (mut at, mut start) = (Point::ZERO, Point::ZERO);
         let mut command: Option<u8> = None;
+        // The control point a following `S` (after `C` or `S`) or `T` (after `Q` or `T`) reflects.
+        let (mut cubic_c2, mut quad_c): (Option<Point>, Option<Point>) = (None, None);
+        // Whether the open subpath began after `Z` without `M`.
+        let mut opened_after_z = false;
+        // Anchors in finished subpaths, and anchors spent from the read's budget so far: each
+        // command adds at most five (an arc's four after the start a command after `Z` takes),
+        // spent before the next is read, all but the open subpath's last, which a `Z` may fold
+        // into its start; that one is spent once the subpath goes on or ends, so the count never
+        // falls and nothing is given back.
+        let (mut done, mut spent) = (0usize, 0usize);
         loop {
+            let read = done + cur.as_ref().map_or(0, |sp| sp.anchors.len().saturating_sub(1));
+            settle_anchor_budget(read, &mut spent)?;
+            // Every command but those four leaves nothing to reflect.
+            let (prev_c2, prev_q) = (cubic_c2.take(), quad_c.take());
             self.skip_separators();
             let Some(&c) = self.s.get(self.i) else { break };
             let cmd = if c.is_ascii_alphabetic() {
@@ -361,7 +607,7 @@ impl Parser<'_> {
                     Some(b'M') => b'L',
                     Some(b'm') => b'l',
                     Some(c) if !matches!(c, b'Z' | b'z') => c,
-                    _ => return Err(format!("a command (M, L, H, V, C or Z) was expected at byte {}", self.i)),
+                    _ => return Err(format!("a command (M, L, H, V, C, S, Q, T, A or Z) was expected at byte {}", self.i)),
                 }
             };
             command = Some(cmd);
@@ -369,59 +615,109 @@ impl Parser<'_> {
             match cmd.to_ascii_uppercase() {
                 b'M' => {
                     if let Some(sp) = cur.take() {
+                        done += sp.anchors.len();
                         out.push(sp);
                     }
                     at = self.pair(rel, at)?;
                     start = at;
+                    opened_after_z = false;
                     cur = Some(SubPath { anchors: vec![Anchor::corner(at)], closed: false });
                 }
                 b'Z' => {
-                    let Some(mut sp) = cur.take() else { return Err("`Z` closes nothing: a subpath starts with `M`".into()) };
-                    if sp.anchors.len() > 1
-                        && let (Some(first), Some(last)) = (sp.anchors.first(), sp.anchors.last())
-                        && same(first.p, last.p)
-                        && let Some(end) = sp.anchors.pop()
-                        && let Some(first) = sp.anchors.first_mut()
-                    {
-                        first.h_in = end.h_in;
-                    }
+                    let Some(mut sp) = cur.take() else {
+                        // A second Z right after one closes an empty subpath at the start: nothing.
+                        if out.last().is_some_and(|sp| sp.closed) {
+                            continue;
+                        }
+                        return Err("`Z` closes nothing: a subpath starts with `M`".into());
+                    };
+                    sp.fold_closing(self.fold);
                     sp.closed = true;
+                    done += sp.anchors.len();
                     out.push(sp);
                     at = start;
                 }
-                upper @ (b'L' | b'H' | b'V' | b'C') => {
+                upper @ (b'L' | b'H' | b'V' | b'C' | b'S' | b'Q' | b'T' | b'A') => {
                     if cur.is_none() {
                         if out.last().is_none_or(|s| !s.closed) {
                             return Err("path data starts with `M`".into());
                         }
                         // After `Z`, the next subpath starts where the closed one did.
                         cur = Some(SubPath { anchors: vec![Anchor::corner(start)], closed: false });
+                        opened_after_z = true;
                     }
                     let Some(sp) = cur.as_mut() else { continue };
+                    let from = at;
                     match upper {
                         b'L' => at = self.pair(rel, at)?,
                         b'H' => at.x = if rel { at.x + self.number()? } else { self.number()? },
                         b'V' => at.y = if rel { at.y + self.number()? } else { self.number()? },
-                        _ => {
-                            let from = at;
-                            let c1 = self.pair(rel, from)?;
+                        b'C' | b'S' => {
+                            // `S`'s first control point is the previous `C` or `S`'s second reflected
+                            // through the current point, or the current point after anything else.
+                            let reflected = if upper == b'S' { prev_c2.filter(|c| *c != from) } else { None };
+                            let c1 = if upper == b'C' { self.pair(rel, from)? } else { reflected.map_or(from, |c| from + (from - c)) };
                             let c2 = self.pair(rel, from)?;
                             at = self.pair(rel, from)?;
-                            if let Some(a) = sp.anchors.last_mut() {
-                                a.h_out = c1;
-                            }
-                            sp.anchors.push(Anchor { p: at, h_in: c2, h_out: at, kind: AnchorKind::Corner });
+                            smooth_join(sp, reflected.is_some());
+                            sp.push_cubic(c1, c2, at);
+                            cubic_c2 = Some(c2);
                             continue;
+                        }
+                        b'Q' | b'T' => {
+                            // A quadratic is the cubic whose handles lie two thirds of the way to its
+                            // control point; `T` reflects the previous `Q` or `T`'s control point.
+                            let reflected = if upper == b'T' { prev_q.filter(|c| *c != from) } else { None };
+                            let q = if upper == b'Q' { self.pair(rel, from)? } else { reflected.map_or(from, |c| from + (from - c)) };
+                            at = self.pair(rel, from)?;
+                            smooth_join(sp, reflected.is_some());
+                            let (c1, c2) = crate::path::quad_handles(from, q, at);
+                            sp.push_cubic(c1, c2, at);
+                            quad_c = Some(q);
+                            continue;
+                        }
+                        _ => {
+                            let (rx, ry) = (self.number()?.abs(), self.number()?.abs());
+                            let rotation = self.number()?;
+                            let (large_arc, sweep) = (self.flag()?, self.flag()?);
+                            at = self.pair(rel, from)?;
+                            // SVG F.6.2: an arc to its own start point is left out, and one with a
+                            // zero radius is a straight line.
+                            if from == at {
+                                // Nor is the subpath it would have started after `Z`.
+                                if opened_after_z && sp.anchors.len() == 1 {
+                                    cur = None;
+                                }
+                                continue;
+                            }
+                            if rx != 0.0
+                                && ry != 0.0
+                                && let Some(arc) = arc_cubics(from, at, rx, ry, rotation, large_arc, sweep)?
+                            {
+                                let joins = arc.len.saturating_sub(1);
+                                for (i, [c1, c2, p]) in arc.cubics.into_iter().take(arc.len).enumerate() {
+                                    sp.push_cubic(c1, c2, p);
+                                    // The joins inside one arc are smooth, as the ellipse is there.
+                                    if i < joins
+                                        && let Some(a) = sp.anchors.last_mut()
+                                    {
+                                        a.kind = AnchorKind::Smooth;
+                                    }
+                                }
+                                continue;
+                            }
                         }
                     }
                     sp.anchors.push(Anchor::corner(at));
                 }
-                _ => return Err(format!("`{}` is not read: path data here takes M, L, H, V, C and Z (either case)", char::from(cmd))),
+                _ => return Err(format!("`{}` is not path data: SVG's commands are M, L, H, V, C, S, Q, T, A and Z (either case)", char::from(cmd))),
             }
         }
         if let Some(sp) = cur {
+            done += sp.anchors.len();
             out.push(sp);
         }
+        settle_anchor_budget(done, &mut spent)?;
         // Relative coordinates can add up past the largest number.
         if !out.iter().flat_map(|s| &s.anchors).all(|a| a.p.is_finite() && a.h_in.is_finite() && a.h_out.is_finite()) {
             return Err("a coordinate is out of range".into());
@@ -473,7 +769,7 @@ pub fn transform(a: Affine) -> Option<String> {
 
 /// Reads an SVG transform list (see the module documentation).
 pub fn parse_transform(s: &str) -> Result<Affine, String> {
-    let mut p = Parser { s: s.as_bytes(), i: 0 };
+    let mut p = Parser { s: s.as_bytes(), i: 0, fold: None };
     let mut out: Option<Affine> = None;
     loop {
         p.skip_separators();
@@ -540,6 +836,9 @@ fn function(name: &str, args: &[f64]) -> Result<Affine, String> {
 }
 
 /// SVG's `rotate(deg)`, exact for quarter turns (`[0 1 -1 0 0 0]` for 90).
+/// Not [`crate::sin_cos_deg`]: a half turn here has a positive zero sine (that one's is
+/// negative), and saved files' transforms read through this must keep the matrices they always
+/// gave, bit for bit.
 fn rotation(deg: f64) -> Affine {
     let turn = deg.rem_euclid(360.0);
     let (sin, cos) = if turn == 0.0 {
@@ -702,10 +1001,10 @@ impl schemars::JsonSchema for PathData {
             Schema::Object(s)
         };
         let d = text(
-            "The subpaths as SVG path data with absolute M, L, C and Z, as saved (relative commands, H and V are read too). On Z, a last anchor at exactly the first anchor's point ends the closing segment.",
+            "The subpaths as SVG path data with absolute M, L, C and Z, as saved. Every SVG path command is read: relative ones, H and V, and S, Q, T and A, which become cubics (an arc one per quarter turn). On Z, a last anchor at exactly the first anchor's point ends the closing segment.",
         );
         let kinds = text(
-            "With `d`, when some anchor is smooth: one letter per anchor, c (corner) or s (smooth), a space between subpaths. Without it every anchor is a corner.",
+            "With `d`, when some anchor is smooth: one letter per anchor, c (corner) or s (smooth), a space between subpaths. Without it every anchor is a corner except the joins the reader knows are smooth: inside an arc (A), and where S or T reflects a control point. With it, the letters count every anchor, an arc's included.",
         );
         let mut subpaths = g.subschema_for::<Vec<SubPath>>();
         if let Schema::Object(s) = &mut subpaths {
@@ -837,12 +1136,386 @@ mod tests {
         assert_eq!(p.subpaths[0].anchors.len(), 3);
         assert!(p.subpaths[0].closed);
         assert_eq!(p.subpaths[1].anchors.iter().map(|a| a.p).collect::<Vec<_>>(), vec![Point::new(0.0, 0.0), Point::new(5.0, 5.0)]);
-        for bad in ["L1 1", "M0 0Q1 1 2 2", "M0 0L1", "M0 0Z 1 1", "Z", "M0 0 L1e400 0", "m1e308 0 l1e308 0"] {
+        for bad in ["L1 1", "M0 0R1 1", "M0 0L1", "M0 0Z 1 1", "Z", "M0 0 L1e400 0", "m1e308 0 l1e308 0", "M0 0A5 5 0 2 0 10 0", "M0 0A5 5 0"] {
             assert!(parse_path_data(bad, None).is_err(), "{bad}");
         }
         assert!(parse_path_data("M0 0L1 1", Some("cs c")).is_err());
         assert!(parse_path_data("M0 0L1 1", Some("cx")).is_err());
         assert!(parse_path_data("M0 0L1 1", Some("c")).is_err());
+    }
+
+    fn ends(p: &PathData) -> Vec<(Point, Point, Point)> {
+        p.subpaths.iter().flat_map(|s| &s.anchors).map(|a| (a.h_in, a.p, a.h_out)).collect()
+    }
+
+    fn read(d: &str) -> PathData {
+        parse_path_data(d, None).unwrap()
+    }
+
+    /// The cubic from `a` to `b` at `t`.
+    fn at(a: &Anchor, b: &Anchor, t: f64) -> Point {
+        kurbo::ParamCurve::eval(&kurbo::CubicBez::new(a.p, a.h_out, b.h_in, b.p), t)
+    }
+
+    #[test]
+    fn quadratics_and_smooth_curves_read_as_svg_says() {
+        // Q: handles two thirds of the way to the control point; q relative to the current point.
+        let q = read("M0 0Q30 30 60 0");
+        assert_eq!(ends(&q), ends(&read("M0 0q30 30 60 0")));
+        assert_eq!(q.subpaths[0].anchors[0].h_out, Point::new(20.0, 20.0));
+        assert_eq!(q.subpaths[0].anchors[1].h_in, Point::new(40.0, 20.0));
+        // T reflects the last Q's control point (30 30) through (60 0) to (90 -30); t too; and a
+        // T after a T reflects the control point that T implied (90 -30 through 120 0: 150 30).
+        let t = read("M0 0Q30 30 60 0T120 0T180 0");
+        assert_eq!(ends(&t), ends(&read("M0 0Q30 30 60 0Q90 -30 120 0Q150 30 180 0")));
+        assert_eq!(ends(&t), ends(&read("m0 0q30 30 60 0t60 0t60 0")));
+        // Implicit repeats: more pairs after T are more Ts.
+        assert_eq!(ends(&t), ends(&read("M0 0Q30 30 60 0T120 0 180 0")));
+        // S reflects the last C's second control point (50 10) through (60 0) to (70 -10); s
+        // too; an S after an S reflects that S's (110 -10 through 120 0: 130 10); repeats too.
+        let s = read("M0 0C10 10 50 10 60 0S110 -10 120 0S170 10 180 0");
+        assert_eq!(ends(&s), ends(&read("M0 0C10 10 50 10 60 0C70 -10 110 -10 120 0C130 10 170 10 180 0")));
+        assert_eq!(ends(&s), ends(&read("m0 0c10 10 50 10 60 0s50 -10 60 0s50 10 60 0")));
+        assert_eq!(ends(&s), ends(&read("M0 0C10 10 50 10 60 0S110 -10 120 0 170 10 180 0")));
+        // Nothing to reflect, so the first control point is the current point: S after a line or
+        // a Q, T after a line or a C.
+        for (d, start) in [("M0 0L10 0S20 10 30 0", 1), ("M0 0Q5 5 10 0S20 10 30 0", 1), ("M0 0L10 0T40 0", 1), ("M0 0C1 1 9 1 10 0T40 0", 1)] {
+            let a = &read(d).subpaths[0].anchors;
+            assert_eq!(a[start].h_out, a[start].p, "{d}");
+        }
+        // A T after a C is the quadratic whose control point is the current point: its handles lie on the chord, two thirds of the way back.
+        let a = &read("M0 0C1 1 9 1 10 0T40 0").subpaths[0].anchors;
+        assert_eq!((a[1].h_out, a[2].h_in), (Point::new(10.0, 0.0), Point::new(20.0, 0.0)));
+    }
+
+    #[test]
+    fn arcs_read_as_one_cubic_per_quarter_turn_on_the_ellipse() {
+        // (d, center, rx, ry, rotation in degrees, cubics)
+        let cases = [
+            ("M0 0A5 5 0 0 1 10 0", (5.0, 0.0), 5.0, 5.0, 0.0, 2),
+            ("M0 0A5 5 0 0 0 10 0", (5.0, 0.0), 5.0, 5.0, 0.0, 2),
+            // A quarter of a circle, the small and the large arc between the same points.
+            ("M10 0A10 10 0 0 1 0 10", (0.0, 0.0), 10.0, 10.0, 0.0, 1),
+            ("M10 0A10 10 0 1 0 0 10", (0.0, 0.0), 10.0, 10.0, 0.0, 3),
+            // Elliptical, and turned 30 degrees.
+            ("M20 0A20 10 0 0 1 -20 0", (0.0, 0.0), 20.0, 10.0, 0.0, 2),
+            ("M17.32050807568877 10A20 10 30 0 1 -17.32050807568877 -10", (0.0, 0.0), 20.0, 10.0, 30.0, 2),
+            // Radii too small to reach scale up (F.6.6): a half circle on the chord.
+            ("M0 0A1 1 0 0 1 10 0", (5.0, 0.0), 5.0, 5.0, 0.0, 2),
+            // A large arc of a small circle: three cubics, its center on the side it bulges to.
+            ("M0 0A6 6 0 1 1 10 0", (5.0, -3.3166247903554), 6.0, 6.0, 0.0, 3),
+        ];
+        for (d, (cx, cy), rx, ry, rot, n) in cases {
+            let p = read(d);
+            let a = &p.subpaths[0].anchors;
+            assert_eq!(a.len(), n + 1, "{d}: one cubic per quarter turn or part of one");
+            let (sin, cos) = f64::to_radians(rot).sin_cos();
+            // How far a point is off the ellipse, as a fraction of the radius.
+            let off = |q: Point| {
+                let (x, y) = (q.x - cx, q.y - cy);
+                let (u, v) = ((cos * x + sin * y) / rx, (-sin * x + cos * y) / ry);
+                (u.hypot(v) - 1.0).abs()
+            };
+            for w in a.windows(2) {
+                for i in 0..=16 {
+                    let q = at(&w[0], &w[1], f64::from(i) / 16.0);
+                    assert!(off(q) < 3e-4, "{d}: {q:?} is {} off the ellipse", off(q));
+                }
+            }
+            // The joins inside the arc are smooth, its ends are corners.
+            let kinds: Vec<AnchorKind> = a.iter().map(|x| x.kind).collect();
+            assert_eq!(kinds.first(), Some(&AnchorKind::Corner));
+            assert_eq!(kinds.last(), Some(&AnchorKind::Corner));
+            assert!(kinds[1..n].iter().all(|k| *k == AnchorKind::Smooth), "{d}");
+        }
+    }
+
+    #[test]
+    fn arcs_take_their_side_size_and_svgs_edge_cases() {
+        // The sweep flag picks the side: sweep 1 from (0 0) to (10 0) runs through negative y.
+        let up = read("M0 0A5 5 0 0 1 10 0");
+        assert!(up.subpaths[0].anchors.iter().all(|a| a.p.y <= 1e-9));
+        let down = read("M0 0A5 5 0 0 0 10 0");
+        assert!(down.subpaths[0].anchors.iter().all(|a| a.p.y >= -1e-9));
+        // The count follows from the arc alone, whatever its size.
+        for r in ["3.6", "3.7", "0.001", "1e6"] {
+            let d = format!("M0 0A{r} {r} 0 0 1 {} 0", 2.0 * r.parse::<f64>().unwrap());
+            assert_eq!(read(&d).subpaths[0].anchors.len(), 3, "{d}");
+        }
+        // Ends exactly at the end point given; relative, flags without separators, implicit
+        // repeats (a second arc after the first's numbers).
+        assert_eq!(up.subpaths[0].anchors.last().unwrap().p, Point::new(10.0, 0.0));
+        assert_eq!(ends(&up), ends(&read("m0 0a5 5 0 0110 0")));
+        assert_eq!(ends(&read("M0 0A5 5 0 0 1 10 0A5 5 0 0 1 20 0")), ends(&read("M0 0A5 5 0 0 1 10 0 5 5 0 0 1 20 0")));
+        // A zero radius is a line, any other small one is not; an arc to its own start (-0 is 0)
+        // is no segment.
+        assert_eq!(ends(&read("M0 0A0 5 0 0 1 10 0")), ends(&read("M0 0L10 0")));
+        assert_eq!(read("M0 0A1e-6 1e-6 0 0 1 10 0").subpaths[0].anchors.len(), 3);
+        assert_eq!(read("M0 0A5 5 0 0 1 0 0").subpaths[0].anchors.len(), 1);
+        assert_eq!(read("M0 0A5 5 0 0 1 -0 0").subpaths[0].anchors.len(), 1);
+        // A tiny span and a huge one: bounded, on the right points, nothing lost before it.
+        let tiny = read("M0 0A5 5 0 0 1 1e-200 0");
+        assert_eq!(tiny.subpaths[0].anchors.len(), 2);
+        assert_eq!(tiny.subpaths[0].anchors[1].p, Point::new(1e-200, 0.0));
+        let huge = read("M0 0L5 5A1 1 0 0 1 1e38 0");
+        let a = &huge.subpaths[0].anchors;
+        assert_eq!(a.len(), 4, "a line, then a half circle in two cubics");
+        assert_eq!((a[0].p, a[1].p, a[3].p), (Point::new(0.0, 0.0), Point::new(5.0, 5.0), Point::new(1e38, 0.0)));
+    }
+
+    #[test]
+    fn arcs_at_the_ends_of_the_number_range() {
+        // A huge radius over a short span: the small arc is the chord (its sag is far below a
+        // double's precision, and the far center's rounding does not throw its handles off it),
+        // and the large arc goes round the huge circle; neither moves the anchors before it.
+        let flat = read("M0 0L5 5A1e20 1e20 0 0 0 10 0");
+        let a = &flat.subpaths[0].anchors;
+        assert_eq!((a.len(), a[1].p, a[2].p), (3, Point::new(5.0, 5.0), Point::new(10.0, 0.0)));
+        for h in [a[1].h_out, a[2].h_in] {
+            assert!((h.x + h.y - 10.0).abs() < 1e-9 && (5.0..=10.0).contains(&h.x), "{h:?} is off the chord");
+        }
+        let round = read("M0 0L5 5A1e20 1e20 0 1 0 10 0");
+        let a = &round.subpaths[0].anchors;
+        assert_eq!((a.len(), a[1].p, a[5].p), (6, Point::new(5.0, 5.0), Point::new(10.0, 0.0)));
+        assert!(a[3].p.to_vec2().hypot() > 1e20, "{:?}", a[3].p);
+        let far = read("M0 0A1 1 0 0 1 1e100 0");
+        assert_eq!((far.subpaths[0].anchors.len(), far.subpaths[0].anchors[0].p), (3, Point::ZERO));
+        // Numbers that only an intermediate step could overflow or underflow read as SVG says:
+        // a span far below the radii is its chord, radii too small to reach scale up from any
+        // size, and far-apart ends are halved before they are subtracted.
+        for (d, n) in [
+            ("M0 0A1e20 1e20 0 0 0 1e-300 0", 1),
+            ("M0 0A1e300 1e300 0 0 1 1e-10 0", 1),
+            ("M0 0A5 5 0 0 1 1e-320 0", 1),
+            ("M0 0A5 5 0 0 1 5e-324 0", 1),
+            ("M0 0A1e-308 1e-308 0 0 1 10 0", 2),
+            ("M-1e308 0A1e308 1e308 0 0 1 1e308 0", 2),
+            ("M-1e308 0A1e-320 1e-320 0 0 1 1e308 0", 2),
+        ] {
+            let a = &read(d).subpaths[0].anchors;
+            assert_eq!(a.len(), n + 1, "{d}");
+        }
+        assert_eq!(ends(&read("M0 0A1e-308 1e-308 0 0 1 10 0")), ends(&read("M0 0A5 5 0 0 1 10 0")));
+        // A span zero but for rounding: the small arc is its chord (an `L`, -0 kept), the large
+        // the whole turn round, by one rule whether or not d itself underflowed; ends a smallest
+        // step apart have no direction and are the chord.
+        assert_eq!(path_data(&read("M0 0A1e20 1e20 0 0 0 1e-300 0")).unwrap().0, "M0 0L1e-300 0");
+        assert!(read("M0 0A1e20 1e20 0 0 1 -0 1e-300").subpaths[0].anchors[1].p.x.is_sign_negative());
+        assert_eq!(read("M0 0A5 5 0 0 1 1e-320 0").subpaths[0].anchors.len(), 2);
+        assert_eq!(read("M0 0A5 5 0 1 1 1e-320 0").subpaths[0].anchors.len(), 5);
+        assert_eq!(read("M0 0A1e20 1e20 0 1 1 1e-300 0").subpaths[0].anchors.len(), 5);
+        assert_eq!(read("M0 0A5 5 0 1 1 5e-324 0").subpaths[0].anchors.len(), 2);
+        // Radii whose ratio is past the number range, an arc along one axis: no scaling needed,
+        // the direction along that axis, a half ellipse read.
+        for d in ["M0 0A1e-310 1 0 0 1 0 1", "M0 0A5e-324 1 0 0 1 0 1", "M0 0A1e100 1e-300 0 0 1 10 0", "M0 0A1e-300 1e300 0 0 1 0 10"] {
+            let a = &read(d).subpaths[0].anchors;
+            assert!(a.len() >= 2 && a.iter().all(|x| x.p.is_finite() && x.h_in.is_finite() && x.h_out.is_finite()), "{d}: {a:?}");
+        }
+        // A radius past half the largest number, whose points are finite though the vectors to
+        // them are not.
+        let big = read("M-1e308 0A1e308 1e308 0 1 1 0 1e308");
+        assert!(big.subpaths[0].anchors.iter().all(|a| a.p.is_finite() && a.h_in.is_finite() && a.h_out.is_finite()));
+        // Only an ellipse past the largest number is refused (a half circle of radius 2.4e308),
+        // never read as something else.
+        assert!(parse_path_data("M-1.7e308 -1.7e308A1 1 0 0 1 1.7e308 1.7e308", None).is_err());
+        let up = read("M0 0A5 5 0 0 1 10 0");
+        // Quarter turns are exact: a half circle's middle point, and its handles' run along the
+        // axes, carry no arithmetic noise into the document.
+        assert_eq!(path_data(&up).unwrap().0, "M0 0C0 -2.761423749153967 2.238576250846033 -5 5 -5C7.761423749153967 -5 10 -2.761423749153967 10 0");
+        assert_eq!(read("M0 0A5 5 450 0 1 10 0").subpaths[0].anchors[1].p, Point::new(5.0, -5.0));
+        // Read once, written as L and C (the smooth joins as kinds), then exact from there on.
+        let (d, kinds) = path_data(&up).unwrap();
+        assert!(d.chars().all(|c| !"SQTA".contains(c)), "{d}");
+        assert_eq!(kinds.as_deref(), Some("csc"));
+        assert_eq!(roundtrip(&up), up);
+    }
+
+    #[test]
+    fn every_half_circle_between_whole_points_is_two_cubics_either_flag() {
+        // A half circle's radius is half its chord, so d is 1 within rounding: the piece count
+        // must not depend on which side of 1 that rounding falls, nor on the large-arc flag.
+        for x in -12i32..=12 {
+            for y in -12i32..=12 {
+                if x == 0 && y == 0 {
+                    continue;
+                }
+                let r = f64::from(x).hypot(f64::from(y)) / 2.0;
+                for flags in ["0 0", "0 1", "1 0", "1 1"] {
+                    let d = format!("M0 0A{r} {r} 0 {flags} {x} {y}");
+                    let p = read(&d);
+                    assert_eq!(p.subpaths[0].anchors.len(), 3, "{d}");
+                    // So kinds written for it read back.
+                    assert!(parse_path_data(&d, Some("csc")).is_ok(), "{d}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn half_circles_far_from_the_origin_are_two_cubics_either_flag() {
+        // Away from the origin d's rounding grows with the coordinates over the radius; the
+        // half degree of grace keeps the count the span's.
+        let d = "M732.2546341937651 122.63405067305253A1.1996023642006333 1.1996023642006333 0 1 0 731.2650635271451 120.44843102989681";
+        assert_eq!(read(d).subpaths[0].anchors.len(), 3);
+        for (cx, cy, r) in [(732.25, 122.6, 1.2), (-999.0, 513.5, 0.5), (1000.0, -1000.0, 20.5), (-417.3, -88.8, 7.7)] {
+            for t in [0.0f64, 17.0, 33.3, 61.0, 89.0, 123.4, 200.0, 311.1] {
+                let (s, c) = t.to_radians().sin_cos();
+                let (x0, y0, x1, y1) = (cx + r * c, cy + r * s, cx - r * c, cy - r * s);
+                for flags in ["0 0", "0 1", "1 0", "1 1"] {
+                    let d = format!("M{x0} {y0}A{r} {r} 0 {flags} {x1} {y1}");
+                    assert_eq!(read(&d).subpaths[0].anchors.len(), 3, "{d}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn hand_written_rotations_load_as_before() {
+        // Transforms keep `deg.to_radians()` off the quarter turns, negative and past a turn alike.
+        for deg in [-30.0f64, 30.0, -1e-20, 390.0, -400.0] {
+            let [_, b, ..] = parse_transform(&format!("rotate({deg})")).unwrap().as_coeffs();
+            assert_eq!(b.to_bits(), deg.to_radians().sin().to_bits(), "{deg}");
+        }
+        assert_eq!(parse_transform("rotate(30) rotate(-30)").unwrap(), Affine::rotate(30f64.to_radians()) * Affine::rotate((-30f64).to_radians()));
+    }
+
+    #[test]
+    fn path_data_counts_against_the_anchor_budget() {
+        let lines = format!("M0 0{}", "L1 1".repeat(20));
+        assert!(crate::path::with_anchor_budget(10, || parse_path_data(&lines, None)).is_err());
+        assert!(crate::path::with_anchor_budget(21, || parse_path_data(&lines, None)).is_ok());
+        // Arcs spend their cubics' anchors: three half circles are seven anchors.
+        let arcs = "M0 0A5 5 0 0 1 10 0A5 5 0 0 1 20 0A5 5 0 0 1 30 0";
+        assert!(crate::path::with_anchor_budget(6, || parse_path_data(arcs, None)).is_err());
+        assert!(crate::path::with_anchor_budget(7, || parse_path_data(arcs, None)).is_ok());
+        // Outside a budget, nothing is counted.
+        assert!(parse_path_data(&lines, None).is_ok());
+        // A closing anchor on the start that Z folds in is given back: the writer's own circle is
+        // four anchors, a closed triangle three, and a command after Z starts from the start.
+        let circle = path_data(&crate::shapes::ellipse(kurbo::Rect::new(0.0, 0.0, 10.0, 10.0))).unwrap().0;
+        assert!(circle.ends_with("Z"), "{circle}");
+        assert!(crate::path::with_anchor_budget(4, || parse_path_data(&circle, None)).is_ok(), "{circle}");
+        assert!(crate::path::with_anchor_budget(3, || parse_path_data(&circle, None)).is_err());
+        let triangle = "M0 0L10 0L10 10L0 0Z";
+        assert!(crate::path::with_anchor_budget(3, || parse_path_data(triangle, None)).is_ok());
+        assert!(crate::path::with_anchor_budget(2, || parse_path_data(triangle, None)).is_err());
+        let twice = "M0 0L10 0L10 10L0 0ZL5 5L0 0Z";
+        assert!(crate::path::with_anchor_budget(5, || parse_path_data(twice, None)).is_ok());
+        assert!(crate::path::with_anchor_budget(4, || parse_path_data(twice, None)).is_err());
+        let err = crate::path::with_anchor_budget(10, || parse_path_data(&lines, None)).unwrap_err();
+        assert!(err.contains("the paths have more than") && err.contains("anchors"), "the budget's refusal: {err}");
+        // A read within another gets no more than the outer has left, and is charged to it.
+        let five = "M0 0L1 0L2 0L3 0L4 0";
+        let nested = crate::path::with_anchor_budget(3, || crate::path::with_anchor_budget(100, || parse_path_data(five, None)));
+        assert!(nested.unwrap_err().contains("the paths have more than"), "the outer read's three bind");
+        let (inner, outer) = crate::path::with_anchor_budget(7, || {
+            let inner = crate::path::with_anchor_budget(100, || parse_path_data(five, None));
+            (inner, parse_path_data("M0 0L1 0L2 0", None))
+        });
+        assert!(inner.is_ok());
+        assert!(outer.is_err(), "the outer read has two of its seven left after the inner one's five");
+    }
+
+    #[test]
+    fn a_files_closing_point_folds_only_at_the_start_and_z_may_repeat() {
+        // As the writer before the near case wrote them (83db73fa1: the closing segment left out
+        // when straight and the last point is not the first bit for bit, written to exactly the
+        // first point otherwise, `kinds` when some anchor is smooth): read as written, kinds and
+        // all, and written back the same.
+        for (d, kinds, counts) in [
+            ("M0 0L10 0L10 10L0 5e-8Z", Some("cscc"), vec![4]),
+            ("M0 0L10 0L10 10L0 5e-8Z", None, vec![4]),
+            ("M0 0L10 0L10 10L-0 0Z", None, vec![4]),
+            ("M0 0C0 5 10 5 10 0C10 -5 0 -5 0 0Z", Some("ss"), vec![2]),
+            ("M0 0L10 0L10 10L1e-8 0ZM20 20L30 20L20 20.00000001Z", Some("ccsc csc"), vec![4, 3]),
+            ("M0 0C1 2 3 4 5 5L0 1e-9Z", Some("csc"), vec![3]),
+        ] {
+            let p = parse_path_data(d, kinds).unwrap();
+            assert_eq!(p.subpaths.iter().map(|s| s.anchors.len()).collect::<Vec<_>>(), counts, "{d}");
+            assert_eq!(roundtrip(&p), p, "{d}");
+        }
+        // Written now: the closing segment is written when the last anchor is that near, and reads
+        // back exactly.
+        let mut near = SubPath::polyline(&[Point::new(0.0, 0.0), Point::new(10.0, 0.0), Point::new(10.0, 10.0), Point::new(0.0, 5e-8)], true);
+        near.anchors[3].h_in = Point::new(1.0, 1.0);
+        let near = PathData::single(near);
+        assert!(path_data(&near).unwrap().0.ends_with("L0 0Z"));
+        assert_eq!(roundtrip(&near), near);
+        // An arc back to its own start right after Z is left out, and so is the subpath it would
+        // have opened; a segment after it opens one as before.
+        assert_eq!(read("M0 0L10 0L10 10Z A5 5 0 0 1 0 0").subpaths.len(), 1);
+        assert_eq!(path_data(&read("M0 0L10 0L10 10Z A5 5 0 0 1 0 0")).unwrap().0, "M0 0L10 0L10 10Z");
+        assert_eq!(read("M0 0L10 0L10 10Z A5 5 0 0 1 0 0 L5 5").subpaths[1].anchors.len(), 2);
+        assert_eq!(read("M0 0A5 5 0 0 1 0 0").subpaths[0].anchors.len(), 1, "a move's own subpath stays");
+        // ZZ and a Z then another before a move: the second Z closes nothing and goes.
+        assert_eq!(ends(&read("M0 0L10 0L10 10ZZ")), ends(&read("M0 0L10 0L10 10Z")));
+        assert_eq!(read("M0 0L10 0L10 10z z m1 1").subpaths.len(), 2);
+        assert!(parse_path_data("M0 0L10 0Z 5 5", None).is_err(), "numbers after Z are refused");
+        assert!(parse_path_data("Z", None).is_err());
+    }
+
+    #[test]
+    fn hand_written_path_data_folds_a_closing_point_a_rounding_error_off_as_from_bezpath() {
+        // Relative data back at its start a rounding error off: a file keeps the closing point
+        // (what `d` says, whatever its commands, as `kinds` written by hand counts it), data for a
+        // command folds it within 1e-7, as from_bezpath does.
+        let d = "m0.1 0.2c0.1 -0.2 0.3 0.1 0.2 0.3c-0.1 0.2 -0.2 -0.1 -0.2 -0.3z";
+        assert_eq!(read(d).subpaths[0].anchors.len(), 3);
+        assert_eq!(parse_path_data("m0 0l10 0l0 10l-10 -9.99999999z", Some("cccc")).unwrap().subpaths[0].anchors.len(), 4);
+        assert_eq!(read("M0 0L10 0L10 10L0 1e-8A5 5 0 0 1 0 1e-8Z").subpaths[0].anchors.len(), 4, "an own-start arc changes nothing");
+        let p = parse_path_data_by_hand(d).unwrap();
+        assert_eq!(p.subpaths[0].anchors.len(), 2);
+        assert_eq!(p, PathData::from_bezpath(&kurbo::BezPath::from_svg(d).unwrap()));
+    }
+
+    #[test]
+    fn kinds_inferred_from_handles_are_from_bezpaths() {
+        // Closed and open subpaths, an open one a move ends (kept corners, as from_bezpath keeps
+        // them), a trailing open one (inferred), curves whose joins line up.
+        for d in [
+            "M0 5C0 2.24 2.24 0 5 0C7.76 0 10 2.24 10 5C10 7.76 7.76 10 5 10C2.24 10 0 7.76 0 5Z",
+            "M0 0C1 1 9 1 10 0C11 -1 19 -1 20 0",
+            "M0 0Q5 5 10 0Q15 -5 20 0",
+            "M0 0C0 10 20 10 20 0C20 -10 40 -10 40 0M50 50L60 60",
+            "M50 50L60 60M0 0C0 10 20 10 20 0C20 -10 40 -10 40 0",
+            "M0 0C0 10 20 10 20 0C20 -10 40 -10 40 0ZM0 0C0 10 20 10 20 0C20 -10 40 -10 40 0M5 5L6 6Z",
+            "M0 0L10 0L10 10ZL5 5C5 6 7 6 7 5C7 4 9 4 9 5M1 1L2 2",
+        ] {
+            let p = parse_path_data_by_hand(d).unwrap();
+            assert_eq!(p, PathData::from_bezpath(&kurbo::BezPath::from_svg(d).unwrap()), "{d}");
+        }
+        // An open subpath a move ends is corners, as from_bezpath makes it, even where the reader
+        // made an arc's, an S's or a T's joins smooth.
+        for d in
+            ["M0 0C0 10 20 10 20 0C20 -10 40 -10 40 0M50 50L60 60", "M0 0A5 5 0 0 1 10 0M50 50L60 60", "M0 0C0 10 20 10 20 0S40 -10 40 0M50 50L60 60"]
+        {
+            let mut p = read(d);
+            p.infer_kinds_from_handles();
+            assert!(p.subpaths[0].anchors.iter().all(|a| a.kind == AnchorKind::Corner), "{d}");
+        }
+    }
+
+    #[test]
+    fn kinds_count_an_arcs_anchors_and_override_its_smooth_joins() {
+        // An arc of three quarter turns after a line: 1 + 1 + 3 anchors.
+        let d = "M0 0L10 0A10 10 0 1 1 20 10";
+        let p = read(d);
+        let kinds: String = p.subpaths[0].anchors.iter().map(|a| if a.kind == AnchorKind::Smooth { 's' } else { 'c' }).collect();
+        assert_eq!(kinds, "ccssc");
+        let all_corners = parse_path_data(d, Some("ccccc")).unwrap();
+        assert!(all_corners.subpaths[0].anchors.iter().all(|a| a.kind == AnchorKind::Corner));
+        assert_eq!(ends(&all_corners), ends(&p));
+        assert!(parse_path_data(d, Some("ccc")).is_err(), "the arc's inner anchors count");
+    }
+
+    #[test]
+    fn a_reflected_join_is_smooth() {
+        let kinds = |d: &str| read(d).subpaths[0].anchors.iter().map(|a| a.kind == AnchorKind::Smooth).collect::<Vec<_>>();
+        assert_eq!(kinds("M0 0C10 10 50 10 60 0S110 -10 120 0"), [false, true, false]);
+        assert_eq!(kinds("M0 0Q30 30 60 0T120 0"), [false, true, false]);
+        // Nothing reflected (after a line, or a control point on the join): a corner.
+        assert_eq!(kinds("M0 0L10 0S20 10 30 0"), [false, false, false]);
+        assert_eq!(kinds("M0 0Q60 0 60 0T120 0"), [false, false, false]);
     }
 
     #[test]
