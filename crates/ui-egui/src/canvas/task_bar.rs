@@ -186,7 +186,7 @@ pub(super) fn task_bar(app: &mut VectorcraftApp, ui: &mut Ui, xf: &Xf) {
         items.push((tl!("Duplicate"), "copy", "edit.duplicate", none()));
     }
     // The embedding page's own actions for this selection (`vectorcraft:taskBar`), after the bar's.
-    let host = host_actions(app, first.as_ref().filter(|_| !on_artboards && n == 1), is_image, is_clip_group);
+    let host = host_actions(app, first.filter(|_| !on_artboards && n == 1), is_image, is_clip_group);
     let bar_options = more_options(app);
     // The paints the Fill and Stroke proxies show, "?" when the selected objects' paints differ.
     let (fill, stroke) = crate::panels::current_paints(app);
