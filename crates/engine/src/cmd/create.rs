@@ -7,7 +7,7 @@ use vectorcraft_geom::{Affine, Anchor, AnchorKind, FillRule, PathData, Point, Re
 use super::newart::NewArt;
 use super::{
     CommandSpec, NodeId, Result, Session, bad, bool_or, check_numbers, check_switches, cmd, color_value, f64_or, f64_req, finite_numbers, has_doc,
-    number_or, str_param, switch_or,
+    number_or, str_param, switch_or, text_param,
 };
 
 pub fn specs() -> Vec<CommandSpec> {
@@ -91,7 +91,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Create Path",
             [],
             None,
-            "{anchors: [{x, y, in?: [x,y], out?: [x,y]}], closed?: bool, d?: SVG path data} → {id}",
+            "{anchors: [{x, y, in?: [x,y], out?: [x,y]}], closed?: bool, d?: SVG path data (every SVG path command; its geometry as a saved file's: S, Q, T and A become cubics and an arc one per quarter turn with half a degree of grace; its closing rule and kinds depend on kinds: without kinds a closing point within 1e-7 of the start folds into it and the anchors of closed subpaths and of an open last one are smooth where their handles line up while those of an open subpath another follows are corners), kinds?: string (with d: d is then read as a saved file reads it with one letter per anchor; c corner or s smooth; a space between subpaths; a closing point near but not at the start is then an anchor of its own and needs its letter)} → {id}",
             has_doc,
             path_create
         ),
@@ -703,9 +703,24 @@ pub(crate) fn anchor_from_json(v: &Value, cmd: &str) -> Result<Anchor> {
 fn path_create(s: &mut Session, p: &Value) -> Result<Value> {
     // Checked with `d` too, where the path data alone decides whether the path is closed.
     let closed = switch_or(p, "closed", false, "path.create")?;
-    let path = if let Some(d) = str_param(p, "d") {
-        let bp = vectorcraft_geom::BezPath::from_svg(d).map_err(|e| bad("path.create", format!("bad path data: {e}")))?;
-        PathData::from_bezpath(&bp)
+    let kinds = text_param(p, "kinds", "path.create")?;
+    let path = if let Some(d) = text_param(p, "d", "path.create")? {
+        // The reader a saved file's path data goes through, so the same `d` makes the same anchors
+        // by command and by file. With `kinds`, as a file reads them (its anchors counted as the
+        // file holds them); without, as this command has always read path data written by hand
+        // (PathData::from_bezpath): a closing point within 1e-7 of the start folds into it, and the
+        // kinds are taken from the handles.
+        let path = match kinds {
+            Some(_) => vectorcraft_geom::notation::parse_path_data(d, kinds),
+            None => vectorcraft_geom::notation::parse_path_data_by_hand(d),
+        }
+        .map_err(|e| bad("path.create", format!("bad path data: {e}")))?;
+        if path.subpaths.is_empty() {
+            return Err(bad("path.create", "need at least one anchor: `d` draws nothing"));
+        }
+        path
+    } else if kinds.is_some() {
+        return Err(bad("path.create", "`kinds` goes with `d`"));
     } else {
         let anchors: Vec<Anchor> = p
             .get("anchors")

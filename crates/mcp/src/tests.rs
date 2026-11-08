@@ -489,6 +489,26 @@ fn screenshot_and_render_preview_draw_the_trace_view_with_trace_views() {
     }
 }
 
+/// `draw_path` passes `kinds` with `d` to path.create, which checks it against the anchors.
+#[test]
+fn draw_path_passes_kinds_with_d() {
+    let mut s = server();
+    let r = call(&mut s, 1, "draw_path", json!({"d": "M0 0L10 0L10 10", "kinds": "csc"}));
+    assert_eq!(r["isError"], false, "{r}");
+    let r = call(&mut s, 2, "draw_path", json!({"d": "M0 0L10 0L10 10", "kinds": "cc"}));
+    assert_eq!(r["isError"], true, "{r}");
+    assert!(text_of(&r).contains("kinds"), "{r}");
+    let r = call(&mut s, 3, "draw_path", json!({"points": [[0, 0], [10, 10]], "kinds": "cc"}));
+    assert_eq!(r["isError"], true, "{r}");
+    assert!(text_of(&r).contains("`kinds` goes with `d`"), "{r}");
+    // Null is absent, as path.create takes it; a `d` that is not text is refused as such.
+    let r = call(&mut s, 4, "draw_path", json!({"points": [[0, 0], [10, 10]], "kinds": null}));
+    assert_eq!(r["isError"], false, "{r}");
+    let r = call(&mut s, 5, "draw_path", json!({"d": 5, "kinds": "c"}));
+    assert_eq!(r["isError"], true, "{r}");
+    assert!(text_of(&r).contains("`d` must be a string"), "{r}");
+}
+
 #[test]
 fn headless_path_gesture_undo() {
     let mut s = server();
