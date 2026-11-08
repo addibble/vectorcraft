@@ -169,7 +169,7 @@ pub struct CharStyle {
 /// A glyph chosen for one character ([`CharStyle::glyph_alternate`]): the glyph id and the face it
 /// belongs to, named by its PostScript name and version string, so that a glyph id is never used
 /// in another font or another version of the font.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GlyphChoice {
     /// The character the glyph is drawn for.
     pub ch: char,
