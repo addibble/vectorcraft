@@ -180,7 +180,7 @@ impl PressureProfile {
 /// Each sample is joined to the one before it the shorter way round, so the degrees can run past
 /// ±180° and the angle read between two samples turns through the smaller angle between them.
 /// Calligraphic and Scatter brushes with Bearing or Rotation variation read it.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct AngleProfile {
     pub points: Vec<(f64, f64)>,
 }
