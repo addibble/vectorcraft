@@ -248,6 +248,7 @@ Release measurements and a repeatable CLI scene are in [3D lighting performance]
 
 | Date | Change |
 |---|---|
+| 2026-11-09 | A color adjustment after a 3D effect recolors the shaded faces in exports and Expand Appearance too, as the canvas draws them, where they recolored the art before it was shaded; Expand Appearance builds the solid of a 3D effect on a group's or layer's own fill or stroke, which it refused. |
 | 2026-11-08 | Contours that cross, touch or overlap are merged by vectorcraft-pathops before Extrude & Bevel, Inflate and Rotate build a solid, sharing its limits; others are built as drawn. |
 | 2026-11-06 | Extrude & Bevel, Inflate and Rotate apply to groups and layers: every path, compound path and type in them turns about one shared axis (#4506). |
 | 2026-10-21 | Four original lighting presets, shared by all four 3D effects and commands, with effective-setting recognition and existing preview/history behavior. |

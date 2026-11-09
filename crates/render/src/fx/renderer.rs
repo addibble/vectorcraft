@@ -580,16 +580,18 @@ impl Renderer {
         let mut three_d = false;
         let symbol = vectorcraft_doc::symbol_overrides::art_of_instance(doc, a);
         let container = is_container(a);
-        let art = match effects::crop_marks_art(a)
-            .or_else(|| crate::addons::halftone::art(doc, a))
-            .or_else(|| {
-                let art = effects::revolve_art(a).or_else(|| effects::solid_art(a));
-                self.stats.three_d_built += usize::from(art.is_some());
-                three_d |= art.is_some();
-                art
-            })
-            .or_else(|| effects::reshape(Some(doc), a, symbol.as_ref()))
-        {
+        // Crop Marks', Vector Halftone's or the 3D effect's art, chosen as exports and Expand
+        // Appearance choose it ([`effects::drawn_first`]).
+        let first = match effects::drawn_first(doc, a, crate::addons::halftone::art, false) {
+            effects::DrawnFirst::Marks(m) | effects::DrawnFirst::Halftone(m) => Some(m),
+            effects::DrawnFirst::ThreeD(m) => {
+                self.stats.three_d_built += 1;
+                three_d = true;
+                Some(m)
+            }
+            effects::DrawnFirst::Neither => None,
+        };
+        let art = match first.or_else(|| effects::reshape(Some(doc), a, symbol.as_ref())) {
             Some(r) => r,
             None if container => effects::evaluate_container(Some(doc), a).unwrap_or_else(|| (**a).clone()),
             None if matches!(a.kind, NodeKind::Text(_) | NodeKind::Image(_) | NodeKind::Path { .. } | NodeKind::Compound { .. }) => (**a).clone(),

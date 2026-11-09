@@ -104,11 +104,66 @@ fn path_kind(d: &mut Document, path: PathData, rule: FillRule) -> NodeKind {
     }
 }
 
+/// What `n`'s 3D effects draw in `d`, as the canvas draws them ([`three_d_of`]).
+pub enum ThreeD {
+    /// The art they build (Revolve's as Expand Appearance makes it when asked), evaluated, with its
+    /// faces recolored by `n`'s color adjustments, which act on the shaded art.
+    Built(Node),
+    /// `n` has no 3D effect, they build nothing, or Crop Marks or Vector Halftone draw other art
+    /// for it first ([`drawn_first`]).
+    NotApplicable,
+}
+
+/// The art the canvas draws in an object's place before its geometry effects reshape it, as
+/// [`drawn_first`] chooses it.
+pub enum DrawnFirst {
+    /// Crop Marks': the object and its marks.
+    Marks(Node),
+    /// Vector Halftone's: the object as its dots.
+    Halftone(Node),
+    /// The 3D effect's.
+    ThreeD(Node),
+    /// None of these: the object is reshaped by its geometry effects, or drawn as it is.
+    Neither,
+}
+
+/// What the canvas draws for `n` in `d` first, in the order it tries them: Crop Marks' art (none
+/// without bounds), else Vector Halftone's dots as `halftone` makes them (none when they would have
+/// no area or take too many cells), else its 3D effect's art (Revolve's as Expand Appearance makes
+/// it when `expand`). The renderer and [`three_d_of`] choose by it alike, so exports and Expand
+/// Appearance build a 3D effect exactly when the canvas draws it.
+pub fn drawn_first(d: &Document, n: &Node, halftone: impl FnOnce(&Document, &Node) -> Option<Node>, expand: bool) -> DrawnFirst {
+    if let Some(m) = crop_marks_art(n) {
+        return DrawnFirst::Marks(m);
+    }
+    if let Some(m) = halftone(d, n) {
+        return DrawnFirst::Halftone(m);
+    }
+    let revolved = if expand { crate::revolve::expand_revolve_art(n) } else { crate::revolve_art(n) };
+    revolved.or_else(|| crate::solid_art(n)).map_or(DrawnFirst::Neither, DrawnFirst::ThreeD)
+}
+
+/// What `n`'s 3D effects draw in `d` ([`ThreeD`]); Revolve's art as Expand Appearance makes it when
+/// `expand`.
+pub fn three_d_of(d: &mut Document, n: &Node, expand: bool) -> ThreeD {
+    if !(crate::has_revolve(n) || crate::has_solid(n)) {
+        return ThreeD::NotApplicable;
+    }
+    let DrawnFirst::ThreeD(m) = drawn_first(d, n, crate::addons::halftone::halftone_art, expand) else { return ThreeD::NotApplicable };
+    let m = evaluate_container(Some(d), &m).unwrap_or(m);
+    // The art keeps the object's color adjustments.
+    ThreeD::Built(if has_adjustment(&m) { adjust_in_document(d, &m).unwrap_or(m) } else { m })
+}
+
 /// `n` with its geometry effects evaluated (`None` = unchanged).
 fn bake_node(d: &mut Document, n: &Node) -> Option<Node> {
     // A cancelled export leaves the rest of the document as it is: the caller drops the result.
     if !needs_bake(n) || vectorcraft_doc::cancel::is_cancelled() {
         return None;
+    }
+    // A 3D effect's art, its faces recoloured by the object's colour adjustments.
+    if let ThreeD::Built(m) = three_d_of(d, n, false) {
+        return Some(bake_pieces(d, m));
     }
     // Colour adjustments: the object recoloured (inside it too), then baked as it is.
     if has_adjustment(n)
@@ -122,10 +177,6 @@ fn bake_node(d: &mut Document, n: &Node) -> Option<Node> {
     }
     // Vector Halftone: the object as its dots.
     if let Some(m) = crate::addons::halftone::halftone_art(d, n) {
-        return Some(bake_pieces(d, m));
-    }
-    if let Some(m) = crate::revolve_art(n).or_else(|| crate::solid_art(n)) {
-        let m = evaluate_container(Some(d), &m).unwrap_or(m);
         return Some(bake_pieces(d, m));
     }
     // Type, images, symbol instances and live objects: reshaped through their outlines, and so are
@@ -174,7 +225,7 @@ fn bake_node(d: &mut Document, n: &Node) -> Option<Node> {
 /// `m`, art evaluated from an object, with its children baked and then given ids of their own (the
 /// pieces copied from the source keep the source's ids until then). The pieces are baked with the
 /// ids the renderer draws them with: Random in a Transform effect takes its seed from the id.
-fn bake_pieces(d: &mut Document, mut m: Node) -> Node {
+pub fn bake_pieces(d: &mut Document, mut m: Node) -> Node {
     let mut seen = std::collections::HashSet::from([m.id]);
     let children = m.children().cloned().unwrap_or_default();
     let children = children
@@ -477,8 +528,7 @@ pub type StrokeArt<'a> = &'a mut dyn FnMut(&mut Document, &PathData, FillRule, &
 /// without transparency or effects of its own takes `n`'s place itself. Hidden fills, strokes and
 /// effects are dropped. `None` for other kinds of objects.
 pub fn expand_leaf(d: &mut Document, n: &Node, stroke_art: StrokeArt) -> Option<Node> {
-    if let Some(m) = crate::revolve::expand_revolve_art(n).or_else(|| crate::solid_art(n)) {
-        let m = evaluate_container(Some(d), &m).unwrap_or(m);
+    if let ThreeD::Built(m) = three_d_of(d, n, true) {
         return Some(bake_pieces(d, m));
     }
     let (g, rule, ctx, mut m) = leaf_base(n)?;
