@@ -89,9 +89,9 @@
 //!   of the radius), starting and ending exactly at the arc's end points; angles within 1e-5° of
 //!   a quarter turn are drawn at it, so a half circle's points are exact. As SVG says (SVG 1.1
 //!   F.6.2, F.6.6), an arc with a zero radius is a line, one to its own start point is left out,
-//!   and radii too small to reach are scaled up; a radius at or below 1e-5 is a line too, as
-//!   kurbo (and so SVG import) reads it, and radii one of which is past the number range times
-//!   the other are refused. An arc whose span is zero but for rounding (its
+//!   and radii too small to reach are scaled up; an arc with a radius at or below 1e-5 (in the
+//!   path's units) is exactly `L`, to its own start too, as kurbo (and so SVG import) reads it,
+//!   and radii one of which is more than the largest number times the other are refused. An arc whose span is zero but for rounding (its
 //!   ends far closer than its radii) is its chord when small and the whole turn round when
 //!   large; one whose ends are a smallest step apart is its chord. A coordinate that leaves the
 //!   finite range is refused, as everywhere. Flags need no separator (`a10 10 0 1110 10`).
@@ -368,10 +368,11 @@ fn snap_quarter(deg: f64) -> f64 {
 /// 90.5° still stays within 0.03% of the radius.
 const ARC_PIECE_GRACE: f64 = 0.5;
 
-/// The largest radius an arc is a straight line at: kurbo's `SvgArc::is_straight_line` (0.13,
-/// `src/svg.rs`), the rule `path.create` and SVG import (through usvg) have always read arcs by.
-/// SVG itself makes only a zero radius a line; one this small is scaled up to reach its ends
-/// (F.6.6) by a ratio that leaves the number range on the way.
+/// The largest radius an arc is a straight line at, exactly `L` (to its own start too): kurbo's
+/// rule (`SvgArc::is_straight_line`, 0.13 `src/svg.rs`), which `path.create` and SVG import
+/// (through usvg) have always read arcs by, kept for parity with them. SVG itself makes only a
+/// zero radius a line. The threshold is in the path's own units: a half circle of radius 5e-6 is
+/// its chord.
 const ARC_LINE_RADIUS: f64 = 1e-5;
 
 /// An arc read as cubics `[c1, c2, end]`, the first `len` of them.
@@ -388,7 +389,8 @@ struct ArcCubics {
 /// arc whose span is zero but for rounding, or ends a smallest step apart, too close to have a
 /// direction. A large arc whose span is zero but for rounding is the whole turn round. `Err` when
 /// the ellipse itself (radii scaled up past the largest number) leaves the finite range, or the
-/// radii's ratio, either way round, leaves the normal range.
+/// radii's ratio, either way round, passes the largest number (when the ends are not one point
+/// but for rounding, which is the chord whatever the radii).
 ///
 /// The center comes from SVG's endpoint-to-center conversion (SVG 1.1 Appendix F.6.5, SVG 2
 /// "Implementation notes"), radii too small to reach scaled up as F.6.6 says. It is worked in
@@ -397,11 +399,6 @@ struct ArcCubics {
 /// the way and a far center's rounding does not throw a point off. A point that leaves the finite
 /// range all the same is refused by the reader's own check of every coordinate.
 fn arc_cubics(from: Point, to: Point, rx: f64, ry: f64, rotation: f64, large_arc: bool, sweep: bool) -> Result<Option<ArcCubics>, String> {
-    // Radii whose ratio is past the number range have no direction to work in: the unit circle's
-    // shares below scale one coordinate by it.
-    if !((ry / rx).is_normal() && (rx / ry).is_normal()) {
-        return Err("an arc's radii are out of range: one is too many times the other".into());
-    }
     let (sin, cos) = crate::sin_cos_deg(rotation);
     // Half the chord, each end halved first so that far-apart ends do not overflow.
     let half = (from.x * 0.5 - to.x * 0.5, from.y * 0.5 - to.y * 0.5);
@@ -410,13 +407,19 @@ fn arc_cubics(from: Point, to: Point, rx: f64, ry: f64, rotation: f64, large_arc
     if x1 == 0.0 && y1 == 0.0 {
         return Ok(None);
     }
+    // The radii's ratio both ways round. Neither is zero (the radii are finite and positive), but
+    // one can pass the largest number, and the ellipse then has no direction to work in.
+    let (q, ratio) = (ry / rx, rx / ry);
+    if !(q.is_finite() && ratio.is_finite()) {
+        return Err("an arc's radii are out of range: one is more than the largest number times the other".into());
+    }
     // Its direction in unit-circle terms, (x1/rx, y1/ry) normalized, found as (x1, y1·rx/ry) or
     // (x1·ry/rx, y1) over the larger coordinate so that it neither overflows nor underflows away.
     let (ua, ub) = {
         let m = x1.abs().max(y1.abs());
-        let q = ry / rx;
         let (a, b) = if q >= 1.0 { (x1 / m, y1 / m / q) } else { (x1 / m * q, y1 / m) };
-        // Never zero: the larger coordinate's share is ±1, or ±q, normal.
+        // Never zero: the larger coordinate's share is ±1 when q ≥ 1 or that coordinate is y1,
+        // and ±q, which is not zero, otherwise.
         let n = a.hypot(b);
         (a / n, b / n)
     };
@@ -431,7 +434,6 @@ fn arc_cubics(from: Point, to: Point, rx: f64, ry: f64, rotation: f64, large_arc
             ry *= d;
         } else {
             // rx·d and ry·d without the overflow of d.
-            let ratio = rx / ry;
             (rx, ry) = (x1.hypot(y1 * ratio), (x1 / ratio).hypot(y1));
         }
         if !(rx.is_finite() && ry.is_finite()) {
@@ -690,9 +692,13 @@ impl Parser<'_> {
                             let rotation = self.number()?;
                             let (large_arc, sweep) = (self.flag()?, self.flag()?);
                             at = self.pair(rel, from)?;
-                            // SVG F.6.2: an arc to its own start point is left out, and one with a
-                            // zero radius is a straight line; so is one with a radius at or below
-                            // ARC_LINE_RADIUS, as kurbo reads it.
+                            // A radius at or below ARC_LINE_RADIUS (zero included, SVG F.6.2) is
+                            // exactly `L`, to its own start too, as kurbo reads it.
+                            if rx <= ARC_LINE_RADIUS || ry <= ARC_LINE_RADIUS {
+                                sp.anchors.push(Anchor::corner(at));
+                                continue;
+                            }
+                            // SVG F.6.2: an arc to its own start point is left out.
                             if from == at {
                                 // Nor is the subpath it would have started after `Z`.
                                 if opened_after_z && sp.anchors.len() == 1 {
@@ -700,10 +706,7 @@ impl Parser<'_> {
                                 }
                                 continue;
                             }
-                            if rx > ARC_LINE_RADIUS
-                                && ry > ARC_LINE_RADIUS
-                                && let Some(arc) = arc_cubics(from, at, rx, ry, rotation, large_arc, sweep)?
-                            {
+                            if let Some(arc) = arc_cubics(from, at, rx, ry, rotation, large_arc, sweep)? {
                                 let joins = arc.len.saturating_sub(1);
                                 for (i, [c1, c2, p]) in arc.cubics.into_iter().take(arc.len).enumerate() {
                                     sp.push_cubic(c1, c2, p);
@@ -1350,14 +1353,23 @@ mod tests {
 
     #[test]
     fn arc_radii_out_of_range_are_lines_or_refused() {
-        // Radii a ratio far apart that stays in the normal range read, on finite points; one past
-        // it, either way round, is refused (no direction to work in), never read as something else.
-        for d in ["M0 0A1e300 1e-4 0 0 1 10 0", "M0 0A1e-4 1e300 0 0 1 0 10", "M0 0A1e300 1e-4 0 0 1 0 10"] {
+        // Radii as far apart as the largest number allows read, on finite points ending where
+        // they should, whichever way round (ratios 1e307 and 1e308); an infinite ratio is refused,
+        // never read as something else; ends one point but for rounding are the chord whatever
+        // the radii.
+        for d in ["M0 0A1e-4 1e303 0 0 1 0 10", "M0 0A1e-4 1e304 0 0 1 0 10", "M0 0A1e303 1e-4 0 0 1 10 0", "M0 0A1e304 1e-4 0 0 1 10 0"] {
             let a = &read(d).subpaths[0].anchors;
             assert!(a.len() >= 2 && a.iter().all(|x| x.p.is_finite() && x.h_in.is_finite() && x.h_out.is_finite()), "{d}: {a:?}");
+            assert!(a[a.len() - 1].p == Point::new(0.0, 10.0) || a[a.len() - 1].p == Point::new(10.0, 0.0), "{d}");
         }
-        for d in ["M0 0A1e308 1e-4 0 0 1 10 0", "M0 0A1e-4 1e308 0 0 1 0 10", "M0 0A1.7e308 2e-5 0 0 1 10 0"] {
+        // (Scaled up across the short radius, 1e304 by 5e4 is past the largest number: refused.)
+        assert!(parse_path_data("M0 0A1e304 1e-4 0 0 1 0 10", None).is_err());
+        for d in ["M0 0A1e-4 1e305 0 0 1 0 10", "M0 0A1e305 1e-4 0 0 1 10 0", "M0 0A1.7e308 2e-5 0 0 1 10 0"] {
             assert!(parse_path_data(d, None).is_err(), "{d}");
+        }
+        for d in ["M0 0A1e-4 1e305 0 0 1 5e-324 0", "M0 0A1e305 1e-4 0 1 1 0 5e-324"] {
+            let a = &read(d).subpaths[0].anchors;
+            assert!(a.len() == 2 && a.iter().all(|x| x.h_in == x.p && x.h_out == x.p), "{d}: {a:?}");
         }
         // Subnormal radii, whose ratios and products left the number range (refusing some, and
         // throwing a middle point off the ellipse), are lines.
@@ -1370,6 +1382,36 @@ mod tests {
         ] {
             assert_eq!(read(d), read(line), "{d}");
         }
+    }
+
+    #[test]
+    fn small_radius_arcs_read_by_hand_as_kurbo_reads_them() {
+        // An arc with a radius at or below 1e-5 is kurbo's line: by hand, the path data reads as
+        // from_bezpath of kurbo's own reading, in every form (absolute, relative, to its own start,
+        // after `Z`, between other segments, zero and the threshold itself).
+        let radii = ["0 0", "0 5", "5 0", "1e-5 1e-5", "1e-5 3", "7 1e-5", "1e-6 1e-6", "5e-324 1", "-1e-5 2"];
+        let tails = ["10 0", "0 0", "-3 4", "1e-300 0"];
+        let mut checked = 0;
+        for r in radii {
+            for t in tails {
+                for flags in ["0 0", "1 1"] {
+                    for d in [
+                        format!("M0 0A{r} 30 {flags} {t}"),
+                        format!("M0 0a{r} 30 {flags} {t}"),
+                        format!("M0 0L10 0A{r} 0 {flags} 10 0L20 0"),
+                        format!("M1 2L5 5A{r} 0 {flags} {t}Z"),
+                        format!("M1 2L5 5ZA{r} 0 {flags} {t}L9 9"),
+                        format!("M1 2L5 5Za{r} 0 {flags} 0 0L9 9"),
+                        format!("M3 3A{r} 0 {flags} 3 3A{r} 0 {flags} {t}"),
+                    ] {
+                        let kurbo = PathData::from_bezpath(&kurbo::BezPath::from_svg(&d).unwrap());
+                        assert_eq!(parse_path_data_by_hand(&d).unwrap(), kurbo, "{d}");
+                        checked += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(checked, 9 * 4 * 2 * 7);
     }
 
     #[test]
