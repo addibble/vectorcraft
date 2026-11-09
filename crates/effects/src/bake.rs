@@ -136,12 +136,8 @@ fn bake_node(d: &mut Document, n: &Node) -> Option<Node> {
         if let Some(m) = moved_type_group(n) {
             return Some(bake_pieces(d, m));
         }
-        let symbol = match &n.kind {
-            NodeKind::SymbolInstance { symbol, .. } => {
-                d.symbols.iter().find(|s| s.name == *symbol).map(|s| vectorcraft_doc::symbol_overrides::dynamic_art(&s.art, n))
-            }
-            _ => None,
-        };
+        // As it shows it: with a dynamic symbol's changes, stained by its fill.
+        let symbol = vectorcraft_doc::symbol_overrides::art_of_instance(d, n);
         let m = reshape(Some(d), n, symbol.as_ref())?;
         return Some(bake_node(d, &m).unwrap_or(m));
     }

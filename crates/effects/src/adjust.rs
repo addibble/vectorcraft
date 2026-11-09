@@ -475,8 +475,9 @@ pub fn adjust(n: &Node, outer: Option<&ColorMap>, swatches: &SwatchKinds, images
 pub fn adjust_in_document(d: &mut Document, n: &Node) -> Option<Node> {
     let art;
     let src = match &n.kind {
-        NodeKind::SymbolInstance { symbol, .. } if has_adjustment(n) => {
-            let symbol = d.symbols.iter().find(|s| s.name == *symbol).map(|s| vectorcraft_doc::symbol_overrides::dynamic_art(&s.art, n));
+        NodeKind::SymbolInstance { .. } if has_adjustment(n) => {
+            // As it shows it: with a dynamic symbol's changes, stained by its fill.
+            let symbol = vectorcraft_doc::symbol_overrides::art_of_instance(d, n);
             art = crate::reshape::as_art(Some(d), n, symbol.as_ref())?;
             &art
         }
