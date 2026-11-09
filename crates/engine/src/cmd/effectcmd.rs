@@ -999,7 +999,20 @@ fn expanded_node(d: &mut Document, mut n: Node, brushes: &[vectorcraft_brush::Br
         }
         _ => None,
     };
+    // A 3D effect's art, which takes the color adjustments after it is shaded
+    // ([`effects::three_d_of`]). An object that becomes an image (blur, feather, inner glow) is
+    // drawn into it as the canvas draws it, its 3D effect and adjustments with it: no art is built
+    // for it.
+    let fx = rasterfx::raster_fx(&n);
+    let whole_image = !fx.is_empty() && !fx.iter().all(effects::RasterFx::is_below);
+    let as_drawn = whole_image && (effects::has_revolve(&n) || effects::has_solid(&n));
+    let mut built = match if as_drawn { effects::ThreeD::NotApplicable } else { effects::three_d_of(d, &n, true) } {
+        effects::ThreeD::Built(art) => Some(art),
+        effects::ThreeD::NotApplicable => None,
+    };
     if effects::has_adjustment(&n)
+        && built.is_none()
+        && !as_drawn
         && let Some(m) = effects::adjust_in_document(d, &n, symbol_art)
     {
         out.push((id, 0));
@@ -1056,7 +1069,16 @@ fn expanded_node(d: &mut Document, mut n: Node, brushes: &[vectorcraft_brush::Br
         // keeps it as its only member).
         Some((image, false)) => Some(rasterfx::replace_with_image(v, image)),
         image => {
-            let m = if (container || matches!(n.kind, NodeKind::Text(_))) && (effects::has_solid(&v) || effects::has_revolve(&v)) {
+            let m = if let Some(mut art) = built.take() {
+                // A 3D effect's shaded faces (a group's members' solids), its raster effects left to
+                // the image as the object's are: those of its fills and strokes after the 3D effect,
+                // which the faces carry, too.
+                rasterfx::strip_raster(&mut art, true);
+                Some(effects::bake_pieces(d, art))
+            } else if !as_drawn
+                && (container || matches!(n.kind, NodeKind::Text(_)))
+                && (effects::has_solid(&v) || effects::has_revolve(&v))
+            {
                 // A 3D effect on a group or layer, or on type: the shaded faces of its solids.
                 effects::expand_leaf(d, &v, &mut stroke_art)
             } else if container {
