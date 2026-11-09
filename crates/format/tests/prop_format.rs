@@ -272,8 +272,8 @@ proptest! {
 
     /// Any SVG arc with its ends within a thousand of the origin, of any finite radii and
     /// rotation, reads to at most four cubics ending exactly at its end point; a radius at or
-    /// below 1e-5 is a line (kurbo's rule), and it is refused only when its radii's ratio leaves
-    /// the normal range or its ellipse, scaled up to reach its ends as SVG F.6.6 says, reaches
+    /// below 1e-5 is a line (kurbo's rule), and it is refused only when one radius is more than
+    /// the largest number times the other or its ellipse, scaled up to reach its ends as SVG F.6.6 says, reaches
     /// past the largest number.
     #[test]
     fn svg_arcs_are_bounded_and_end_exactly(
@@ -288,26 +288,27 @@ proptest! {
                 let a = &p.subpaths[0].anchors;
                 prop_assert!(a.len() <= 5, "{}", d);
                 if rx.abs() <= 1e-5 || ry.abs() <= 1e-5 {
-                    prop_assert!(a.len() <= 2 && a.iter().all(|x| x.h_in == x.p && x.h_out == x.p), "{} is a line: {:?}", d, a);
+                    prop_assert!(a.len() == 2 && a.iter().all(|x| x.h_in == x.p && x.h_out == x.p), "{} is a line: {:?}", d, a);
                 }
                 prop_assert_eq!(a[0].p, Point::new(x0, y0));
                 prop_assert_eq!(a[a.len() - 1].p, Point::new(x, y));
             }
             // The ellipse passes through both ends, so it lies within twice its larger radius of
             // either: refusing is right only when that radius comes near the largest number, or
-            // the radii are too far apart for a direction. Both radii past 1e-5 and the ends
-            // within a thousand, the reach (at most 1e8) cannot overflow.
+            // one radius is more than the largest number times the other. Both radii past 1e-5
+            // and the ends within a thousand (half the chord within √2·1e3), the reach cannot
+            // overflow.
             Err(e) => {
                 let (rx, ry) = (rx.abs(), ry.abs());
                 prop_assert!(rx > 1e-5 && ry > 1e-5, "{} (a line) refused: {}", d, e);
-                if !((ry / rx).is_normal() && (rx / ry).is_normal()) {
+                if (ry / rx).is_infinite() || (rx / ry).is_infinite() {
                     return Ok(());
                 }
                 let (sin, cos) = rot.to_radians().sin_cos();
                 let (hx, hy) = (x0 / 2.0 - x / 2.0, y0 / 2.0 - y / 2.0);
                 let (x1, y1) = (cos * hx + sin * hy, -sin * hx + cos * hy);
                 let reach = (x1 / rx).hypot(y1 / ry).max(1.0);
-                prop_assert!(reach.is_finite());
+                prop_assert!(reach <= 2f64.sqrt() * 1e3 / 1e-5 * (1.0 + 1e-12), "{}: reach {}", d, reach);
                 let radius = rx.max(ry) * reach;
                 prop_assert!(!radius.is_finite() || radius > f64::MAX / 4.0, "{} refused: {}", d, e);
             }
