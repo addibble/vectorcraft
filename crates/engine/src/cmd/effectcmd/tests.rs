@@ -979,3 +979,137 @@ fn a_stained_instance_exports_and_expands_stained() {
         assert!(differ(&drawn, &expanded) < drawn.len() / 400, "{effect}: expanded {}", differ(&drawn, &expanded));
     }
 }
+
+/// A color adjustment after a 3D effect recolors the shaded faces, as the canvas draws them:
+/// exported and expanded alike, for a path, type and a group, with an adjustment that shading
+/// doesn't commute with.
+#[test]
+fn an_adjustment_after_3d_recolors_the_shaded_faces_everywhere() {
+    let draw = |d: &vectorcraft_doc::Document| {
+        vectorcraft_render::Renderer::new().render(d, 400, 400, vectorcraft_geom::Affine::IDENTITY, &Default::default()).pixels
+    };
+    let differ = |a: &[u8], b: &[u8]| a.iter().zip(b).filter(|(x, y)| x.abs_diff(**y) > 8).count();
+    for what in ["path", "type", "group"] {
+        let mut s = Session::new();
+        s.execute("file.new", &json!({"width": 400, "height": 400})).unwrap();
+        s.execute("paint.setFill", &json!({"color": "#3366cc"})).unwrap();
+        let id = match what {
+            "type" => s.execute("text.create", &json!({"x": 100, "y": 200, "text": "Kw", "size": 60, "color": "#3366cc"})).unwrap()["id"].clone(),
+            _ => s.execute("path.create", &json!({"d": "M100 100L200 100L200 200L100 200Z"})).unwrap()["id"].clone(),
+        };
+        s.execute("select.set", &json!({"ids": [id]})).unwrap();
+        if what == "group" {
+            let b = s.execute("path.create", &json!({"d": "M220 120L280 120L280 180L220 180Z"})).unwrap()["id"].clone();
+            s.execute("select.set", &json!({"ids": [id, b]})).unwrap();
+            s.execute("object.group", &json!({})).unwrap();
+        }
+        s.execute("effect.apply", &json!({"effect": "threeD.extrude", "item": null, "params": {"depth": 30.0}})).unwrap();
+        s.execute("effect.apply", &json!({"effect": "adjust.brightnessContrast", "item": null, "params": {"brightness": 60, "contrast": 60}}))
+            .unwrap();
+        let drawn = draw(&s.doc().unwrap().doc);
+        let baked = draw(&effects::bake_document(&s.doc().unwrap().doc).unwrap());
+        s.execute("effect.expandAppearance", &json!({})).unwrap();
+        let expanded = draw(&s.doc().unwrap().doc);
+        assert!(differ(&drawn, &baked) < drawn.len() / 400, "{what}: exported {}", differ(&drawn, &baked));
+        assert!(differ(&drawn, &expanded) < drawn.len() / 400, "{what}: expanded {}", differ(&drawn, &expanded));
+    }
+}
+
+/// A 3D effect with Vector Halftone after it exports and expands as the canvas draws it: as the
+/// halftone's dots when they can be made, and as the solid when the screen is too fine for the
+/// object (300 lpi over 140 pt takes more cells than the effect makes), for a path, type and a
+/// group.
+#[test]
+fn a_3d_effect_with_vector_halftone_exports_and_expands_as_drawn() {
+    let draw = |d: &vectorcraft_doc::Document| {
+        vectorcraft_render::Renderer::new().render(d, 400, 400, vectorcraft_geom::Affine::IDENTITY, &Default::default()).pixels
+    };
+    let differ = |a: &[u8], b: &[u8]| a.iter().zip(b).filter(|(x, y)| x.abs_diff(**y) > 8).count();
+    for frequency in [20.0, 300.0] {
+        for what in ["path", "type", "group"] {
+            let mut s = Session::new();
+            s.execute("file.new", &json!({"width": 400, "height": 400})).unwrap();
+            s.execute("paint.setFill", &json!({"color": "#3366cc"})).unwrap();
+            let id = match what {
+                "type" => {
+                    s.execute("text.create", &json!({"x": 100, "y": 220, "text": "Kw", "size": 120, "color": "#3366cc"})).unwrap()["id"].clone()
+                }
+                _ => s.execute("path.create", &json!({"d": "M100 100L240 100L240 240L100 240Z"})).unwrap()["id"].clone(),
+            };
+            s.execute("select.set", &json!({"ids": [id]})).unwrap();
+            if what == "group" {
+                let b = s.execute("path.create", &json!({"d": "M250 120L300 120L300 180L250 180Z"})).unwrap()["id"].clone();
+                s.execute("select.set", &json!({"ids": [id, b]})).unwrap();
+                s.execute("object.group", &json!({})).unwrap();
+            }
+            s.execute("effect.apply", &json!({"effect": "threeD.extrude", "item": null, "params": {"depth": 30.0}})).unwrap();
+            s.execute("effect.apply", &json!({"effect": effects::addons::halftone::HALFTONE, "item": null, "params": {"frequency": frequency}}))
+                .unwrap();
+            let what = format!("{what} at {frequency} lpi");
+            let drawn = draw(&s.doc().unwrap().doc);
+            let baked = effects::bake_document(&s.doc().unwrap().doc).unwrap();
+            // Exports draw what bake leaves: a 3D effect left live there is drawn flat.
+            let mut live = 0;
+            for layer in &baked.layers {
+                layer.walk(&mut |n| {
+                    let items = n.appearance.items.iter().flat_map(|i| i.effects());
+                    live += n.appearance.effects.iter().chain(items).filter(|e| e.visible && effects::is_three_d(&e.id)).count();
+                });
+            }
+            assert_eq!(live, 0, "{what}: no 3D effect left live in the export");
+            let baked = draw(&baked);
+            assert!(differ(&drawn, &baked) < drawn.len() / 400, "{what}: exported {}", differ(&drawn, &baked));
+            s.execute("effect.expandAppearance", &json!({})).unwrap();
+            let expanded = draw(&s.doc().unwrap().doc);
+            assert!(differ(&drawn, &expanded) < drawn.len() / 400, "{what}: expanded {}", differ(&drawn, &expanded));
+        }
+    }
+}
+
+/// A fill's raster effect after its own 3D effect (Drop Shadow, Outer Glow) is drawn into the image
+/// Expand Appearance puts below the shaded faces, and left out of the faces: nothing raster stays
+/// live in the expanded art, which would draw it again. A regression guard: a path expanded so
+/// before this change too.
+#[test]
+fn a_fills_raster_effect_after_its_3d_effect_expands_once() {
+    for (effect, params) in [("stylize.dropShadow", json!({})), ("stylize.outerGlow", json!({}))] {
+        let mut s = Session::new();
+        s.execute("file.new", &json!({"width": 400, "height": 400})).unwrap();
+        let id = s.execute("path.create", &json!({"d": "M100 100L200 100L200 200L100 200Z"})).unwrap()["id"].clone();
+        s.execute("select.set", &json!({"ids": [id]})).unwrap();
+        s.execute("paint.setFill", &json!({"color": "#3366cc"})).unwrap();
+        s.execute("effect.apply", &json!({"effect": "threeD.extrude", "item": 0, "params": {"depth": 30.0}})).unwrap();
+        s.execute("effect.apply", &json!({"effect": effect, "item": 0, "params": params})).unwrap();
+        s.execute("effect.expandAppearance", &json!({})).unwrap();
+        let mut live = 0;
+        for layer in &s.doc().unwrap().doc.layers {
+            layer.walk(&mut |n| {
+                let items = n.appearance.items.iter().flat_map(|i| i.effects());
+                live += n.appearance.effects.iter().chain(items).filter(|e| effects::is_raster(&e.id)).count();
+            });
+        }
+        assert_eq!(live, 0, "{effect}: no raster effect left live");
+    }
+}
+
+/// A 3D effect on a group's own fill expands as the canvas draws it: the fill's art builds the
+/// solid.
+#[test]
+fn a_groups_own_fill_3d_expands_as_drawn() {
+    let draw = |d: &vectorcraft_doc::Document| {
+        vectorcraft_render::Renderer::new().render(d, 400, 400, vectorcraft_geom::Affine::IDENTITY, &Default::default()).pixels
+    };
+    let differ = |a: &[u8], b: &[u8]| a.iter().zip(b).filter(|(x, y)| x.abs_diff(**y) > 8).count();
+    let mut s = Session::new();
+    s.execute("file.new", &json!({"width": 400, "height": 400})).unwrap();
+    let a = s.execute("path.create", &json!({"d": "M100 100L200 100L200 200L100 200Z"})).unwrap()["id"].clone();
+    let b = s.execute("path.create", &json!({"d": "M220 120L280 120L280 180L220 180Z"})).unwrap()["id"].clone();
+    s.execute("select.set", &json!({"ids": [a, b]})).unwrap();
+    s.execute("object.group", &json!({})).unwrap();
+    s.execute("appearance.addFill", &json!({})).unwrap();
+    s.execute("effect.apply", &json!({"effect": "threeD.extrude", "item": 0, "params": {"depth": 20.0}})).unwrap();
+    let drawn = draw(&s.doc().unwrap().doc);
+    s.execute("effect.expandAppearance", &json!({})).unwrap();
+    let expanded = draw(&s.doc().unwrap().doc);
+    assert!(differ(&drawn, &expanded) < drawn.len() / 400, "expanded {}", differ(&drawn, &expanded));
+}
