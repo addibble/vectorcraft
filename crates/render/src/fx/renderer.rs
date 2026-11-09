@@ -578,12 +578,7 @@ impl Renderer {
     fn make_fx_art(&mut self, doc: &vectorcraft_doc::Document, a: &Arc<Node>) -> Arc<Node> {
         // Whether the art is a 3D effect's ([`Self::three_d_art_bounds`]).
         let mut three_d = false;
-        let symbol = match &a.kind {
-            NodeKind::SymbolInstance { symbol, .. } => {
-                doc.symbols.iter().find(|s| s.name == *symbol).map(|s| crate::brush_fx::instance_art(&s.art, a))
-            }
-            _ => None,
-        };
+        let symbol = vectorcraft_doc::symbol_overrides::art_of_instance(doc, a);
         let container = is_container(a);
         let art = match effects::crop_marks_art(a)
             .or_else(|| crate::addons::halftone::art(doc, a))

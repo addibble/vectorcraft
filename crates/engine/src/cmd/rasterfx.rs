@@ -442,8 +442,8 @@ fn split_items(out: &mut Document, n: &Node) -> Option<Node> {
 /// it) with the instance's appearance and transparency, which PDF export draws the same: the
 /// instance alone has no size to render its effects' image over. `None` for other objects.
 fn placed_symbol(d: &Document, n: &Node) -> Option<Node> {
-    let NodeKind::SymbolInstance { symbol, xf } = &n.kind else { return None };
-    let mut art = vectorcraft_render::instance_art(&d.symbols.iter().find(|s| s.name == *symbol)?.art, n);
+    let NodeKind::SymbolInstance { xf, .. } = &n.kind else { return None };
+    let mut art = vectorcraft_doc::symbol_overrides::art_of_instance(d, n)?;
     art.transform(*xf, false);
     let mut g = n.clone();
     g.kind = NodeKind::Group { children: vec![Arc::new(art)], clip: false };

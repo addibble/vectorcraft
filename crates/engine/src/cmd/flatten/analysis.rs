@@ -19,8 +19,8 @@ impl Scratch {
         }
         let made = match &n.kind {
             NodeKind::Text(_) => outlined_text(n),
-            NodeKind::SymbolInstance { symbol, .. } => {
-                let art = self.doc.symbols.iter().find(|s| &s.name == symbol).map(|s| vectorcraft_render::instance_art(&s.art, n));
+            NodeKind::SymbolInstance { .. } => {
+                let art = vectorcraft_doc::symbol_overrides::art_of_instance(&self.doc, n);
                 art.and_then(|a| effects::outline_art(Some(&self.doc), n, Some(&a))).map(|g| carry(n, g))
             }
             // A placed document stays one: its art's resources aren't the document's.
