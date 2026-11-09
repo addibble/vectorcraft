@@ -481,8 +481,15 @@ impl Renderer {
             h.finish()
         };
         let address = |a: &Arc<Node>| Arc::as_ptr(a) as usize;
+        // Hashed when they aren't those the symbols were last checked with.
+        let guides = doc.unknown.get(vectorcraft_doc::SYMBOL_NINE_SLICE);
+        let guides = if self.symbol_guides.0.as_ref() == guides { self.symbol_guides.1 } else { crate::node_checks::guides_hash(guides) };
         let patterns = hash(&mut |h| doc.patterns.iter().for_each(|p| crate::pattern::hash_tiling(p, h)));
-        let symbols = hash(&mut |h| doc.symbols.iter().for_each(|s| (&s.name, address(&s.art)).hash(h)));
+        // The symbols' art, and the 9-slice guides that place it.
+        let symbols = hash(&mut |h| {
+            doc.symbols.iter().for_each(|s| (&s.name, address(&s.art)).hash(h));
+            guides.hash(h);
+        });
         let images = hash(&mut |h| {
             for (key, blob) in &doc.images {
                 (key, Arc::as_ptr(&blob.bytes) as usize, blob.proxy.as_ref().map(|p| Arc::as_ptr(p) as usize)).hash(h);
