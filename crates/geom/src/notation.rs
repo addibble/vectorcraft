@@ -51,10 +51,10 @@
 //! folds within 1e-7, as [`crate::PathData::from_bezpath`] does: relative data, as optimizers and
 //! other apps write it, often ends its closing segment a rounding error off the start. The writer
 //! writes the near case's closing segment so that a saved `d` given to such a command keeps its
-//! anchors. A second `Z` right after one
-//! closes nothing and is left out (`ZZ`), and so is an arc back to its own start that would open
-//! a subpath after `Z`; numbers after `Z` are refused (`Z 5 5`), since only a command may follow
-//! it.
+//! anchors. A second `Z` right after one closes nothing and is left out (`ZZ`), and so is an arc
+//! back to its own start that would open a subpath after `Z`, unless a radius is at or below 1e-5:
+//! that arc is `L`, and opens one (`M1 2L5 5ZA0 0 0 0 1 1 2` is two subpaths, as kurbo reads it);
+//! numbers after `Z` are refused (`Z 5 5`), since only a command may follow it.
 //!
 //! **Not written as `d`** (the structured `subpaths` form is kept): a subpath without anchors, an
 //! open subpath whose first anchor has an in handle or whose last anchor has an out handle (SVG
@@ -91,9 +91,10 @@
 //!   F.6.2, F.6.6), an arc with a zero radius is a line, one to its own start point is left out,
 //!   and radii too small to reach are scaled up; an arc with a radius at or below 1e-5 (in the
 //!   path's units) is exactly `L`, to its own start too, as kurbo (and so SVG import) reads it,
-//!   and radii one of which is more than the largest number times the other are refused. An arc whose span is zero but for rounding (its
-//!   ends far closer than its radii) is its chord when small and the whole turn round when
-//!   large; one whose ends are a smallest step apart is its chord. A coordinate that leaves the
+//!   and radii one of which is more than the largest number times the other are refused. An arc
+//!   whose span is zero but for rounding (its ends far closer than its radii) is its chord when
+//!   small and the whole turn round when large; one whose ends are a smallest step apart is its
+//!   chord. A coordinate that leaves the
 //!   finite range is refused, as everywhere. Flags need no separator (`a10 10 0 1110 10`).
 //!
 //! Anchors read from `d` count against [`crate::path::with_anchor_budget`] as anchors read one
@@ -381,16 +382,17 @@ struct ArcCubics {
     len: usize,
 }
 
-/// SVG's elliptical arc from `from` to `to` (two distinct points; radii `rx`, `ry` positive and
-/// finite, the ellipse's x axis turned `rotation` degrees) as cubics: one per quarter turn of its
-/// span with half a degree of grace ([`ARC_PIECE_GRACE`], [`crate::shapes::arc_pieces`]), each
-/// [`crate::shapes::arc_handle`]'s approximation of its part of the ellipse, the first starting
-/// at `from` and the last ending exactly at `to`. `Ok(None)` when the arc is its chord: a small
-/// arc whose span is zero but for rounding, or ends a smallest step apart, too close to have a
-/// direction. A large arc whose span is zero but for rounding is the whole turn round. `Err` when
-/// the ellipse itself (radii scaled up past the largest number) leaves the finite range, or the
-/// radii's ratio, either way round, passes the largest number (when the ends are not one point
-/// but for rounding, which is the chord whatever the radii).
+/// SVG's elliptical arc from `from` to `to` (two distinct points; radii `rx`, `ry` finite and past
+/// [`ARC_LINE_RADIUS`], so that neither ratio of them is zero; the ellipse's x axis turned
+/// `rotation` degrees) as cubics: one per quarter turn of its span with half a degree of grace
+/// ([`ARC_PIECE_GRACE`], [`crate::shapes::arc_pieces`]), each [`crate::shapes::arc_handle`]'s
+/// approximation of its part of the ellipse, the first starting at `from` and the last ending
+/// exactly at `to`. `Ok(None)` when the arc is its chord: a small arc whose span is zero but for
+/// rounding, or ends a smallest step apart, too close to have a direction. A large arc whose span
+/// is zero but for rounding is the whole turn round. `Err` when the ellipse itself (radii scaled up
+/// past the largest number) leaves the finite range, or the radii's ratio, either way round, passes
+/// the largest number (when the ends are not one point but for rounding, which is the chord
+/// whatever the radii).
 ///
 /// The center comes from SVG's endpoint-to-center conversion (SVG 1.1 Appendix F.6.5, SVG 2
 /// "Implementation notes"), radii too small to reach scaled up as F.6.6 says. It is worked in
@@ -419,7 +421,8 @@ fn arc_cubics(from: Point, to: Point, rx: f64, ry: f64, rotation: f64, large_arc
         let m = x1.abs().max(y1.abs());
         let (a, b) = if q >= 1.0 { (x1 / m, y1 / m / q) } else { (x1 / m * q, y1 / m) };
         // Never zero: the larger coordinate's share is ±1 when q ≥ 1 or that coordinate is y1,
-        // and ±q, which is not zero, otherwise.
+        // and ±q otherwise, which is not zero since both radii are past ARC_LINE_RADIUS (5e-324
+        // against 1e10 would make it so).
         let n = a.hypot(b);
         (a / n, b / n)
     };
@@ -1357,16 +1360,31 @@ mod tests {
         // they should, whichever way round (ratios 1e307 and 1e308); an infinite ratio is refused,
         // never read as something else; ends one point but for rounding are the chord whatever
         // the radii.
-        for d in ["M0 0A1e-4 1e303 0 0 1 0 10", "M0 0A1e-4 1e304 0 0 1 0 10", "M0 0A1e303 1e-4 0 0 1 10 0", "M0 0A1e304 1e-4 0 0 1 10 0"] {
+        for (d, end) in [
+            ("M0 0A1e-4 1e303 0 0 1 0 10", Point::new(0.0, 10.0)),
+            ("M0 0A1e-4 1e304 0 0 1 0 10", Point::new(0.0, 10.0)),
+            ("M0 0A1e303 1e-4 0 0 1 10 0", Point::new(10.0, 0.0)),
+            ("M0 0A1e304 1e-4 0 0 1 10 0", Point::new(10.0, 0.0)),
+        ] {
             let a = &read(d).subpaths[0].anchors;
             assert!(a.len() >= 2 && a.iter().all(|x| x.p.is_finite() && x.h_in.is_finite() && x.h_out.is_finite()), "{d}: {a:?}");
-            assert!(a[a.len() - 1].p == Point::new(0.0, 10.0) || a[a.len() - 1].p == Point::new(10.0, 0.0), "{d}");
+            assert_eq!(a[a.len() - 1].p, end, "{d}");
         }
         // (Scaled up across the short radius, 1e304 by 5e4 is past the largest number: refused.)
         assert!(parse_path_data("M0 0A1e304 1e-4 0 0 1 0 10", None).is_err());
-        for d in ["M0 0A1e-4 1e305 0 0 1 0 10", "M0 0A1e305 1e-4 0 0 1 10 0", "M0 0A1.7e308 2e-5 0 0 1 10 0"] {
-            assert!(parse_path_data(d, None).is_err(), "{d}");
+        // Refused for the ratio itself, either way round (the last one a direction that one
+        // ratio alone would get wrong, rather than refuse).
+        for d in ["M0 0A1e-4 1e305 0 0 1 0 10", "M0 0A1e305 1e-4 0 0 1 10 0", "M0 0A1.7e308 2e-5 0 0 1 10 0", "M0 0A1e-4 1e305 0 1 1 -2e-320 -2"] {
+            let e = parse_path_data(d, None).unwrap_err();
+            assert!(e.starts_with("an arc's radii are out of range"), "{d}: {e}");
         }
+        // Radii too small to reach, scaled up past where d itself overflows, by the ratio rx/ry
+        // (q's reciprocal): a half ellipse twice as tall as wide, its middle on the x axis.
+        let tall = read("M0 -1e308A1e-4 2e-4 0 0 1 0 1e308");
+        assert_eq!(
+            tall.subpaths[0].anchors.iter().map(|a| a.p).collect::<Vec<_>>(),
+            [Point::new(0.0, -1e308), Point::new(5e307, 0.0), Point::new(0.0, 1e308)]
+        );
         for d in ["M0 0A1e-4 1e305 0 0 1 5e-324 0", "M0 0A1e305 1e-4 0 1 1 0 5e-324"] {
             let a = &read(d).subpaths[0].anchors;
             assert!(a.len() == 2 && a.iter().all(|x| x.h_in == x.p && x.h_out == x.p), "{d}: {a:?}");
@@ -1531,6 +1549,9 @@ mod tests {
         assert_eq!(path_data(&read("M0 0L10 0L10 10Z A5 5 0 0 1 0 0")).unwrap().0, "M0 0L10 0L10 10Z");
         assert_eq!(read("M0 0L10 0L10 10Z A5 5 0 0 1 0 0 L5 5").subpaths[1].anchors.len(), 2);
         assert_eq!(read("M0 0A5 5 0 0 1 0 0").subpaths[0].anchors.len(), 1, "a move's own subpath stays");
+        // One with a radius at or below 1e-5 is `L`, and opens a subpath, as kurbo reads it.
+        let small = read("M1 2L5 5ZA0 0 0 0 1 1 2");
+        assert_eq!((small.subpaths.len(), small.subpaths[1].anchors.len()), (2, 2));
         // ZZ and a Z then another before a move: the second Z closes nothing and goes.
         assert_eq!(ends(&read("M0 0L10 0L10 10ZZ")), ends(&read("M0 0L10 0L10 10Z")));
         assert_eq!(read("M0 0L10 0L10 10z z m1 1").subpaths.len(), 2);
