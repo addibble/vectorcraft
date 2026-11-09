@@ -277,10 +277,13 @@ proptest! {
     /// F.6.6 says, reaches past the largest number.
     #[test]
     fn svg_arcs_are_bounded_and_end_exactly(
-        x0 in -1e3f64..1e3, y0 in -1e3f64..1e3, x in -1e3f64..1e3, y in -1e3f64..1e3,
-        rx in prop_oneof![any::<f64>(), -1e3f64..1e3, Just(0.0)], ry in prop_oneof![any::<f64>(), -1e3f64..1e3, Just(0.0)],
+        // Some ends a subnormal step apart, which halve to one point: the chord.
+        ends in prop_oneof![3 => (-1e3f64..1e3, -1e3f64..1e3, -1e3f64..1e3, -1e3f64..1e3), 1 => Just((5e-324, 0.0, 0.0, 0.0))],
+        rx in prop_oneof![any::<f64>(), -1e3f64..1e3, Just(0.0), Just(1.7e308)],
+        ry in prop_oneof![any::<f64>(), -1e3f64..1e3, Just(0.0), Just(2e-5)],
         rot in prop_oneof![any::<f64>(), -720f64..720.0], large in any::<bool>(), sweep in any::<bool>(),
     ) {
+        let (x0, y0, x, y) = ends;
         prop_assume!([rx, ry, rot].iter().all(|v| v.is_finite()));
         let d = format!("M{x0:e} {y0:e}A{rx:e} {ry:e} {rot:e} {} {} {x:e} {y:e}", u8::from(large), u8::from(sweep));
         match vectorcraft_geom::notation::parse_path_data(&d, None) {
@@ -296,7 +299,8 @@ proptest! {
             // The ellipse passes through both ends, so it lies within twice its larger radius of
             // either: refusing is right only when that radius comes near the largest number, or
             // one radius is more than the largest number times the other. Both radii past 1e-5
-            // and the ends within a thousand, the reach cannot overflow.
+            // and the ends within a thousand, the reach cannot overflow (asserted, should the
+            // ranges widen).
             Err(e) => {
                 let (rx, ry) = (rx.abs(), ry.abs());
                 prop_assert!(rx > 1e-5 && ry > 1e-5, "{} (a line) refused: {}", d, e);
@@ -306,9 +310,10 @@ proptest! {
                 if (ry / rx).is_infinite() || (rx / ry).is_infinite() {
                     return Ok(());
                 }
-                let (sin, cos) = rot.to_radians().sin_cos();
+                let (sin, cos) = vectorcraft_geom::sin_cos_deg(rot);
                 let (x1, y1) = (cos * hx + sin * hy, -sin * hx + cos * hy);
                 let reach = (x1 / rx).hypot(y1 / ry).max(1.0);
+                prop_assert!(reach.is_finite(), "{}: the oracle's reach overflowed", d);
                 let radius = rx.max(ry) * reach;
                 prop_assert!(!radius.is_finite() || radius > f64::MAX / 4.0, "{} refused: {}", d, e);
             }
