@@ -103,11 +103,15 @@ impl Renderer {
     /// the instances by their symbol's art. Likewise drop those of objects measured by a 3D
     /// effect's art, and of the objects that hold them, when the brush library has changed.
     pub(crate) fn check_symbols(&mut self, doc: &Document) {
+        // The 9-slice guides place the symbols' art too.
+        let guides = doc.unknown.get(vectorcraft_doc::SYMBOL_NINE_SLICE);
         let same = self.symbols.len() == doc.symbols.len()
-            && self.symbols.iter().zip(&doc.symbols).all(|((name, art), s)| *name == s.name && std::ptr::eq(art.as_ptr(), Arc::as_ptr(&s.art)));
+            && self.symbols.iter().zip(&doc.symbols).all(|((name, art), s)| *name == s.name && std::ptr::eq(art.as_ptr(), Arc::as_ptr(&s.art)))
+            && self.symbol_guides.0.as_ref() == guides;
         if !same {
             self.geom.retain(|_, e| !holds_instance(&e.node));
             self.symbols = doc.symbols.iter().map(|s| (s.name.clone(), Arc::downgrade(&s.art))).collect();
+            self.symbol_guides = (guides.cloned(), crate::node_checks::guides_hash(guides));
         }
         // That art is measured with the art its brushed strokes draw ([`Self::bounds_of`]). Without
         // such bounds, nothing is checked.

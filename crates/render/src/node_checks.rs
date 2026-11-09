@@ -155,3 +155,11 @@ pub(crate) fn stain_bits(stain: Option<(vectorcraft_color::Color, f32)>) -> [u32
     };
     [model, p.to_bits(), q.to_bits(), r.to_bits(), s.to_bits(), amount.to_bits()]
 }
+
+/// The hash of a document's 9-slice `guides` as it holds them.
+pub(crate) fn guides_hash(guides: Option<&vectorcraft_brush::serde_json::Value>) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::hash::DefaultHasher::new();
+    guides.map(ToString::to_string).hash(&mut h);
+    h.finish()
+}
