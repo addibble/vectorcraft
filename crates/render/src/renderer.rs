@@ -81,6 +81,7 @@ impl Renderer {
             three_d_kept: 0,
             #[cfg(test)]
             three_d_sweeps: 0,
+            symbol_guides: (None, 0),
             placed_arts: FrameCache::new(lru::PLACED_ART_BUDGET, 256),
             placed_frame: None,
             nested: 0,
