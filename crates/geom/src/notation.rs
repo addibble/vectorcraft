@@ -94,8 +94,8 @@
 //!   and radii one of which is more than the largest number times the other are refused. An arc
 //!   whose span is zero but for rounding (its ends far closer than its radii) is its chord when
 //!   small and the whole turn round when large; one whose ends are a smallest step apart is its
-//!   chord. A coordinate that leaves the
-//!   finite range is refused, as everywhere. Flags need no separator (`a10 10 0 1110 10`).
+//!   chord. A coordinate that leaves the finite range is refused, as everywhere. Flags need no
+//!   separator (`a10 10 0 1110 10`).
 //!
 //! Anchors read from `d` count against [`crate::path::with_anchor_budget`] as anchors read one
 //! by one do.
@@ -382,8 +382,8 @@ struct ArcCubics {
     len: usize,
 }
 
-/// SVG's elliptical arc from `from` to `to` (two distinct points; radii `rx`, `ry` finite and past
-/// [`ARC_LINE_RADIUS`], so that neither ratio of them is zero; the ellipse's x axis turned
+/// SVG's elliptical arc from `from` to `to` (two distinct points; radii `rx`, `ry` finite and
+/// positive, past [`ARC_LINE_RADIUS`] as the reader passes them; the ellipse's x axis turned
 /// `rotation` degrees) as cubics: one per quarter turn of its span with half a degree of grace
 /// ([`ARC_PIECE_GRACE`], [`crate::shapes::arc_pieces`]), each [`crate::shapes::arc_handle`]'s
 /// approximation of its part of the ellipse, the first starting at `from` and the last ending
@@ -409,8 +409,9 @@ fn arc_cubics(from: Point, to: Point, rx: f64, ry: f64, rotation: f64, large_arc
     if x1 == 0.0 && y1 == 0.0 {
         return Ok(None);
     }
-    // The radii's ratio both ways round. Neither is zero (the radii are finite and positive), but
-    // one can pass the largest number, and the ellipse then has no direction to work in.
+    // The radii's ratio both ways round. One can pass the largest number, and the ellipse then
+    // has no direction to work in: refused. Past this guard neither is zero either, since one
+    // rounds to zero only when the other overflows.
     let (q, ratio) = (ry / rx, rx / ry);
     if !(q.is_finite() && ratio.is_finite()) {
         return Err("an arc's radii are out of range: one is more than the largest number times the other".into());
@@ -421,8 +422,7 @@ fn arc_cubics(from: Point, to: Point, rx: f64, ry: f64, rotation: f64, large_arc
         let m = x1.abs().max(y1.abs());
         let (a, b) = if q >= 1.0 { (x1 / m, y1 / m / q) } else { (x1 / m * q, y1 / m) };
         // Never zero: the larger coordinate's share is ±1 when q ≥ 1 or that coordinate is y1,
-        // and ±q otherwise, which is not zero since both radii are past ARC_LINE_RADIUS (5e-324
-        // against 1e10 would make it so).
+        // and ±q otherwise, which the ratio guard above keeps from zero.
         let n = a.hypot(b);
         (a / n, b / n)
     };
@@ -1385,6 +1385,13 @@ mod tests {
             tall.subpaths[0].anchors.iter().map(|a| a.p).collect::<Vec<_>>(),
             [Point::new(0.0, -1e308), Point::new(5e307, 0.0), Point::new(0.0, 1e308)]
         );
+        // Turned 30°, both halves of that scaling carry the middle anchor.
+        let turned = read("M0 -1e308A1e-4 2e-4 30 0 1 0 1e308");
+        let a: Vec<Point> = turned.subpaths[0].anchors.iter().map(|a| a.p).collect();
+        assert_eq!((a.len(), a[0], a[2]), (3, Point::new(0.0, -1e308), Point::new(0.0, 1e308)));
+        // (8.75e307, -7.5e307·√3/2): on the ellipse, scaled to reach, where its x is largest.
+        let mid = Point::new(8.75e307, -7.5e307 * 3f64.sqrt() / 2.0);
+        assert!((a[1].x / mid.x - 1.0).abs() < 1e-12 && (a[1].y / mid.y - 1.0).abs() < 1e-12, "{a:?}");
         for d in ["M0 0A1e-4 1e305 0 0 1 5e-324 0", "M0 0A1e305 1e-4 0 1 1 0 5e-324"] {
             let a = &read(d).subpaths[0].anchors;
             assert!(a.len() == 2 && a.iter().all(|x| x.h_in == x.p && x.h_out == x.p), "{d}: {a:?}");
@@ -1550,8 +1557,10 @@ mod tests {
         assert_eq!(read("M0 0L10 0L10 10Z A5 5 0 0 1 0 0 L5 5").subpaths[1].anchors.len(), 2);
         assert_eq!(read("M0 0A5 5 0 0 1 0 0").subpaths[0].anchors.len(), 1, "a move's own subpath stays");
         // One with a radius at or below 1e-5 is `L`, and opens a subpath, as kurbo reads it.
-        let small = read("M1 2L5 5ZA0 0 0 0 1 1 2");
-        assert_eq!((small.subpaths.len(), small.subpaths[1].anchors.len()), (2, 2));
+        let small = "M1 2L5 5ZA0 0 0 0 1 1 2";
+        let kurbo = PathData::from_bezpath(&kurbo::BezPath::from_svg(small).unwrap());
+        assert_eq!(parse_path_data_by_hand(small).unwrap(), kurbo);
+        assert_eq!(kurbo.subpaths.len(), 2);
         // ZZ and a Z then another before a move: the second Z closes nothing and goes.
         assert_eq!(ends(&read("M0 0L10 0L10 10ZZ")), ends(&read("M0 0L10 0L10 10Z")));
         assert_eq!(read("M0 0L10 0L10 10z z m1 1").subpaths.len(), 2);
