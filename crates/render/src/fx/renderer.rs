@@ -581,8 +581,9 @@ impl Renderer {
         let symbol = vectorcraft_doc::symbol_overrides::art_of_instance(doc, a);
         let container = is_container(a);
         // Crop Marks', Vector Halftone's or the 3D effect's art, chosen as exports and Expand
-        // Appearance choose it ([`effects::drawn_first`]).
-        let first = match effects::drawn_first(doc, a, crate::addons::halftone::art, false) {
+        // Appearance choose it ([`effects::drawn_first`]); a symbol instance's solids are built from
+        // its art as it shows it, made above, as a group's from its members.
+        let first = match effects::drawn_first(doc, a, symbol.as_ref(), crate::addons::halftone::art, false) {
             effects::DrawnFirst::Marks(m) | effects::DrawnFirst::Halftone(m) => Some(m),
             effects::DrawnFirst::ThreeD(m) => {
                 self.stats.three_d_built += 1;
@@ -601,8 +602,9 @@ impl Renderer {
         let mut art = if has_three_d { effects::evaluate_container(Some(doc), &art).unwrap_or(art) } else { art };
         // A 3D effect on a fill or stroke that built nothing (Revolve after Roughen, a solid too
         // complex) draws the item as without it: left in the art, it would draw the art as an
-        // object with effects again, and that art again, without end.
-        if has_three_d && !three_d && !container {
+        // object with effects again, and that art again, without end. A group's members, and the
+        // pieces an object is reshaped into, draw their own ([`effects::keeps_item_three_d`]).
+        if has_three_d && !three_d && !effects::keeps_item_three_d(&art) {
             for item in &mut art.appearance.items {
                 item.effects_mut().retain(|e| !effects::is_three_d(&e.id));
             }

@@ -69,8 +69,8 @@ pub use adjust::{
     is_channel,
 };
 pub use bake::{
-    DrawnFirst, StrokeArt, ThreeD, bake_appearance, bake_document, bake_pieces, drawn_first, expand_art, expand_leaf, fresh_ids, needs_bake,
-    three_d_of,
+    DrawnFirst, StrokeArt, ThreeD, bake_appearance, bake_document, bake_pieces, drawn_first, expand_art, expand_leaf, fresh_ids, keeps_item_three_d,
+    needs_bake, three_d_of,
 };
 pub use clip::clip_outline;
 pub use group::{
@@ -89,8 +89,9 @@ pub use reshape::{
 pub use revolve::{REVOLVE, has_revolve, revolve_art, revolve_options, validate_revolve};
 pub use solids::{
     CLASSIC_EXTRUDE, EXTRUDE, INFLATE, ROTATE, ROTATION_PRESETS, SHADING_COLORS, SOLIDS, SolidMesh, THREE_D_TYPES, classic_extrude_options,
-    classic_shading, extrude_options, has_solid, inflate_options, is_three_d, solid_art, three_d_meshes, three_d_meshes_of, three_d_params_as,
-    validate_solid, validate_three_d, validate_three_d_params, view_options,
+    classic_shading, extrude_options, has_solid, inflate_options, instance_item_refusal, instance_perspective_refusal, instance_solid_group,
+    instance_three_d_group, is_three_d, solid_art, solid_art_in, three_d_meshes, three_d_meshes_in, three_d_meshes_of, three_d_meshes_of_in,
+    three_d_params_as, validate_solid, validate_three_d, validate_three_d_in, validate_three_d_params, view_options,
 };
 pub use stylize::{ScribbleSetting, scribble_setting_id, scribble_settings};
 pub use svg_filter::SVG_FILTER;

@@ -156,9 +156,21 @@ fn edit_effects(
     label: &str,
     none: &str,
     index: usize,
-    mut f: impl FnMut(&mut Vec<Effect>, usize) -> bool,
+    f: impl FnMut(&mut Vec<Effect>, usize) -> bool,
 ) -> Result<Vec<NodeId>> {
     let targets = effect_targets(s, p, item, index, cmd)?;
+    edit_targets(s, targets, cmd, label, none, f)
+}
+
+/// [`edit_effects`] of `targets` ([`effect_targets`]).
+fn edit_targets(
+    s: &mut Session,
+    targets: Vec<(NodeId, Option<usize>, usize)>,
+    cmd: &str,
+    label: &str,
+    none: &str,
+    mut f: impl FnMut(&mut Vec<Effect>, usize) -> bool,
+) -> Result<Vec<NodeId>> {
     s.edit(label, |d, _| {
         let mut done = vec![];
         for &(id, at, index) in &targets {
@@ -279,10 +291,23 @@ pub(crate) fn apply(s: &mut Session, p: &Value) -> Result<Value> {
         return Ok(json!({ "ids": [gid.0], "index": 0, "item": null, "grouped": true }));
     }
     let item = item_target(s, p, C)?;
+    // The object and item each target takes the effect on: the active item applies only where it
+    // fits.
+    let mut targets = effect_targets(s, p, item, 0, C)?;
     if effects::is_three_d(id) {
-        for target in appearance_targets(s, p)? {
-            let n = s.doc()?.doc.node(target).ok_or(EngineError::NoNode(target))?;
-            effects::validate_three_d(n, id, &effect.params).map_err(|e| bad(C, e))?;
+        let d = &s.doc()?.doc;
+        // A symbol instance's fill stains its art, so a 3D effect never fits it: the panel's active
+        // row (not one `item` names) leaves the effect on the instance itself.
+        if matches!(item, ItemTarget::Item { explicit: false, .. }) {
+            for t in &mut targets {
+                if d.node(t.0).is_some_and(|n| matches!(n.kind, NodeKind::SymbolInstance { .. })) {
+                    t.1 = None;
+                }
+            }
+        }
+        for &(target, at, _) in &targets {
+            let n = d.node(target).ok_or(EngineError::NoNode(target))?;
+            effects::validate_three_d_in(d, n, id, &effect.params, at.is_some()).map_err(|e| bad(C, e))?;
             if id == effects::REVOLVE && effects::has_revolve(n) {
                 return Err(bad(C, "A profile supports one Revolve effect. Edit the existing effect's options instead."));
             }
@@ -291,14 +316,16 @@ pub(crate) fn apply(s: &mut Session, p: &Value) -> Result<Value> {
             }
         }
     }
-    let ids = edit_effects(s, p, item, C, &label, "Apply Effect: select objects", 0, |fx, _| {
+    let at: Vec<(NodeId, Option<usize>)> = targets.iter().map(|t| (t.0, t.1)).collect();
+    let ids = edit_targets(s, targets, C, &label, "Apply Effect: select objects", |fx, _| {
         fx.push(effect.clone());
         true
     })?;
     // The item the effect landed on in the object whose row the item is (the first selected object
     // for the active item, which applies where it fits), and the effect's index in that object.
-    let first = ids.get(item.anchor(s, &ids)).and_then(|id| s.doc().ok()?.doc.node(*id));
-    let landed = first.and_then(|n| item.effects_item(&n.appearance, C).ok().flatten());
+    let anchor = ids.get(item.anchor(s, &ids)).copied();
+    let first = anchor.and_then(|id| s.doc().ok()?.doc.node(id));
+    let landed = anchor.and_then(|id| at.iter().find(|t| t.0 == id)).and_then(|t| t.1);
     let index = first.and_then(|n| n.appearance.effects_at(landed)).map_or(0, |fx| fx.len().saturating_sub(1));
     Ok(json!({ "ids": ids_json(&ids), "index": index, "item": landed }))
 }
@@ -440,6 +467,14 @@ fn move_effect(s: &mut Session, p: &Value) -> Result<Value> {
             // Taken out from the top down, so the lower positions stay valid; put back in order.
             let mut taken: Vec<Effect> = from.iter().rev().filter_map(|&i| if copy { fx.get(i).cloned() } else { Some(fx.remove(i)) }).collect();
             taken.reverse();
+            // On a symbol instance's fill or stroke a 3D effect would do nothing.
+            if let Some(e) = taken.iter().find(|e| di.is_some() && effects::is_three_d(&e.id))
+                && matches!(n.kind, NodeKind::SymbolInstance { .. })
+            {
+                let why =
+                    if e.id == effects::REVOLVE { "Revolve isn't built on a symbol instance".into() } else { effects::instance_item_refusal(&e.id) };
+                return Err(bad(C, why));
+            }
             let Some(fx) = n.appearance.effects_mut(di) else { continue };
             let at = to.min(fx.len());
             fx.splice(at..at, taken);
@@ -589,7 +624,7 @@ fn set_params(s: &mut Session, p: &Value) -> Result<Value> {
                 cur.extend(new);
             }
             if visible != Some(false) {
-                effects::validate_three_d(n, to, &prospective).map_err(|e| bad(C, e))?;
+                effects::validate_three_d_in(&s.doc()?.doc, n, to, &prospective, target.is_some()).map_err(|e| bad(C, e))?;
             } else {
                 // Hidden, the effect draws nothing, so its object need not fit. The values given are
                 // checked, and after a change of 3D type so is every value it keeps.
@@ -676,6 +711,11 @@ pub(crate) fn expandable(n: &Node) -> bool {
         }
         NodeKind::Text(_) => !n.appearance.items.is_empty() || !n.appearance.effects.is_empty(),
         NodeKind::Image(_) => effects::has_item_geometry(n) || !n.appearance.effects.is_empty(),
+        // A 3D effect on a symbol instance's fill or stroke draws nothing: expanding leaves it out.
+        NodeKind::SymbolInstance { .. } => {
+            !n.appearance.effects.is_empty()
+                || n.appearance.items.iter().any(|i| i.visible() && i.effects().iter().any(|e| e.visible && effects::is_three_d(&e.id)))
+        }
         _ => !n.appearance.effects.is_empty(),
     }
 }
@@ -808,23 +848,32 @@ fn expanded_node(d: &mut Document, mut n: Node, brushes: &[vectorcraft_brush::Br
     let mut changed = false;
     // Is `n` in `out` yet?
     let mut listed_n = false;
-    // A 3D effect's art, which takes the color adjustments after it is shaded
-    // ([`effects::three_d_of`]). An object that becomes an image (blur, feather, inner glow) is
-    // drawn into it as the canvas draws it, its 3D effect and adjustments with it: no art is built
-    // for it.
+    // A 3D effect's art, which takes the color adjustments after it is shaded; a 3D effect that
+    // builds nothing is drawn as if it weren't there ([`effects::three_d_of`]). An object that
+    // becomes an image (blur, feather, inner glow) is drawn into it as the canvas draws it, its 3D
+    // effect and adjustments with it: no art is built for it.
+    let mut built = None;
     let fx = rasterfx::raster_fx(&n);
     let whole_image = !fx.is_empty() && !fx.iter().all(effects::RasterFx::is_below);
     let as_drawn = whole_image && (effects::has_revolve(&n) || effects::has_solid(&n));
-    let mut built = match if as_drawn { effects::ThreeD::NotApplicable } else { effects::three_d_of(d, &n, true) } {
-        effects::ThreeD::Built(art) => Some(art),
-        effects::ThreeD::NotApplicable => None,
-    };
+    match if as_drawn { effects::ThreeD::NotApplicable } else { effects::three_d_of(d, &n, true) } {
+        effects::ThreeD::Built(art) => built = Some(art),
+        effects::ThreeD::Flat(m) => {
+            n = m;
+            changed = true;
+            out.push((id, 0));
+            listed_n = true;
+        }
+        effects::ThreeD::NotApplicable => {}
+    }
     if effects::has_adjustment(&n)
         && built.is_none()
         && !as_drawn
         && let Some(m) = effects::adjust_in_document(d, &n)
     {
-        out.push((id, 0));
+        if !listed_n {
+            out.push((id, 0));
+        }
         listed_n = true;
         n = m;
         changed = true;
@@ -879,9 +928,9 @@ fn expanded_node(d: &mut Document, mut n: Node, brushes: &[vectorcraft_brush::Br
         Some((image, false)) => Some(rasterfx::replace_with_image(v, image)),
         image => {
             let m = if let Some(mut art) = built.take() {
-                // A 3D effect's shaded faces (a group's members' solids), its raster effects left to
-                // the image as the object's are: those of its fills and strokes after the 3D effect,
-                // which the faces carry, too.
+                // A 3D effect's shaded faces (a group's members' solids, a symbol instance's art's),
+                // its raster effects left to the image as the object's are: those of its fills and
+                // strokes after the 3D effect, which the faces carry, too.
                 rasterfx::strip_raster(&mut art, true);
                 Some(effects::bake_pieces(d, art))
             } else if container {
@@ -1013,6 +1062,8 @@ fn expand_appearance(s: &mut Session, p: &Value) -> Result<Value> {
 #[cfg(test)]
 mod lighting_presets_tests;
 
+#[cfg(test)]
+mod three_d_symbol_tests;
 #[cfg(test)]
 mod three_d_type_tests;
 

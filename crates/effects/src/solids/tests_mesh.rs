@@ -79,7 +79,7 @@ fn revolve_stops_at_the_first_mesh_past_the_budget() {
     assert!(whole.as_ref().is_err_and(|e| !e.contains("to export")), "the stroke's own error: {whole:?}");
     // With room for less than the fill's mesh, the stroke's is never built.
     let mut total = 0;
-    let capped = meshes_within(&n, &mut total, triangles - 1);
+    let capped = meshes_within(&n, &mut total, triangles - 1, super::Whole::Group);
     assert!(capped.as_ref().is_err_and(|e| e.contains("too complex to export")), "{capped:?}");
     assert_eq!(total, triangles);
 }
@@ -92,10 +92,10 @@ fn the_objects_of_one_asset_share_one_triangle_budget() {
     b.appearance.effects.push(fx(EXTRUDE, json!({})));
     let triangles = |n: &Node| three_d_meshes(n).unwrap().iter().map(|m| m.mesh.triangles.len()).sum::<usize>();
     let (ta, tb) = (triangles(&a), triangles(&b));
-    assert!(meshes_of_within([&a], ta).is_ok());
-    assert!(meshes_of_within([&b], tb).is_ok());
-    assert!(meshes_of_within([&a, &b], ta.max(tb)).is_err_and(|e| e.contains("too complex to export")));
-    assert_eq!(meshes_of_within([&a, &b], ta + tb).map(|m| m.len()), Ok(4));
+    assert!(meshes_of_within(None, [&a], ta).is_ok());
+    assert!(meshes_of_within(None, [&b], tb).is_ok());
+    assert!(meshes_of_within(None, [&a, &b], ta.max(tb)).is_err_and(|e| e.contains("too complex to export")));
+    assert_eq!(meshes_of_within(None, [&a, &b], ta + tb).map(|m| m.len()), Ok(4));
     assert_eq!(three_d_meshes_of([&a, &b]).map(|m| m.len()), Ok(4));
 }
 
@@ -177,4 +177,13 @@ fn a_gradient_takes_the_average_of_its_stops() {
     assert!(close(mesh_color(&paint, 1.0), [0.5, 0.0, 0.5, 0.75]));
     let pattern = Paint::Pattern { pattern: "x".into(), xf: vectorcraft_geom::Affine::IDENTITY };
     assert!(close(mesh_color(&pattern, 0.5), [0.5, 0.5, 0.5, 0.5]));
+}
+
+/// Without its document, a symbol instance's 3D effect is refused saying it is the instance's, not
+/// its fill's or stroke's.
+#[test]
+fn an_instance_without_its_document_is_refused_as_an_instance() {
+    let n = Node::new(vectorcraft_doc::NodeId(1), NodeKind::SymbolInstance { symbol: "S".into(), xf: vectorcraft_geom::Affine::IDENTITY });
+    let e = crate::validate_three_d(&n, crate::EXTRUDE, &serde_json::json!({})).unwrap_err();
+    assert!(e.contains("symbol instance") && e.contains("instance itself"), "{e}");
 }

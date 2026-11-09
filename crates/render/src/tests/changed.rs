@@ -736,3 +736,27 @@ fn an_edit_to_the_instance_symbol_editing_came_from_changes_nothing_on_screen() 
     r.render(&old, W, H, view(), &export);
     assert!(matches!(r.changed(&old, &new, &export), Changed::Area(_)), "an export draws it");
 }
+
+/// A symbol instance draws a 3D effect as solids of its symbol's art: a shallower solid changes
+/// where the deeper one drew too.
+#[test]
+fn a_3d_effect_changed_on_a_symbol_instance_changes_where_its_solid_was() {
+    let mut old = Document::new(110.0, 80.0);
+    let art = rect(&mut old, Rect::new(-10.0, -10.0, 10.0, 10.0), Color::rgb(0.1, 0.2, 0.6));
+    old.symbols.push(vectorcraft_doc::Symbol { dynamic: false, name: "Mark".into(), art: Arc::new(art) });
+    let extrude = |depth: f64| vectorcraft_doc::Effect {
+        id: "threeD.extrude".into(),
+        params: serde_json::json!({"depth": depth, "position": "isometricTop"}),
+        visible: true,
+    };
+    let mut n = Node::new(old.alloc_id(), NodeKind::SymbolInstance { symbol: "Mark".into(), xf: Affine::translate((50.0, 40.0)) });
+    n.appearance.effects.push(extrude(60.0));
+    let l = old.layers[0].id;
+    let id = old.insert(Some(l), 0, n).unwrap();
+    let mut new = old.clone();
+    new.node_mut(id).unwrap().appearance.effects[0] = extrude(5.0);
+    // The deep solid reaches well past the 20 pt square of the instance's art. `redraw` checks the
+    // pixels measured afresh and by the renderer that drew the instance.
+    let a = area(redraw(&old, &new));
+    assert!(a.width() > 40.0 || a.height() > 40.0, "{a:?}");
+}

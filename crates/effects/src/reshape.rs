@@ -486,10 +486,26 @@ pub(crate) fn outline_nested_text(doc: Option<&Document>, n: &mut Node, clipping
 /// always reshaped. The fills and strokes in the art whose own Transform effects reach their
 /// appearance become objects of their own ([`transform_items`]).
 pub fn reshape(doc: Option<&Document>, n: &Node, symbol_art: Option<&Node>) -> Option<Node> {
-    if !has_transform_art(n) && ((geometry_effects(n).is_empty() && n.projection().is_none() && !has_item_geometry(n)) || !needs_outline(n)) {
+    if !reshaped(n) {
         return None;
     }
     as_art(doc, n, symbol_art)
+}
+
+/// Do [`reshape`]'s checks let `n` through?
+fn reshaped(n: &Node) -> bool {
+    has_transform_art(n) || ((!geometry_effects(n).is_empty() || n.projection().is_some() || has_item_geometry(n)) && needs_outline(n))
+}
+
+/// Does [`reshape`] make art for `n` in `doc`, given a symbol instance's art as it shows it there
+/// (`symbol_overrides::art_of_instance`)? It is then a group. Tells it without making the art, so
+/// it answers yes for type that sets no glyph, which then has no art and draws nothing.
+pub(crate) fn reshapes(doc: &Document, n: &Node) -> bool {
+    reshaped(n)
+        && match &n.kind {
+            NodeKind::SymbolInstance { symbol, .. } => doc.symbols.iter().any(|s| s.name == *symbol),
+            _ => true,
+        }
 }
 
 /// `n` (see [`needs_outline`], or a path with [`has_transform_art`]) as plain art for Expand

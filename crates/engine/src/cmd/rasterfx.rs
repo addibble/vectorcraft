@@ -241,12 +241,14 @@ pub(crate) fn effect_image(out: &mut Document, whole: &Node, knockout: Option<&N
 }
 
 /// The visible raster effects of `n`: its own and its fills' and strokes' (none on guides and
-/// clipping paths, which paint nothing).
+/// clipping paths, which paint nothing; a symbol instance's own only, since its fill stains its
+/// art and the canvas draws none of its fills' and strokes' effects).
 pub(crate) fn raster_fx(n: &Node) -> Vec<RasterFx> {
     if matches!(n.kind, NodeKind::Path { guide: true, .. } | NodeKind::Path { clipping: true, .. }) {
         return vec![];
     }
-    std::iter::once(&n.appearance.effects).chain(n.appearance.items.iter().map(|i| i.effects())).flat_map(|e| effects::raster_effects(e)).collect()
+    let items = if matches!(n.kind, NodeKind::SymbolInstance { .. }) { &[][..] } else { &n.appearance.items[..] };
+    std::iter::once(&n.appearance.effects).chain(items.iter().map(|i| i.effects())).flat_map(|e| effects::raster_effects(e)).collect()
 }
 
 /// Remove the raster effects of `n` (its own and its fills' and strokes') and, with `members`, of

@@ -31,6 +31,7 @@ mod rasterize;
 mod setup;
 mod strokegradient;
 mod thincoverage;
+mod three_d_symbols;
 mod tileedge;
 mod typeedges;
 mod viewraster;

@@ -503,6 +503,11 @@ pub(crate) fn admit_effects_for(cmd: &str, fx: &[Effect], n: &Node) -> std::resu
             return Err(refuse("`textureImage` must be a texture as effect.list gives it".into()));
         }
         let mut admitted = effects::new_effect(&e.id, &params).ok_or_else(|| refuse("no such effect".into()))?;
+        // A symbol instance's 3D effect is built from its symbol's art, which the records don't
+        // come with.
+        if effects::SOLIDS.contains(&e.id.as_str()) && matches!(n.kind, vectorcraft_doc::NodeKind::SymbolInstance { .. }) {
+            return Err(refuse("a 3D effect on a symbol instance is built from its symbol's art: apply it from Effect › 3D and Materials".into()));
+        }
         if effects::is_three_d(&e.id) {
             effects::validate_three_d(n, &e.id, &admitted.params).map_err(refuse)?;
         }

@@ -125,6 +125,32 @@ them all. The members stay editable: moving or editing one reshapes the solids. 
 - Hidden members and guides are left out. A group holding an image, a symbol instance, a clipping group or another
   live object is refused with a message saying what to release or expand; so is one with more than 4,096 shapes.
 
+## Symbol instances
+
+Extrude & Bevel, Inflate, Rotate and Extrude & Bevel (Classic) also apply to a symbol instance, as users apply
+Extrude & Bevel to instances
+([Adobe Community](https://community.adobe.com/questions-652/drop-shadow-or-outer-glow-effect-in-symbol-turns-solid-grey-when-3d-extrude-and-bevel-is-applied-773860)).
+The effect on an instance builds its solids from the symbol's art as the instance shows it (placed by its transform
+or 9-slice guides, with a dynamic symbol's appearance changes and the instance's stain), as on a group of that art
+([Groups](#groups)): type stays type, and every shape turns about the center of their bounds together. The instance
+stays linked: editing the symbol or its guides reshapes the solids of every instance with the effect. Our reading:
+
+- The rules for a group's members apply to the art, so a symbol whose art holds an image, another symbol
+  instance, a clipping group or another live object is refused with a message saying what to release or expand. A
+  stretched instance whose 9-slice guides cut type or a gradient or pattern fill into pieces is refused, saying so.
+- Revolve on a symbol instance is not built, as on a group.
+- **Object › Expand Appearance**, exports and 3D export build the same solids. Where they can't be built, the instance
+  draws flat on the canvas, in exports and in Expand Appearance, which leaves the effect out, and 3D export refuses it:
+  - In perspective: its solids would not lie on the plane. Applying or changing a 3D effect on an instance in
+    perspective, and attaching an instance with one to the grid, is refused with a message; however else the two
+    meet (a group attached, a hidden effect shown, a graphic style or the Eyedropper), the instance draws flat. (3D
+    type in perspective draws its solids off the plane.)
+  - On its fill or stroke: the instance's fill stains the art. Applying or moving a 3D effect there is refused;
+    graphic styles, Appearance › Transfer and the Eyedropper can still put one there, and it draws flat.
+  - Art that can't become solids: a symbol changed after the effect was applied, or an instance stretched afterwards
+    through 9-slice guides that cut type or a gradient or pattern fill into pieces. Changing the effect then says
+    why.
+
 ## Rotate
 
 The flat art turned in 3D about the centre of its bounds. Every fill and stroke is turned with its own paint (a
@@ -231,9 +257,9 @@ out, perspective). No Adobe software, assets, presets or bevel shapes were used.
   drawn in pieces about as long as a wall slice is wide (fewer near the limit of 32,768 facets). The piece drawn
   on top can still lie a few points behind another nearby piece.
 - Extrude & Bevel and Rotate retain planar shading. Colored Inflate uses smooth vector lighting; white-light Inflate keeps its original polygon shading; bounded cell triangulation leaves a cell flat when it contains a complete hole or an unusually complex/degenerate contour. Its geometric silhouette is still a polygon approximation.
-- Paths, compound paths, type and groups or layers of them (see [Groups](#groups)); images, symbol instances,
-  clipping groups and other live objects have to be converted first. Revolve on a group is not built yet. One 3D
-  effect per object.
+- Paths, compound paths, type, groups or layers of them (see [Groups](#groups)) and symbol instances of them (see
+  [Symbol instances](#symbol-instances)); images, clipping groups and other live objects have to be converted
+  first. Revolve on a group or a symbol instance is not built yet. One 3D effect per object.
 - Curves are followed within 1/2000 of the shape's size (at least 0.05 pt), so a small curve takes a few points
   and a large one up to 32. Extrude & Bevel and Inflate take up to 2,048 outline points (a stroke's outline is
   counted on its own), Rotate (which only turns the outline) 65,536. The limit is counted on the shape as drawn and,
@@ -248,6 +274,7 @@ Release measurements and a repeatable CLI scene are in [3D lighting performance]
 
 | Date | Change |
 |---|---|
+| 2026-11-09 | Extrude & Bevel, Inflate, Rotate and Extrude & Bevel (Classic) apply to symbol instances, built from the symbol's art as the instance shows it, as on a group. |
 | 2026-11-09 | A color adjustment after a 3D effect recolors the shaded faces in exports and Expand Appearance too, as the canvas draws them, where they recolored the art before it was shaded; Expand Appearance builds the solid of a 3D effect on a group's or layer's own fill or stroke, which it refused. |
 | 2026-11-08 | Contours that cross, touch or overlap are merged by vectorcraft-pathops before Extrude & Bevel, Inflate and Rotate build a solid, sharing its limits; others are built as drawn. |
 | 2026-11-06 | Extrude & Bevel, Inflate and Rotate apply to groups and layers: every path, compound path and type in them turns about one shared axis (#4506). |

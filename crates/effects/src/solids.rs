@@ -200,15 +200,26 @@ fn validate_solid_params(id: &str, p: &Value) -> Result<(), String> {
 
 /// Validate before a command changes the document; the evaluator bounds loaded files too.
 pub fn validate_solid(n: &Node, id: &str, p: &Value) -> Result<(), String> {
+    validate_solid_as(n, id, p, Whole::Group)
+}
+
+/// [`validate_solid`], a group's errors naming `whole`.
+fn validate_solid_as(n: &Node, id: &str, p: &Value, whole: Whole<'_>) -> Result<(), String> {
     validate_solid_params(id, p)?;
     let label = crate::effect_info(id).map_or("This effect", |e| e.label.trim_end_matches('…'));
     if is_container(n) {
-        let shapes = members(n, label)?;
-        let b = union_bounds(&shapes).ok_or_else(|| format!("{label} requires a group holding a shape with at least two anchors"))?;
+        let shapes = members_of(n, label, whole)?;
+        let b = union_bounds(&shapes).ok_or_else(|| match whole {
+            Whole::Group => format!("{label} requires a group holding a shape with at least two anchors"),
+            Whole::Instance(..) => format!("{label} requires a symbol whose art holds a shape with at least two anchors"),
+        })?;
         return shapes.iter().try_for_each(|s| facets(id, &s.path, s.rule, b, p).map(|_| ()));
     }
+    if matches!(n.kind, NodeKind::SymbolInstance { .. }) {
+        return Err(format!("{label} on a symbol instance is built on the instance itself, from its symbol's art, not on its fill or stroke"));
+    }
     let (path, rule) = profile(n).ok_or_else(|| {
-        format!("{label} currently requires a path, compound path, type or group. Convert images and other objects to paths first.")
+        format!("{label} currently requires a path, compound path, type, group or symbol instance. Convert images and other objects to paths first.")
     })?;
     let b = path.bounds().ok_or_else(|| format!("{label} requires a shape with at least two anchors"))?;
     facets(id, &path, rule, b, p).map(|_| ())
@@ -246,14 +257,29 @@ const MAX_MESH_TRIANGLES: usize = 2_000_000;
 /// reference app, they turn about one shared axis (the centre of their bounds together) rather
 /// than each about its own. An error names what the group holds that can't become a solid.
 fn members(n: &Node, label: &str) -> Result<Vec<Profile>, String> {
-    fn walk(n: &Node, opacity: f32, label: &str, out: &mut Vec<Profile>) -> Result<(), String> {
+    members_of(n, label, Whole::Group)
+}
+
+/// What a 3D effect's members are the members of, as its messages name it.
+#[derive(Clone, Copy)]
+enum Whole<'a> {
+    Group,
+    /// The art of symbol instance `.1` in `.0` ([`instance_solid_group`]), maybe placed through its
+    /// symbol's 9-slice guides, which cut type and painted fills across them into clipping groups
+    /// ([`sliced`], found only to word an error).
+    Instance(&'a vectorcraft_doc::Document, &'a Node),
+}
+
+/// [`members`], its errors naming `whole`.
+fn members_of(n: &Node, label: &str, whole: Whole<'_>) -> Result<Vec<Profile>, String> {
+    fn walk(n: &Node, opacity: f32, label: &str, whole: Whole<'_>, out: &mut Vec<Profile>) -> Result<(), String> {
         for c in n.children().into_iter().flatten() {
             if !c.visible || matches!(c.kind, NodeKind::Path { guide: true, .. }) {
                 continue;
             }
             let opacity = opacity * c.opacity;
             if is_container(c) {
-                walk(c, opacity, label, out)?;
+                walk(c, opacity, label, whole, out)?;
                 continue;
             }
             let Some((path, rule)) = profile(c) else {
@@ -264,10 +290,25 @@ fn members(n: &Node, label: &str) -> Result<Vec<Profile>, String> {
                     NodeKind::Path { clipping: true, .. } => "clipping paths",
                     _ => "objects other than paths, compound paths and type",
                 };
-                return Err(format!("{label} on a group needs paths, compound paths and type: release or expand its {what} first."));
+                return Err(match (whole, &c.kind) {
+                    (Whole::Group, _) => format!("{label} on a group needs paths, compound paths and type: release or expand its {what} first."),
+                    // The cells 9-slice placing cuts the art into: its symbol's art holds no clipping
+                    // group of its own ([`sliced`]).
+                    (Whole::Instance(doc, i), NodeKind::Group { clip: true, .. }) if sliced(doc, i) => format!(
+                        "{label} on a symbol instance placed through 9-slice guides needs art the guides don't cut: type or a gradient or pattern fill across a guide is cut into pieces it can't build. Edit the symbol's art or guides, or turn its 9-slice scaling off."
+                    ),
+                    (Whole::Instance(..), _) => format!(
+                        "{label} on a symbol instance needs paths, compound paths and type in its symbol's art: edit the symbol to release or expand its {what}."
+                    ),
+                });
             };
             if out.len() >= MAX_MEMBERS {
-                return Err(format!("{label} on a group takes at most {MAX_MEMBERS} objects"));
+                return Err(match whole {
+                    Whole::Group => format!("{label} on a group takes at most {MAX_MEMBERS} objects"),
+                    Whole::Instance(..) => {
+                        format!("{label} on a symbol instance takes a symbol of at most {MAX_MEMBERS} objects")
+                    }
+                });
             }
             let path = geometry(&path, &c.appearance.effects, &GeomContext::of(c));
             if path.bounds().is_some() {
@@ -277,8 +318,99 @@ fn members(n: &Node, label: &str) -> Result<Vec<Profile>, String> {
         Ok(())
     }
     let mut out = vec![];
-    walk(n, 1.0, label, &mut out)?;
+    walk(n, 1.0, label, whole, &mut out)?;
     Ok(out)
+}
+
+/// Symbol instance `n` of `doc` as the group Extrude & Bevel, Inflate and Rotate on it build their
+/// solids from: its symbol's art as it shows it (`symbol_art`, else the symbol's art with a dynamic
+/// symbol's appearance changes, stained by its fill: [`vectorcraft_doc::symbol_overrides::instance_art`]), placed as `n` places it
+/// (by its transform or its symbol's 9-slice guides), with `n`'s object effects. Its type stays
+/// type, as in a group, and the shapes in the art turn about one shared axis, the centre of their
+/// bounds together. `None` for any other object, for an instance whose symbol `doc` doesn't hold,
+/// and for one whose art placed through 9-slice guides passes the objects a symbol may place.
+pub fn instance_solid_group(doc: &vectorcraft_doc::Document, n: &Node, symbol_art: Option<&Node>) -> Option<Node> {
+    let NodeKind::SymbolInstance { symbol, xf } = &n.kind else { return None };
+    let own;
+    let art = match symbol_art {
+        Some(art) => art,
+        None => {
+            own = vectorcraft_doc::symbol_overrides::art_of_instance(doc, n)?;
+            &own
+        }
+    };
+    // `n` as a group of the art placed, keeping its transparency and opacity mask, as a group with
+    // the effect keeps its own ([`group_solid_art`]); the instance's fill stains the art instead.
+    let placed = doc.place_symbol_art(symbol, art, *xf)?;
+    // A new group, with none of the instance's own parts (a dynamic symbol's appearance changes)
+    // that its art no longer needs.
+    let mut group = Node::group(n.id, vec![Arc::new(placed)]);
+    (group.name, group.visible, group.locked) = (n.name.clone(), n.visible, n.locked);
+    (group.opacity, group.blend, group.isolate, group.knockout_shape) = (n.opacity, n.blend, n.isolate, n.knockout_shape);
+    // Its rarely set parts (the opacity mask, Attributes, slice options, the graphic style it
+    // follows), but the appearance changes it makes to its symbol's art.
+    group.extras = n.extras.clone();
+    group.extras_mut().symbol_overrides.clear();
+    group.appearance = Appearance { effects: n.appearance.effects.clone(), ..Default::default() }.into();
+    Some(group)
+}
+
+/// [`instance_solid_group`] of `n` when its own Extrude & Bevel, Inflate or Rotate builds its solids
+/// from it: `None` for any other object, for an instance whose 3D effect is on a fill or stroke,
+/// and for one in perspective (both draw flat).
+pub fn instance_three_d_group(doc: &vectorcraft_doc::Document, n: &Node) -> Option<Node> {
+    if !matches!(n.kind, NodeKind::SymbolInstance { .. }) || solid(&n.appearance.effects).is_none() || n.projection().is_some() {
+        return None;
+    }
+    instance_solid_group(doc, n, None)
+}
+
+/// Is symbol instance `n`'s art placed through 9-slice guides that cut it into clipping groups (its
+/// symbol's art holds none of its own)? For the wording of an error.
+fn sliced(doc: &vectorcraft_doc::Document, n: &Node) -> bool {
+    let NodeKind::SymbolInstance { symbol, xf } = &n.kind else { return false };
+    let own_clips = doc.symbols.iter().find(|s| s.name == *symbol).is_some_and(|s| {
+        let mut clips = false;
+        s.art.walk(&mut |c| clips |= matches!(c.kind, NodeKind::Group { clip: true, .. }));
+        clips
+    });
+    !own_clips && doc.symbol_slice_map(symbol, *xf).is_some()
+}
+
+/// [`validate_three_d`] of `n` in `doc`, `on_item` when the effect goes on one of its fills and
+/// strokes: Extrude & Bevel, Inflate and Rotate on a symbol instance by the art its solids are built
+/// from ([`instance_solid_group`]). On an instance's fill or stroke they would do nothing (the
+/// instance stays flat: its fill stains the art), so they are refused there.
+pub fn validate_three_d_in(doc: &vectorcraft_doc::Document, n: &Node, id: &str, p: &Value, on_item: bool) -> Result<(), String> {
+    if id == crate::REVOLVE || !matches!(n.kind, NodeKind::SymbolInstance { .. }) {
+        return validate_three_d(n, id, p);
+    }
+    if on_item {
+        return Err(instance_item_refusal(id));
+    }
+    let label = crate::effect_info(id).map_or("This effect", |e| e.label.trim_end_matches('…'));
+    if n.projection().is_some() {
+        return Err(format!("{label} on a symbol instance in perspective isn't built: release it from the perspective grid first"));
+    }
+    let group = instance_solid_group(doc, n, None)
+        .ok_or_else(|| format!("{label} on a symbol instance needs its symbol's art, which is missing or places too many objects"))?;
+    validate_solid_as(&group, id, p, Whole::Instance(doc, n))
+}
+
+/// Why 3D effect `id` isn't put on a symbol instance's fill or stroke: there it would do nothing
+/// (the instance stays flat: its fill stains the art).
+pub fn instance_item_refusal(id: &str) -> String {
+    let label = crate::effect_info(id).map_or("This effect", |e| e.label.trim_end_matches('…'));
+    format!("{label} on a symbol instance applies to the whole instance, not to its fill or stroke")
+}
+
+/// Why symbol instance `n` can't be in perspective with its 3D effects: its Extrude & Bevel,
+/// Inflate or Rotate builds solids that wouldn't lie on the plane. `None` for any other object.
+pub fn instance_perspective_refusal(n: &Node) -> Option<String> {
+    (matches!(n.kind, NodeKind::SymbolInstance { .. }) && solid(&n.appearance.effects).is_some()).then(|| {
+        "A symbol instance with a 3D effect isn't put in perspective: its solids wouldn't lie on the plane. Hide or remove the 3D effect first"
+            .to_string()
+    })
 }
 
 /// Can 3D effect `id` (Revolve included, [`is_three_d`]) with parameters `p` draw `n`? Checked
@@ -483,6 +615,24 @@ fn geometry(path: &PathData, fx: &[Effect], ctx: &GeomContext) -> PathData {
     apply_geometry_with(fx, path, path.bounds().unwrap_or(Rect::ZERO), ctx)
 }
 
+/// [`solid_art`] of `n` in `doc`: a symbol instance's built from its art
+/// ([`instance_solid_group`]; `symbol_art`, its symbol's art as it shows it, when the caller has
+/// it). `None` for an instance in perspective, which draws its 3D effect flat.
+pub fn solid_art_in(doc: Option<&vectorcraft_doc::Document>, n: &Node, symbol_art: Option<&Node>) -> Option<Node> {
+    match doc {
+        Some(doc) if matches!(n.kind, NodeKind::SymbolInstance { .. }) => {
+            // In perspective its solids wouldn't lie on the plane: it draws flat, however the effect
+            // came to be there.
+            if n.projection().is_some() {
+                return None;
+            }
+            solid(&n.appearance.effects)?;
+            group_solid_art(&instance_solid_group(doc, n, symbol_art)?)
+        }
+        _ => solid_art(n),
+    }
+}
+
 /// `n` drawn with its Extrude & Bevel, Inflate or Rotate effect: a group of shaded faces keeping
 /// the object's id and transparency, the source path untouched. `None` without such an effect.
 /// On a group or layer the effect builds a solid from each path, compound path and type in it,
@@ -642,28 +792,56 @@ fn meshes_for(fx: &Effect, shapes: &[Profile], total: &mut usize, limit: usize) 
 /// such effect, its solids can't be built, none has a triangle, or together they have more than
 /// [`MAX_MESH_TRIANGLES`].
 pub fn three_d_meshes(n: &Node) -> Result<Vec<SolidMesh>, String> {
-    meshes_within(n, &mut 0, MAX_MESH_TRIANGLES)
+    meshes_within(n, &mut 0, MAX_MESH_TRIANGLES, Whole::Group)
+}
+
+/// [`three_d_meshes`] of `n` in `doc`: a symbol instance's solids built from its art
+/// ([`instance_solid_group`]), its errors naming the instance.
+pub fn three_d_meshes_in(doc: &vectorcraft_doc::Document, n: &Node) -> Result<Vec<SolidMesh>, String> {
+    three_d_meshes_of_in(doc, std::iter::once(n))
+}
+
+/// [`three_d_meshes_of`] of `nodes` in `doc`, symbol instances' solids built from their art
+/// ([`three_d_meshes_in`]).
+pub fn three_d_meshes_of_in<'a>(doc: &vectorcraft_doc::Document, nodes: impl IntoIterator<Item = &'a Node>) -> Result<Vec<SolidMesh>, String> {
+    meshes_of_within(Some(doc), nodes, MAX_MESH_TRIANGLES)
 }
 
 /// The meshes of every object in `nodes` ([`three_d_meshes`]), in order, as one 3D asset exports
 /// them: the objects share one budget of [`MAX_MESH_TRIANGLES`].
 pub fn three_d_meshes_of<'a>(nodes: impl IntoIterator<Item = &'a Node>) -> Result<Vec<SolidMesh>, String> {
-    meshes_of_within(nodes, MAX_MESH_TRIANGLES)
+    meshes_of_within(None, nodes, MAX_MESH_TRIANGLES)
 }
 
-/// [`three_d_meshes_of`] with a budget of `limit` triangles.
-fn meshes_of_within<'a>(nodes: impl IntoIterator<Item = &'a Node>, limit: usize) -> Result<Vec<SolidMesh>, String> {
+/// [`three_d_meshes_of`] with a budget of `limit` triangles, symbol instances built from their art
+/// in `doc` when it is given.
+fn meshes_of_within<'a>(
+    doc: Option<&vectorcraft_doc::Document>,
+    nodes: impl IntoIterator<Item = &'a Node>,
+    limit: usize,
+) -> Result<Vec<SolidMesh>, String> {
     let mut total = 0usize;
     let mut out = vec![];
     for n in nodes {
-        out.extend(meshes_within(n, &mut total, limit)?);
+        let meshes = match doc.map(|d| (d, instance_three_d_group(d, n))) {
+            Some((d, Some(group))) => meshes_within(&group, &mut total, limit, Whole::Instance(d, n))?,
+            Some((_, None)) if matches!(n.kind, NodeKind::SymbolInstance { .. }) && solid(&n.appearance.effects).is_some() => {
+                return Err(if n.projection().is_some() {
+                    "a symbol instance in perspective draws its 3D effect flat: release it from the perspective grid first".into()
+                } else {
+                    "the symbol instance's art is missing or places too many objects".into()
+                });
+            }
+            _ => meshes_within(n, &mut total, limit, Whole::Group)?,
+        };
+        out.extend(meshes);
     }
     Ok(out)
 }
 
 /// [`three_d_meshes`], with the triangles of every solid added to `total` as it is built and an
 /// error as soon as `total` passes `limit`.
-fn meshes_within(n: &Node, total: &mut usize, limit: usize) -> Result<Vec<SolidMesh>, String> {
+fn meshes_within(n: &Node, total: &mut usize, limit: usize, whole: Whole<'_>) -> Result<Vec<SolidMesh>, String> {
     let meshes = if crate::has_revolve(n) {
         crate::revolve::revolve_meshes(n, total, limit)?
     } else if !has_solid(n) {
@@ -671,11 +849,14 @@ fn meshes_within(n: &Node, total: &mut usize, limit: usize) -> Result<Vec<SolidM
     } else if is_container(n) {
         let (index, fx) = solid(&n.appearance.effects).ok_or("a 3D effect on a group's fill or stroke draws nothing to export")?;
         let label = crate::effect_info(&fx.id).map_or("This effect", |e| e.label.trim_end_matches('…'));
-        let mut shapes = members(n, label)?;
+        let mut shapes = members_of(n, label, whole)?;
         reshape_members(n, n.appearance.effects.get(..index).unwrap_or_default(), &mut shapes);
         meshes_for(fx, &shapes, total, limit)?
     } else {
-        let (path, rule) = profile(n).ok_or("3D export needs a path, compound path, type or group")?;
+        if matches!(n.kind, NodeKind::SymbolInstance { .. }) {
+            return Err("a 3D effect on a symbol instance's fill or stroke draws nothing to export".into());
+        }
+        let (path, rule) = profile(n).ok_or("3D export needs a path, compound path, type, group or symbol instance")?;
         let ctx = GeomContext::of(n);
         let paints = solid_paints(n);
         if let Some((index, fx)) = solid(&n.appearance.effects) {

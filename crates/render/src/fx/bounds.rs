@@ -445,7 +445,8 @@ fn three_d_bounds(symbols: &SymbolBoxes, n: &Node) -> Option<Option<Rect>> {
     if !effects::has_revolve(n) && !effects::has_solid(n) {
         return None;
     }
-    let art = effects::revolve_art(n).or_else(|| effects::solid_art(n))?;
+    // A symbol instance's solids are built from its art, as a group's from its members.
+    let art = effects::revolve_art(n).or_else(|| effects::solid_art_in(Some(symbols.document()), n, None))?;
     Some(three_d_art_bounds(symbols, &art))
 }
 

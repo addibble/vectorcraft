@@ -104,13 +104,20 @@ fn path_kind(d: &mut Document, path: PathData, rule: FillRule) -> NodeKind {
     }
 }
 
-/// What `n`'s 3D effects draw in `d`, as the canvas draws them ([`three_d_of`]).
+/// What `n`'s 3D effects do in `d`, as the canvas draws them ([`three_d_of`]).
 pub enum ThreeD {
-    /// The art they build (Revolve's as Expand Appearance makes it when asked), evaluated, with its
-    /// faces recolored by `n`'s color adjustments, which act on the shaded art.
+    /// They build this art (Revolve's as Expand Appearance makes it when asked; a symbol instance's
+    /// from its art), evaluated, with its faces recolored by `n`'s color adjustments, which act
+    /// on the shaded art.
     Built(Node),
-    /// `n` has no 3D effect, they build nothing, or Crop Marks or Vector Halftone draw other art
-    /// for it first ([`drawn_first`]).
+    /// They build nothing (a symbol instance whose symbol changed into art that can't become
+    /// solids, a 3D effect on a symbol instance's fill, Revolve on a group): `n` without them, as
+    /// the canvas draws it. A group or layer keeps those on its own fills and strokes, which the
+    /// art of each fill or stroke builds.
+    Flat(Node),
+    /// `n` has no 3D effect; Crop Marks or Vector Halftone draw other art for it first
+    /// ([`drawn_first`]); or a group or layer has them only on its own fills and strokes, which its
+    /// evaluated art builds ([`evaluate_container`]).
     NotApplicable,
 }
 
@@ -130,9 +137,16 @@ pub enum DrawnFirst {
 /// What the canvas draws for `n` in `d` first, in the order it tries them: Crop Marks' art (none
 /// without bounds), else Vector Halftone's dots as `halftone` makes them (none when they would have
 /// no area or take too many cells), else its 3D effect's art (Revolve's as Expand Appearance makes
-/// it when `expand`). The renderer and [`three_d_of`] choose by it alike, so exports and Expand
-/// Appearance build a 3D effect exactly when the canvas draws it.
-pub fn drawn_first(d: &Document, n: &Node, halftone: impl FnOnce(&Document, &Node) -> Option<Node>, expand: bool) -> DrawnFirst {
+/// it when `expand`; a symbol instance's built from `symbol`, its art as it shows it, else from
+/// `d`). The renderer and [`three_d_of`] choose by it alike, so exports and Expand Appearance build
+/// a 3D effect exactly when the canvas draws it.
+pub fn drawn_first(
+    d: &Document,
+    n: &Node,
+    symbol: Option<&Node>,
+    halftone: impl FnOnce(&Document, &Node) -> Option<Node>,
+    expand: bool,
+) -> DrawnFirst {
     if let Some(m) = crop_marks_art(n) {
         return DrawnFirst::Marks(m);
     }
@@ -140,19 +154,47 @@ pub fn drawn_first(d: &Document, n: &Node, halftone: impl FnOnce(&Document, &Nod
         return DrawnFirst::Halftone(m);
     }
     let revolved = if expand { crate::revolve::expand_revolve_art(n) } else { crate::revolve_art(n) };
-    revolved.or_else(|| crate::solid_art(n)).map_or(DrawnFirst::Neither, DrawnFirst::ThreeD)
+    revolved.or_else(|| crate::solid_art_in(Some(d), n, symbol)).map_or(DrawnFirst::Neither, DrawnFirst::ThreeD)
 }
 
-/// What `n`'s 3D effects draw in `d` ([`ThreeD`]); Revolve's art as Expand Appearance makes it when
+/// What `n`'s 3D effects do in `d` ([`ThreeD`]); Revolve's art as Expand Appearance makes it when
 /// `expand`.
 pub fn three_d_of(d: &mut Document, n: &Node, expand: bool) -> ThreeD {
-    if !(crate::has_revolve(n) || crate::has_solid(n)) {
+    let container = matches!(n.kind, NodeKind::Group { .. } | NodeKind::Layer { .. });
+    let on_object = n.appearance.effects.iter().any(|e| e.visible && crate::is_three_d(&e.id));
+    if !(crate::has_revolve(n) || crate::has_solid(n)) || (container && !on_object) {
         return ThreeD::NotApplicable;
     }
-    let DrawnFirst::ThreeD(m) = drawn_first(d, n, crate::addons::halftone::halftone_art, expand) else { return ThreeD::NotApplicable };
+    let m = match drawn_first(d, n, None, crate::addons::halftone::halftone_art, expand) {
+        DrawnFirst::Marks(_) | DrawnFirst::Halftone(_) => return ThreeD::NotApplicable,
+        DrawnFirst::ThreeD(m) => m,
+        DrawnFirst::Neither => {
+            // Without its own 3D effects; its fills' and strokes' too unless the art the canvas
+            // draws for it keeps them ([`keeps_item_three_d`]): a group's, or the group of pieces
+            // it is reshaped into, which [`reshapes`] tells without making it.
+            let mut flat = n.clone();
+            flat.appearance.effects.retain(|e| !crate::is_three_d(&e.id));
+            if !(container || crate::reshape::reshapes(d, n)) {
+                for i in 0..flat.appearance.items.len() {
+                    if let Some(fx) = flat.appearance.effects_mut(Some(i)) {
+                        fx.retain(|e| !crate::is_three_d(&e.id));
+                    }
+                }
+            }
+            return ThreeD::Flat(flat);
+        }
+    };
     let m = evaluate_container(Some(d), &m).unwrap_or(m);
     // The art keeps the object's color adjustments.
     ThreeD::Built(if has_adjustment(&m) { adjust_in_document(d, &m).unwrap_or(m) } else { m })
+}
+
+/// Does `art`, drawn for an object whose 3D effects build nothing, keep the 3D effects of its own
+/// fills and strokes? A group's or layer's members (a group's, or the pieces an object is reshaped
+/// into) each draw their own, which may build; any other art draws its fills and strokes without
+/// them. The canvas and [`three_d_of`] decide by it alike.
+pub fn keeps_item_three_d(art: &Node) -> bool {
+    matches!(art.kind, NodeKind::Group { .. } | NodeKind::Layer { .. })
 }
 
 /// `n` with its geometry effects evaluated (`None` = unchanged).
@@ -161,10 +203,19 @@ fn bake_node(d: &mut Document, n: &Node) -> Option<Node> {
     if !needs_bake(n) || vectorcraft_doc::cancel::is_cancelled() {
         return None;
     }
-    // A 3D effect's art, its faces recoloured by the object's colour adjustments.
-    if let ThreeD::Built(m) = three_d_of(d, n, false) {
-        return Some(bake_pieces(d, m));
+    // A 3D effect's art, its faces recolored by the object's color adjustments; an object whose 3D
+    // effects build nothing, without them, baked on from here.
+    match three_d_of(d, n, false) {
+        ThreeD::Built(m) => Some(bake_pieces(d, m)),
+        ThreeD::Flat(m) if needs_bake(&m) => Some(bake_unbuilt(d, &m).unwrap_or(m)),
+        ThreeD::Flat(m) => Some(m),
+        ThreeD::NotApplicable => bake_unbuilt(d, n),
     }
+}
+
+/// [`bake_node`] of `n`, which needs baking and whose 3D effects, if any, build nothing (`None` =
+/// unchanged).
+fn bake_unbuilt(d: &mut Document, n: &Node) -> Option<Node> {
     // Colour adjustments: the object recoloured (inside it too), then baked as it is.
     if has_adjustment(n)
         && let Some(m) = adjust_in_document(d, n)
@@ -528,9 +579,16 @@ pub type StrokeArt<'a> = &'a mut dyn FnMut(&mut Document, &PathData, FillRule, &
 /// without transparency or effects of its own takes `n`'s place itself. Hidden fills, strokes and
 /// effects are dropped. `None` for other kinds of objects.
 pub fn expand_leaf(d: &mut Document, n: &Node, stroke_art: StrokeArt) -> Option<Node> {
-    if let ThreeD::Built(m) = three_d_of(d, n, true) {
-        return Some(bake_pieces(d, m));
-    }
+    // A 3D effect that builds nothing expands as the canvas draws it, without it.
+    let flat;
+    let n = match three_d_of(d, n, true) {
+        ThreeD::Built(m) => return Some(bake_pieces(d, m)),
+        ThreeD::Flat(m) => {
+            flat = m;
+            &flat
+        }
+        ThreeD::NotApplicable => n,
+    };
     let (g, rule, ctx, mut m) = leaf_base(n)?;
     m.appearance.effects.retain(|e| e.visible);
     let mut pieces = vec![];

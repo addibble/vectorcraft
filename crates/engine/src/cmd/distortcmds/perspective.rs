@@ -113,6 +113,9 @@ fn warp_checked(d: &mut Document, id: NodeId, h: &Homography) -> Result<()> {
 /// Attach `id` to `plane`: projected by `map`, else by the map that keeps its bounds' corners
 /// (on the nearest gridlines with `snap`).
 fn attach_in(d: &mut Document, g: &mut PerspectiveGrid, id: NodeId, plane: Plane, snap: bool, map: Option<Homography>) -> Result<()> {
+    if let Some(why) = d.node(id).and_then(vectorcraft_render::effects::instance_perspective_refusal) {
+        return Err(EngineError::Other(why));
+    }
     let b = d.node(id).ok_or(EngineError::NoNode(id))?.geometric_bounds().ok_or_else(|| EngineError::Other("the object has no geometry".into()))?;
     let m =
         map.or_else(|| g.attach_homography(plane, b, snap)).ok_or_else(|| EngineError::Other("the object is beyond the plane's horizon".into()))?;
