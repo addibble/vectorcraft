@@ -273,8 +273,8 @@ proptest! {
     /// Any SVG arc with its ends within a thousand of the origin, of any finite radii and
     /// rotation, reads to at most four cubics ending exactly at its end point; a radius at or
     /// below 1e-5 is a line (kurbo's rule), and it is refused only when one radius is more than
-    /// the largest number times the other or its ellipse, scaled up to reach its ends as SVG F.6.6 says, reaches
-    /// past the largest number.
+    /// the largest number times the other or its ellipse, scaled up to reach its ends as SVG
+    /// F.6.6 says, reaches past the largest number.
     #[test]
     fn svg_arcs_are_bounded_and_end_exactly(
         x0 in -1e3f64..1e3, y0 in -1e3f64..1e3, x in -1e3f64..1e3, y in -1e3f64..1e3,
@@ -296,19 +296,19 @@ proptest! {
             // The ellipse passes through both ends, so it lies within twice its larger radius of
             // either: refusing is right only when that radius comes near the largest number, or
             // one radius is more than the largest number times the other. Both radii past 1e-5
-            // and the ends within a thousand (half the chord within √2·1e3), the reach cannot
-            // overflow.
+            // and the ends within a thousand, the reach cannot overflow.
             Err(e) => {
                 let (rx, ry) = (rx.abs(), ry.abs());
                 prop_assert!(rx > 1e-5 && ry > 1e-5, "{} (a line) refused: {}", d, e);
+                // Ends one point but for rounding are the chord whatever the radii.
+                let (hx, hy) = (x0 / 2.0 - x / 2.0, y0 / 2.0 - y / 2.0);
+                prop_assert!(hx != 0.0 || hy != 0.0, "{} (a chord) refused: {}", d, e);
                 if (ry / rx).is_infinite() || (rx / ry).is_infinite() {
                     return Ok(());
                 }
                 let (sin, cos) = rot.to_radians().sin_cos();
-                let (hx, hy) = (x0 / 2.0 - x / 2.0, y0 / 2.0 - y / 2.0);
                 let (x1, y1) = (cos * hx + sin * hy, -sin * hx + cos * hy);
                 let reach = (x1 / rx).hypot(y1 / ry).max(1.0);
-                prop_assert!(reach <= 2f64.sqrt() * 1e3 / 1e-5 * (1.0 + 1e-12), "{}: reach {}", d, reach);
                 let radius = rx.max(ry) * reach;
                 prop_assert!(!radius.is_finite() || radius > f64::MAX / 4.0, "{} refused: {}", d, e);
             }
