@@ -524,6 +524,7 @@ fn a_search_finds_a_setting_by_its_label() {
 }
 
 /// A translated label matches while the dialog is drawn in that language.
+#[cfg(feature = "translations")]
 #[test]
 fn a_translated_label_matches_in_the_interface_language() {
     let de = crate::i18n::Lang::from_code("de").expect("de registered");

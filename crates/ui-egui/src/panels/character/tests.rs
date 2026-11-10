@@ -617,6 +617,7 @@ fn the_anti_aliasing_method_dropdown_shows_and_sets_the_types_method() {
 
 /// The Sharp method is named by its own `antiAlias` catalog row, not by the plain "Sharp" row
 /// that names the Contour tool's corner.
+#[cfg(feature = "translations")]
 #[test]
 fn the_sharp_method_takes_its_own_translation() {
     let mut app = VectorcraftApp::new(Session::new(), Default::default());

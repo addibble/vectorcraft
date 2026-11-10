@@ -2674,6 +2674,7 @@ fn a_heavy_filter_plugin_runs_from_its_shortcut_as_from_its_menu_item() {
 
 /// Keyboard Shortcuts translates a menu path one segment at a time and the label of a built-in
 /// item. A filter plug-in's name stays as the plug-in gives it, even when it reads like a command.
+#[cfg(feature = "translations")]
 #[test]
 fn a_filter_plugin_row_translates_its_path_and_not_its_name() {
     let zh = crate::i18n::Lang::from_code("zh-hant").unwrap();

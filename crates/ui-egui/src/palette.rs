@@ -296,6 +296,8 @@ mod tests {
     /// Each filter plug-in has one result, also when two share a name: its menu path translates,
     /// the plug-in's name does not, and a pick runs that filter (a dialog for one with parameters,
     /// nothing with no document open).
+    // Reads a catalog other than English.
+    #[cfg(feature = "translations")]
     #[test]
     fn each_filter_plugin_is_a_result_of_its_own() {
         use vectorcraft_plugins::wat as tpl;
