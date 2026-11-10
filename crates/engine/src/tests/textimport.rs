@@ -905,7 +905,7 @@ fn malformed_doc_fails_cleanly() {
 fn the_word_reader_is_a_feature_the_apps_turn_on() {
     let manifest = include_str!("../../Cargo.toml");
     assert!(manifest.contains(r#"cfb = { version = "0.15", optional = true }"#), "cfb is the word-doc feature's");
-    assert!(manifest.contains(r#"default = ["bundled-fonts", "word-doc"]"#), "the engine reads Word documents by default");
+    assert!(manifest.contains(r#"default = ["bundled-fonts", "heif", "word-doc"]"#), "the engine reads Word documents by default");
     let apps = [
         include_str!("../../../../apps/vectorcraft/Cargo.toml"),
         include_str!("../../../../apps/vectorcraft-cli/Cargo.toml"),
@@ -913,7 +913,7 @@ fn the_word_reader_is_a_feature_the_apps_turn_on() {
     ];
     for app in apps {
         assert!(
-            app.contains(r#"vectorcraft-engine = { workspace = true, features = ["bundled-fonts", "word-doc"] }"#),
+            app.contains(r#"vectorcraft-engine = { workspace = true, features = ["bundled-fonts", "heif", "word-doc"] }"#),
             "an app places no Word documents"
         );
     }
