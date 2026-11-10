@@ -152,7 +152,7 @@ fn a_colour_adjustment_recolours_a_sourced_link_live_and_for_output() {
     s.execute("select.set", &json!({"ids": [id.0]})).unwrap();
 
     // Edit Colors would write the file's pixels into the document: a linked image is left alone.
-    assert_eq!(s.execute("edit.colors.invert", &json!({})).unwrap(), json!({"changed": 0}));
+    assert_eq!(s.execute("edit.colors.invert", &json!({})).unwrap()["changed"], json!(0));
     assert_eq!(image(&s, id).key, key);
 
     let effect = vectorcraft_doc::Effect { id: "adjust.hueSaturation".into(), params: json!({"hue": 120}), visible: true };
