@@ -166,7 +166,7 @@ fn roman(mut n: u32) -> String {
 
 /// Where a list's marker stands before the first line's text ([`ParaList::align`]): the Bullets
 /// and Numbering dialog's Alignment.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum ListAlign {
     /// The marker starts where the first line starts: at the left indent plus the first-line
