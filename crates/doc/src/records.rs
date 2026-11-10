@@ -128,7 +128,7 @@ impl SavedSelection {
 
 /// An SVG filter the document holds (Effect › SVG Filters): a `<filter>` element named by its
 /// `id`, listed in the SVG Filters submenu and in Apply SVG Filter.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct SvgFilter {
     /// The filter element's `id`.
     pub name: String,

@@ -521,7 +521,7 @@ pub enum Kinsoku {
 /// characters closed to make room, each by the same share of the em of the character before it
 /// and by at most a tenth of that em; pushing out moves the character before them to the next
 /// line.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum KinsokuShoriType {
     /// Push in when the line can close up enough, else push out.

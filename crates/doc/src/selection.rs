@@ -62,7 +62,7 @@ pub struct Selection {
 }
 
 /// See [`Selection::symbol_part`].
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct SymbolPart {
     /// The symbol instance.
     pub instance: NodeId,
