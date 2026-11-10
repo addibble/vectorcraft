@@ -147,7 +147,7 @@ pub(super) fn reverse_from_end(path: &mut PathData) {
 /// The anti-aliasing method of a type object (Character panel › Anti-aliasing Method): how the
 /// edges of its characters are drawn when the type is drawn as pixels (the canvas, raster exports,
 /// rasterizing). SVG, PDF and EPS export ignore it.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum TypeAntiAlias {
     /// Hard edges: a pixel takes the type's color where the type covers at least half of it, and
