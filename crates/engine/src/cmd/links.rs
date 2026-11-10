@@ -2242,7 +2242,7 @@ fn placement_options(s: &mut Session, p: &Value) -> Result<Value> {
     let key = match p.get("key") {
         None | Some(Value::Null) => None,
         Some(_) => {
-            let k = id_param(p, "key").filter(|k| st.doc.node(*k).and_then(Node::geometric_bounds).is_some());
+            let k = object_param(p, "key", C)?.filter(|k| st.doc.node(*k).and_then(Node::geometric_bounds).is_some());
             Some(k.ok_or_else(|| bad(C, "key is the id of an object with bounds: the image whose subject the others are placed like"))?)
         }
     };
