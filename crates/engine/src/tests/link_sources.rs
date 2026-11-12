@@ -167,7 +167,7 @@ fn a_colour_adjustment_recolours_a_sourced_link_live_and_for_output() {
     let st = s.doc().unwrap();
     let node = st.doc.node(id).unwrap().clone();
     let mut out = link_sources::for_output(&st.doc).into_owned();
-    let NodeKind::Image(baked) = vectorcraft_render::effects::adjust_in_document(&mut out, &node).unwrap().kind else { panic!("an image") };
+    let NodeKind::Image(baked) = vectorcraft_render::effects::adjust_in_document(&mut out, &node, None).unwrap().kind else { panic!("an image") };
     assert!(baked.key != key && baked.link.is_some());
     let blob = &out.images[&baked.key];
     assert!(!blob.is_proxy());
@@ -177,6 +177,6 @@ fn a_colour_adjustment_recolours_a_sourced_link_live_and_for_output() {
     assert!(near([r, g, b], map.apply_rgb8(SUPPLIED)));
     // Without supplied pixels the preview is never baked in its file's place.
     let mut doc = (*st.doc).clone();
-    let kept = vectorcraft_render::effects::adjust_in_document(&mut doc, &node);
+    let kept = vectorcraft_render::effects::adjust_in_document(&mut doc, &node, None);
     assert!(kept.is_none_or(|n| matches!(&n.kind, NodeKind::Image(im) if im.key == key)));
 }
