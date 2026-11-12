@@ -128,7 +128,7 @@ impl BlendSpec {
 }
 
 /// The Blend panel's Create Spine setting: whether a new blend gets a spine.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum BlendSpineMode {
     /// The usual rule: every new blend gets a spine, the straight lines between its key centers.
