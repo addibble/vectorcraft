@@ -1075,10 +1075,7 @@ fn expanded_node(d: &mut Document, mut n: Node, brushes: &[vectorcraft_brush::Br
                 // which the faces carry, too.
                 rasterfx::strip_raster(&mut art, true);
                 Some(effects::bake_pieces(d, art))
-            } else if !as_drawn
-                && (container || matches!(n.kind, NodeKind::Text(_)))
-                && (effects::has_solid(&v) || effects::has_revolve(&v))
-            {
+            } else if !as_drawn && (container || matches!(n.kind, NodeKind::Text(_))) && (effects::has_solid(&v) || effects::has_revolve(&v)) {
                 // A 3D effect on a group or layer, or on type: the shaded faces of its solids.
                 effects::expand_leaf(d, &v, &mut stroke_art)
             } else if container {
