@@ -22,10 +22,15 @@ craft-vectorcraft-format = { workspace = true }
 sha2 = { version = "0.10", default-features = false }
 thiserror = { workspace = true }
 wasmi = { workspace = true }
-# The monotonic clock of run deadlines and the first-view budget: `std::time::Instant` on the
-# desktop, the page's `performance.now()` in the web build. It is MIT OR Apache-2.0 and already in
-# the build through eframe.
-web-time = "1"
+# The monotonic clock of run deadlines and the first-view budget on wasm32: the page's
+# `performance.now()`, which the web build turns on (`web-clock`; src/clock.rs). It is MIT OR
+# Apache-2.0 and already in the build through eframe.
+web-time = { version = "1", optional = true }
+
+[features]
+# The page's clock on wasm32 (web-time). Without it a wasm32 build reads no clock and imports
+# nothing for one.
+web-clock = ["dep:web-time"]
 
 [dev-dependencies]
 wat = { workspace = true }

@@ -321,20 +321,20 @@ pub struct Report {
 /// The limit a run past its wall-clock deadline exceeded ([`Error::Limit`]).
 pub(crate) const TIME_BUDGET: &str = "time budget";
 
-/// When a run must stop: a deadline on the monotonic clock (`web_time::Instant`, the page's
-/// `performance.now()` in the web build).
+/// When a run must stop: a deadline on the monotonic clock ([`crate::clock`]); none where there is
+/// no clock to read.
 #[derive(Clone, Copy)]
 pub(crate) struct Deadline {
-    at: web_time::Instant,
+    at: Option<crate::clock::Instant>,
 }
 
 impl Deadline {
     pub(crate) fn new(wall_time_ms: u64) -> Self {
-        Self { at: web_time::Instant::now() + std::time::Duration::from_millis(wall_time_ms) }
+        Self { at: crate::clock::now().map(|now| now + std::time::Duration::from_millis(wall_time_ms)) }
     }
 
     pub(crate) fn passed(&self) -> bool {
-        web_time::Instant::now() >= self.at
+        self.at.zip(crate::clock::now()).is_some_and(|(at, now)| now >= at)
     }
 
     pub(crate) fn check(&self) -> Result<()> {
