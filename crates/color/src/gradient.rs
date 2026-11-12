@@ -100,7 +100,7 @@ impl GradientMethod {
 /// What a linear, radial, conic or diamond gradient paints past the ends of its stops (the
 /// Gradient panel's Spread). With Repeat and Reflect, the stops run [`Gradient::repeats`] times
 /// along the vector (around the circle, for a conic), and keep going past both of its ends.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, schemars::JsonSchema)]
 pub enum GradientSpread {
     /// The first and last stops' colors carry on past the ends, as gradients always did.
     #[default]

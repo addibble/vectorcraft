@@ -27,7 +27,7 @@ impl DimensionMode {
 
 /// The direction a linear dimension measures in: along the line through its two points, or only
 /// their horizontal or vertical distance.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Orientation {
     #[default]
