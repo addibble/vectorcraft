@@ -227,7 +227,8 @@ fn tool_schemas_are_valid() {
     ] {
         assert!(names.contains(want), "missing tool {want}");
     }
-    assert_eq!(tools.len(), 33, "parity docs and #6460 expect 33 MCP tools");
+    // Upstream's 33 (#6460) and query_document, document_schema and patch_document.
+    assert_eq!(tools.len(), 36, "#6460's 33 MCP tools and the three document query tools");
 }
 
 /// Headless `command_list` must expose engine commands that a stale release CLI used to omit (#6460).
