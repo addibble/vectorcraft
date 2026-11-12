@@ -689,5 +689,6 @@ pub(super) const DENIED: &[&str] = &[
     "object.blend.options",
     "object.liquify",
     "object.pathfinder.options",
+    "text.addFont",
     "type.compositeFonts.set",
 ];
