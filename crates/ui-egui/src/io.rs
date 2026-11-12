@@ -36,8 +36,6 @@ pub use open::{
 // For the catalog tests, which read the translations.
 #[cfg(all(test, feature = "translations"))]
 pub(crate) use open::opened_with_notes;
-#[cfg(test)]
-pub(crate) use open::{open_file, opened_with_notes};
 pub(crate) use save::save_current;
 pub use save::{ask_format_options, ask_pdf_options, remember_active_artboard, remember_view, save, save_pdf};
 pub(crate) use save::{export_path, is_web, notes_of, report_saved, show_with_notes, target_path, write_named, write_reporting, write_to};
