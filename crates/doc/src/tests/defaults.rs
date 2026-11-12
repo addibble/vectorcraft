@@ -34,8 +34,10 @@ fn a_struct_read_with_defaults_writes_nothing_at_its_default() {
     assert_eq!(written(&crate::metadata::DocMetadata::default()), json!({}));
     assert_eq!(written(&crate::rastersettings::RasterEffectsSettings::default()), json!({}));
     assert_eq!(written(&crate::setup::DocSetup::default()), json!({}));
-    // A paragraph always says its alignment: builds from before Auto alignment require it.
-    assert_eq!(written(&ParaStyle::default()), json!({"justify": "Left"}));
+    // A paragraph always says its alignment: builds from before Auto alignment require it. Korean
+    // Line Break Anywhere, off in a new paragraph, is written: a paragraph saved without it reads
+    // with it on.
+    assert_eq!(written(&ParaStyle::default()), json!({"justify": "Left", "korean_line_break_anywhere": false}));
 }
 
 /// A character style at its defaults writes only what has none: its family, size and fill.
