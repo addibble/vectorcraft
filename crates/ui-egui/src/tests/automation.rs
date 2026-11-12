@@ -1414,7 +1414,8 @@ fn a_file_picked_in_a_dialog_automation_opened_stays_automations() {
     let (by_drop, by_page) = ("test.ui.approval.picked.dropped", "test.ui.approval.picked.page");
     let file = |id: &str| (format!("{id}.wasm"), approval_module(id).0);
     let hand_over = |app: &mut VectorcraftApp, inbox: &crate::services::Inbox, id: &str| {
-        inbox.lock().unwrap().push(file(id));
+        let (name, bytes) = file(id);
+        inbox.lock().unwrap().push(crate::services::OpenArrival::file(name, bytes));
         app.drain_inbox();
     };
     // The picker answers with a file, or `None` when it is canceled.

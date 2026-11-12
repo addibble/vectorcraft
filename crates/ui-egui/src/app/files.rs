@@ -1,6 +1,5 @@
 use super::{VectorcraftApp, io, place};
 use crate::services::{Inbox, OpenArrival};
-use crate::services::OpenArrival;
 use crate::state;
 
 impl VectorcraftApp {
