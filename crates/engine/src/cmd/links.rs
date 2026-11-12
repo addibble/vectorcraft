@@ -553,7 +553,8 @@ fn read_image(f: &mut Found, base: &LinkInfo, reads: &mut ImageReads) -> Result<
             img
         }
     };
-    Ok((f.link_hashed(hash, base), img))
+    // The subject is read again with the file, as [`Found::link`] reads it.
+    Ok((LinkInfo { subject: file_subject(&f.path, &bytes), ..f.link_hashed(hash, base) }, img))
 }
 
 /// A linked file read for the objects that show it.
@@ -1253,7 +1254,8 @@ pub fn resolve(d: &mut Document, base: LinkBase, update: bool, low_res_proxy_eps
     // The image (with its preview) and hash of each file read for a preview here, by path: images
     // of other keys linking to the same file share them, rather than each reading, decoding and
     // keeping a copy of its own.
-    let mut read_images: BTreeMap<String, (ImageBlob, String)> = BTreeMap::new();
+    // Each file's image, content hash and the subject it names, read once for every group showing it.
+    let mut read_images: BTreeMap<String, (ImageBlob, String, Option<ImageRegion>)> = BTreeMap::new();
     // (the path as it was, the content shown, a placed document?, the link now) of each file found
     // away from its path or read again.
     let mut moved: Vec<(String, String, bool, LinkInfo)> = vec![];
@@ -1301,9 +1303,9 @@ pub fn resolve(d: &mut Document, base: LinkBase, update: bool, low_res_proxy_eps
             }
             (Status::Ok, Some(mut f)) => {
                 let preview = previewing(d, &g.key);
-                if let Some((blob, hash)) = read_images.get(&f.path).filter(|_| preview && !eps_preview).cloned() {
+                if let Some((blob, hash, subject)) = read_images.get(&f.path).filter(|_| preview && !eps_preview).cloned() {
                     store_image(d, &g.key, blob, true);
-                    let link = f.link_hashed(hash, &g.link);
+                    let link = LinkInfo { subject, ..f.link_hashed(hash, &g.link) };
                     if link != g.link {
                         set_links(d, &g.ids, &link);
                         moved.push((g.link.path.clone(), g.key.clone(), false, link));
@@ -1318,7 +1320,7 @@ pub fn resolve(d: &mut Document, base: LinkBase, update: bool, low_res_proxy_eps
                         continue;
                     };
                     let blob = img.blob;
-                    read_images.insert(f.path.clone(), (blob.clone(), hash_bytes(b)));
+                    read_images.insert(f.path.clone(), (blob.clone(), hash_bytes(b), file_subject(&f.path, b)));
                     store_image(d, &g.key, blob, true);
                 } else if let Some(b) = d.images.get(&g.key).filter(|b| b.proxy.is_none()) {
                     // Linked before links kept a preview.
