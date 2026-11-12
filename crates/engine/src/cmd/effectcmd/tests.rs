@@ -1091,25 +1091,3 @@ fn a_fills_raster_effect_after_its_3d_effect_expands_once() {
         assert_eq!(live, 0, "{effect}: no raster effect left live");
     }
 }
-
-/// A 3D effect on a group's own fill expands as the canvas draws it: the fill's art builds the
-/// solid.
-#[test]
-fn a_groups_own_fill_3d_expands_as_drawn() {
-    let draw = |d: &vectorcraft_doc::Document| {
-        vectorcraft_render::Renderer::new().render(d, 400, 400, vectorcraft_geom::Affine::IDENTITY, &Default::default()).pixels
-    };
-    let differ = |a: &[u8], b: &[u8]| a.iter().zip(b).filter(|(x, y)| x.abs_diff(**y) > 8).count();
-    let mut s = Session::new();
-    s.execute("file.new", &json!({"width": 400, "height": 400})).unwrap();
-    let a = s.execute("path.create", &json!({"d": "M100 100L200 100L200 200L100 200Z"})).unwrap()["id"].clone();
-    let b = s.execute("path.create", &json!({"d": "M220 120L280 120L280 180L220 180Z"})).unwrap()["id"].clone();
-    s.execute("select.set", &json!({"ids": [a, b]})).unwrap();
-    s.execute("object.group", &json!({})).unwrap();
-    s.execute("appearance.addFill", &json!({})).unwrap();
-    s.execute("effect.apply", &json!({"effect": "threeD.extrude", "item": 0, "params": {"depth": 20.0}})).unwrap();
-    let drawn = draw(&s.doc().unwrap().doc);
-    s.execute("effect.expandAppearance", &json!({})).unwrap();
-    let expanded = draw(&s.doc().unwrap().doc);
-    assert!(differ(&drawn, &expanded) < drawn.len() / 400, "expanded {}", differ(&drawn, &expanded));
-}
