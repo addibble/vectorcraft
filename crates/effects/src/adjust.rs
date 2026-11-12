@@ -470,7 +470,8 @@ pub fn adjust(n: &Node, outer: Option<&ColorMap>, swatches: &SwatchKinds, images
 
 /// [`adjust`] for export and Expand Appearance: recoloured images become new embedded images in
 /// `d` (named by their content), and a symbol instance stands for its symbol's art: `symbol_art`
-/// when given, otherwise the symbol's art with the instance's own appearance changes. A linked
+/// when given, otherwise the art as the instance shows it (a dynamic symbol's changes, then the
+/// instance's stain). A linked
 /// image is recoloured from its file's pixels (output swaps in what a link source supplied), never
 /// from its preview.
 pub fn adjust_in_document(d: &mut Document, n: &Node, symbol_art: Option<Node>) -> Option<Node> {
