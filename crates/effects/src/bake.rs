@@ -152,7 +152,7 @@ pub fn three_d_of(d: &mut Document, n: &Node, expand: bool) -> ThreeD {
     let DrawnFirst::ThreeD(m) = drawn_first(d, n, crate::addons::halftone::halftone_art, expand) else { return ThreeD::NotApplicable };
     let m = evaluate_container(Some(d), &m).unwrap_or(m);
     // The art keeps the object's color adjustments.
-    ThreeD::Built(if has_adjustment(&m) { adjust_in_document(d, &m).unwrap_or(m) } else { m })
+    ThreeD::Built(if has_adjustment(&m) { adjust_in_document(d, &m, None).unwrap_or(m) } else { m })
 }
 
 /// `n` with its geometry effects evaluated (`None` = unchanged).
