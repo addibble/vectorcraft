@@ -250,6 +250,9 @@ fn the_file_key_is_seeded_from_the_os_random_source() {
 fn the_random_source_on_wasm32_is_the_binarys_to_pick() {
     let manifest = include_str!("../../Cargo.toml");
     assert!(!manifest.contains(r#""wasm_js""#), "vectorcraft-pdf picks getrandom's wasm32 source");
+    // The script engine's Math.random seed (vectorcraft-js) too.
+    let js = include_str!("../../../js/Cargo.toml");
+    assert!(!js.contains(r#""wasm_js""#), "vectorcraft-js picks getrandom's wasm32 source");
     let web = include_str!("../../../../apps/vectorcraft-web/Cargo.toml");
     assert!(web.contains(r#"getrandom = { version = "0.4", features = ["wasm_js"] }"#), "the web app gives getrandom no browser source");
 }
