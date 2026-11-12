@@ -69,8 +69,8 @@ pub use adjust::{
     is_channel,
 };
 pub use bake::{
-    DrawnFirst, StrokeArt, ThreeD, bake_appearance, bake_document, bake_type_appearance, bake_pieces, drawn_first, expand_art, expand_leaf, fresh_ids, needs_bake,
-    three_d_of,
+    DrawnFirst, StrokeArt, ThreeD, bake_appearance, bake_document, bake_pieces, bake_type_appearance, drawn_first, expand_art, expand_leaf,
+    fresh_ids, needs_bake, three_d_of,
 };
 pub use clip::clip_outline;
 pub use group::{
