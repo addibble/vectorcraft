@@ -1367,7 +1367,9 @@ fn expanded_node(
         (raster.images, raster.pixels) = budget_before;
     };
     if effects::has_adjustment(&n)
-        && let Some(m) = effects::adjust_in_document(d, &n, symbol_art)
+        // A linked image recoloured from the pixels a host supplied for it (link sources), not
+        // its preview.
+        && let Some(m) = crate::link_sources::with_supplied(d, |d| effects::adjust_in_document(d, &n, symbol_art))
     {
         out.push((id, 0));
         listed_n = true;
@@ -1594,6 +1596,16 @@ fn expand_appearance(s: &mut Session, p: &Value) -> Result<Value> {
             return Err(EngineError::Other("Expand Appearance: a plug-in effect in the selection can't be expanded in Safe Mode".into()));
         }
     }
+    // A colour adjustment on a linked image whose file's pixels aren't loaded (only its preview
+    // shows) would be dropped: Expand waits for them.
+    {
+        let d = &s.doc()?.doc;
+        if let Some(name) = roots.iter().filter_map(|id| d.node(*id)).find_map(|n| unloaded_adjusted_link(d, n, false, 0)) {
+            return Err(EngineError::Other(format!(
+                "Expand Appearance: the linked file {name} isn't loaded, so its color adjustment can't be expanded: update the link, or wait for its file"
+            )));
+        }
+    }
     let failed = vectorcraft_render::decode_failures();
     let colorized_ok = super::paint::check_colorized(&s.doc()?.doc).is_ok();
     let mut raster = RasterBudget::new();
@@ -1639,6 +1651,29 @@ fn expand_appearance(s: &mut Session, p: &Value) -> Result<Value> {
         out["rasterLeft"] = json!(raster.left);
     }
     Ok(out)
+}
+
+/// The name of a linked image in `n` (or `n` itself, a color adjustment on it or around it when
+/// `adjusted`) that a color adjustment recolours while its file's pixels aren't loaded: its blob is
+/// its preview and no link source supplied the file ([`crate::link_sources`]). Expanded, the
+/// adjustment would be dropped, as output leaves a preview's colours be. Symbols are followed into
+/// their art, at most [`MAX_SYMBOL_DEPTH`] deep.
+fn unloaded_adjusted_link(d: &Document, n: &Node, adjusted: bool, depth: usize) -> Option<String> {
+    const MAX_SYMBOL_DEPTH: usize = 64;
+    let adjusted = adjusted || effects::has_adjustment(n);
+    match &n.kind {
+        NodeKind::Image(im) if adjusted => {
+            let link = im.link.as_ref()?;
+            let unloaded =
+                d.images.get(&im.key).is_some_and(vectorcraft_doc::ImageBlob::is_proxy) && vectorcraft_render::link_pixels::peek(&im.key).is_none();
+            unloaded.then(|| link.name().to_string())
+        }
+        NodeKind::SymbolInstance { symbol, .. } if depth < MAX_SYMBOL_DEPTH => {
+            let sym = d.symbols.iter().find(|s| &s.name == symbol)?;
+            unloaded_adjusted_link(d, &sym.art, adjusted, depth + 1)
+        }
+        _ => n.children()?.iter().find_map(|c| unloaded_adjusted_link(d, c, adjusted, depth)),
+    }
 }
 
 mod graphics;

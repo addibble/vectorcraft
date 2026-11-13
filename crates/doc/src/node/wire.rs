@@ -60,6 +60,7 @@ impl Serialize for Node {
             e.color_mask.is_none(),
             is_default(&e.warp_piece),
             is_default(&e.clip_pieces),
+            is_default(&e.placement_clip),
         ];
         let mut st = s.serialize_struct("Node", skips.iter().filter(|s| !**s).count())?;
         let mut skip = skips.into_iter();
@@ -114,6 +115,7 @@ impl Serialize for Node {
         field!("color_mask", &e.color_mask);
         field!("warp_piece", &e.warp_piece);
         field!("clip_pieces", &e.clip_pieces);
+        field!("placement_clip", &e.placement_clip);
         st.end()
     }
 }
@@ -303,6 +305,8 @@ pub(super) struct NodeWire {
     warp_piece: bool,
     #[serde(default)]
     clip_pieces: bool,
+    #[serde(default)]
+    placement_clip: bool,
 }
 
 /// A node's schema is its file form's ([`NodeWire`]: the flat field list a node is written as).
@@ -362,6 +366,7 @@ impl From<NodeWire> for Node {
             color_mask: w.color_mask,
             warp_piece: w.warp_piece,
             clip_pieces: w.clip_pieces,
+            placement_clip: w.placement_clip,
         };
         Node {
             id: w.id,

@@ -87,6 +87,10 @@ pub struct NodeExtras {
     /// are applied, one path or compound path per fill and stroke: as the clipping path of a clip group it paints
     /// those pieces as the path paints its fills and strokes ([`Node::clip_paint`]).
     pub clip_pieces: bool,
+    /// Links › Placement Options › Clip to Bounding Box made this clip group: it holds just an
+    /// image or placed document, clipped to the bounds the options place it in (a clip group the
+    /// user made never has it).
+    pub placement_clip: bool,
 }
 
 /// No extras: what [`Node::extras`] gives for a node without any.
@@ -118,6 +122,7 @@ pub(super) static NO_EXTRAS: NodeExtras = NodeExtras {
     color_mask: None,
     warp_piece: false,
     clip_pieces: false,
+    placement_clip: false,
 };
 
 /// A node's [`NodeExtras`], if it has any ([`Node::extras`]). Extras that are all unset equal

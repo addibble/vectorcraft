@@ -1010,6 +1010,10 @@ pub fn encode_with_notes(doc: &Document, format: &str, p: &Value) -> Result<(Vec
 /// [`encode`], with every file the export writes.
 pub fn encode_all(doc: &Document, format: &str, p: &Value) -> Result<Encoded> {
     let format = super::writable(C, Some(format), None)?.id;
+    // Linked images a host supplied the pixels of (link sources) export them, recolour adjustments
+    // from them, and write them where a format embeds images; a native file keeps its previews.
+    let sourced = if matches!(format, "vectorcraft" | "template") { std::borrow::Cow::Borrowed(doc) } else { crate::link_sources::for_output(doc) };
+    let doc = sourced.as_ref();
     // Formats with editing data prepare their drawn output separately from their original
     // document. Other formats only need the placed files' art.
     if !matches!(format, "vectorcraft" | "template" | "ai" | "pdf" | "eps" | "svg" | "svgz") {
