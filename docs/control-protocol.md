@@ -768,8 +768,9 @@ art too large at that scale) keeps the dialog open.
 
 Placement Options: the Links panel's flyout (or `ui.placementOptionsDialog {ids?}` for agents) opens the
 `placementOptions` dialog for the selected images (fields `ids`, `preserve`: `transforms`/`bounds`/`fileDimensions`/
-`fit`/`fill`, `align`: `topLeft` … `bottomRight`, `clip`). `ui.dialog.confirm` runs `links.placementOptions` with them as
-one undo step.
+`fit`/`fill`/`subject`, `align`: `topLeft` … `bottomRight`, `clip`). `ui.dialog.confirm` runs `links.placementOptions` with them as
+one undo step, which also applies them at once to the linked images and placed documents (see `links.placementOptions`);
+options the images don't share (`mixed`) are sent only when chosen.
 
 Relink: the Links panel's Relink… button and flyout item (or `ui.relinkDialog {ids?}` for agents) open the `relink`
 dialog for the selected images and placed documents (fields `ids`, `links`: `[{name, ids}]`, one row per linked file,
@@ -1140,13 +1141,22 @@ The browser has no installed fonts, so a host page supplies the fonts its docume
 `vectorcraft.execute("text.addFontSources", {fonts: [{family, style, url, sha256}]})` lists a whole collection in the
 font menus and lets the app fetch each face itself when type uses it (`docs/mcp.md`, fonts).
 
+Nor can it read a document's linked files: `vectorcraft.execute("links.addSources", {sources: [{path, url, sidecar?}]})` lists the
+ones the page can supply, and the app fetches each (`url` with `{width}`, `{height}` or `{side}` filled in) once an image
+linking it is drawn larger than its preview, at the size it prints at; `links.loadSources` asks for all of them before a
+print, and `view.imageCache` sets the memory they and decoded images may hold (`docs/mcp.md`, links). A source's
+`sidecar` is the file's XMP sidecar, as text, whose main subject (an IPTC image region) Placement Options › Preserve:
+Subject places it by.
+
 ## Revision history
 
 | Date | Change | Summary |
 |---|---|---|
 | 2026-11-13 | minor | Missing Fonts: a font source's row shows Activating… or Activate; on the web a source that fails opens the dialog. |
+| 2026-11-13 | minor | Link sources: `links.loadSources` answers `overBudget` and counts those images failed; supplied files cut short, of another shape or turned by their EXIF orientation are refused (supply them upright); a new URL drops what the old one sends. |
 | 2026-11-07 | minor | Documented OpenType feature values in text commands (`"salt=2"`, the font's alternate number) and that runs differing only in features shape as one piece of text. |
 | 2026-10-31 | minor | Confining file access: on Windows a `:` in a name after the drive (an NTFS alternate data stream) is refused with the device names (#3604). |
+| 2026-10-25 | minor | A host page lists the linked files it can supply with `links.addSources`; `view.imageCache` sets the image budgets. |
 | 2026-10-25 | minor | Panel docking on craft-ui's layout: `ui.docking`, the floating and dock parameters, native floating windows. |
 | 2026-10-25 | minor | Documented that Object → Expand… is dimmed, and `ui.expandDialog` refuses, while the selection has an appearance Expand Appearance expands (`object.expand.info`'s `appearance`, #3089). |
 | 2026-10-25 | minor | Documented that Transform Each opens on the values it was last confirmed with and that its Copy button confirms with `copy: true` (#1732). |

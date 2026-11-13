@@ -1,4 +1,6 @@
-use super::blobs::{blob_key, blob_pixmap, image_mip, lookup, mask_value, mip_level, plain_image, shape_masked_image, white_shape_mask};
+use super::blobs::{
+    adjusted_pixmap, blob_key, blob_pixmap, image_mip, lookup, mask_value, mip_level, plain_image, shape_masked_image, white_shape_mask,
+};
 use super::clock::now;
 use super::frame::{
     ClipEntry, ClipPaintEntry, Frame, FrameStats, GeomEntry, MAX_INLINE_DEPTH, MISSING_INLINE_LOGGED, PlacedEntry, PlacedKey, PtrMap, SliceEntry,
@@ -22,6 +24,7 @@ use super::{
 pub(crate) use paint::{CONTROL_BOXES_MEASURED, SLICES_MADE, STROKES_OUTLINED, anchors_moved, offset_between};
 
 mod images;
+pub(crate) use images::source_blob;
 mod nodes;
 mod paint;
 mod text;

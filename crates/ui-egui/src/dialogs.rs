@@ -593,6 +593,9 @@ pub fn set_field(d: &mut Dialog, field: String, value: Value) {
     if d.kind == "preferences" {
         crate::prefs_dialog::note_set(d, &field, &value);
     }
+    if d.kind == placement_options::KIND {
+        placement_options::note_set(d, &field);
+    }
     let dxf = (d.kind == dxf_options::KIND).then(|| field.clone());
     d.fields.insert(field, value);
     if let Some(field) = dxf {

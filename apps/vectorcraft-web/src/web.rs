@@ -462,6 +462,25 @@ impl eframe::App for WebShell {
             log::warn!("font source {} {}: {reason}", src.family, src.style);
             app.font_source_failed(&src.family, &reason);
         }
+        // Link sources: the linked files drawn larger than their previews are fetched; those
+        // fetched are drawn over the previews (not an edit).
+        crate::link_sources::fetch_requested(ctx, &app.session);
+        for (req, bytes) in crate::link_sources::take_fetched() {
+            let failed = vectorcraft_engine::link_sources::is_failed(&req.path);
+            if let Err(e) = vectorcraft_engine::link_sources::supply_fetched(&mut app.session, &req, bytes) {
+                log::warn!("link source {}: {e}", req.path);
+                // What it brought failed the source: said where it shows, not only in the console.
+                if !failed && vectorcraft_engine::link_sources::is_failed(&req.path) {
+                    app.status(format!("{e}: it shows its preview"));
+                }
+            }
+        }
+        for (req, reason) in crate::link_sources::take_failed() {
+            // A fetch a newer request overtook says nothing of the source now.
+            if vectorcraft_engine::link_sources::fetch_failed(&req, &reason) {
+                app.status(format!("{} couldn't be loaded ({reason}): it shows its preview", req.path));
+            }
+        }
         app.tick(ctx);
         // After the tick has opened what the page sent: its region and tinted mask, which name an
         // image of the document it opened; then the saves the tick posted, and whether anything is
@@ -535,6 +554,11 @@ impl eframe::App for WebShell {
         // Type laid out in this frame may have asked for font sources: the next frame's logic
         // fetches them, so it is asked for now rather than at the next input.
         if vectorcraft_text::FontDb::global().has_source_requests() {
+            ui.ctx().request_repaint();
+        }
+        // Linked images drawn in this frame may want their files: the next frame's logic fetches
+        // them, so it is asked for now rather than at the next input.
+        if vectorcraft_engine::link_sources::drawn_since() {
             ui.ctx().request_repaint();
         }
     }

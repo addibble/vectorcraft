@@ -52,11 +52,15 @@ impl Default for Options {
     }
 }
 
+/// (document uid, revision, link sources' generation, show, sort, Show DCS Transparency
+/// Interactions): a link a host now supplies, or whose source failed, shows so at once.
+type CacheKey = (u64, u64, u64, &'static str, Option<&'static str>, bool);
+
 /// `links.list` and the first selected image's `links.info`, with what they were fetched for.
 #[derive(Clone, Default)]
 struct Cache {
-    /// (document uid, revision, show, sort, Show DCS Transparency Interactions).
-    key: Option<(u64, u64, &'static str, Option<&'static str>, bool)>,
+    /// What the rows were fetched for ([`CacheKey`]).
+    key: Option<CacheKey>,
     at: f64,
     list: Value,
     info: Option<(u64, Value)>,
@@ -86,7 +90,7 @@ fn set_options(ctx: &egui::Context, f: impl FnOnce(&mut Options)) {
 /// seconds) and the Link Info of the first selected image when the section is open.
 fn cached(app: &mut VectorcraftApp, ctx: &egui::Context, o: &Options) -> Option<Cache> {
     let st = app.session.active()?;
-    let key = Some((st.uid, st.revision, o.show, o.sort, o.dcs));
+    let key = Some((st.uid, st.revision, vectorcraft_engine::link_sources::generation(), o.show, o.sort, o.dcs));
     let first = selected_links(app, ctx).first().copied();
     let now = ctx.input(|i| i.time);
     let mut c: Cache = pstate(ctx, "links-cache");

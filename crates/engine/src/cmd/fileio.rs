@@ -55,6 +55,7 @@ pub mod progress;
 mod psdlayers;
 pub mod psdread;
 mod pxrread;
+pub mod regions;
 mod save;
 mod screens;
 mod svg;

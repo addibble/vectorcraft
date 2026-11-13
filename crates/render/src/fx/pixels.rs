@@ -487,6 +487,8 @@ impl Renderer {
             for (key, blob) in &doc.images {
                 (key, Arc::as_ptr(&blob.bytes) as usize, blob.proxy.as_ref().map(|p| Arc::as_ptr(p) as usize)).hash(h);
             }
+            // Linked images drawn over their previews with pixels a host supplied.
+            crate::link_pixels::generation().hash(h);
         });
         let names = paint_names(doc);
         let found = (patterns, symbols, images, names, Arc::as_ptr(&cms) as usize);

@@ -7570,7 +7570,8 @@ or 512 MiB in the web app, as RGBA or as decoded, and it is drawn at the largest
 reduced size"; the document keeps the whole file) or, when it can't be read that way or has more pixels than the
 allowance has bytes, drawn as a crossed gray box on the canvas and left out of exports ("too large to draw"); `document.open` and `file.place` say the same in their `warnings`). `links.info {id?}` is the Link Info: `image.info`'s fields plus
 `status`, `format`, the file's `ppi` and the `effectivePpi`, `scale` (% of 100%), `rotation` (degrees,
-counter-clockwise), `placement` and, for a linked file, `fileName`, `location`, `fileSize`, `created`, `modified`.
+counter-clockwise), `placement` and, for a linked file, `fileName`, `location`, `fileSize`, `created`, `modified`, and
+`subject` when the file names its main subject (below).
 With automation read roots, a file outside them has no `path` or `found` in `links.list` and `links.check`, and no
 `link`, `path`, `location`, `fileSize` or `modified` in `links.info`; its row keeps the file's name.
 An image placed from a DCS file has the `format` `DCS`. `links.list {dcsTransparency: true}` (the panel menu's Show
@@ -7586,9 +7587,33 @@ every object in the layers each time the list is read. A `dcsTransparency` that 
 returns `{id, onCanvas: false, owner}`, and the panel says the link has no place on the canvas. `links.embed {ids?}` keeps linked files' pixels in the document (an image whose
 file is missing stays linked: relink it first); `links.unembed {id, path}` writes an embedded image to a file
 (another extension converts it) and links to it, and without `path` returns `{name, dataBase64}`.
-`links.placementOptions {ids?, preserve?: transforms|bounds|fileDimensions|fit|fill, align?: topLeft…bottomRight,
+`links.placementOptions {ids?, preserve?: transforms|bounds|fileDimensions|fit|fill|subject, align?: topLeft…bottomRight,
 clip?}` decides how a relinked or updated file takes an image's place (default `bounds`: stretched into the old
-bounds; `clip` puts it in a clip group of the old bounds when it is larger). The UI commands `links.editOriginal` and
+bounds; `clip` puts it in a clip group of its own, clipped to the old bounds, when it is larger), and applies it at once to
+each linked image and placed document from the file it already shows, reading nothing: `fit` and `fill` put a distorted
+(stretched or sheared) image back in proportion, `fileDimensions` at its file's 100% size, unrotated, `bounds` and
+`transforms` move nothing; embedded images keep their place. Art that clip group already holds is placed in its
+rectangle (`transforms` keeps it where it is), and without `clip` it leaves the group; a clip group the user made is
+never reshaped. Options set as they were, with nothing to move, change nothing (no undo step). Without options it answers
+`{placement}` of the first image, and `mixed`: the options the images don't share. Otherwise it answers `applied` (the
+ids that moved, changed size, or were clipped or let out of their clip), and, when there are any, `embedded` and
+`previewing`: linked images `fileDimensions` left in place because only their preview is loaded, which doesn't keep the
+file's resolution (`fit` and `fill` take a preview's pixels as square).
+`subject` places by what the picture shows: a linked file's main subject is the IPTC image region with the role
+`mainSubjectArea` (IPTC Photo Metadata's Image Region, in XMP as `Iptc4xmpExt:ImageRegion`; a rectangle, circle or
+polygon, in relative or pixel units, read as the rectangle around it) in its XMP sidecar (`<name>.xmp` beside it) or,
+without one, in its own XMP (JPEG APP1, PNG `iTXt`, WebP `XMP `), read whenever the file is and kept with the link. A
+relinked or updated file is scaled uniformly so its subject (all of it, when it names none) fits inside the old file's
+subject, at `align`. On OK each subject fits inside `target` (`{x, y, width, height}` in the document), or, with `key`
+(an object id; by default the selection's key object, as the Align panel takes it, when it is one of `ids`), in the
+place the key's subject has in the frame clipping the key, scaled to each image's frame (like this one: one size, one
+place), else in the frame clipping the image (a clip group around it, turned with it; with nothing clipping it, the
+subject stays where it is), as Content-Aware Fit fits an image to its frame; with `clip`, art fitted to a `target` is
+clipped to the target. A region is in the file's stored pixels (its EXIF orientation not applied, as IPTC says): a photo
+turned upright by its orientation has its subject turned with it. A changed sidecar shows the link as modified; Relink
+with `copy` copies the sidecar beside the copy. Outside the layers (symbols, patterns, opacity masks) a relink places the
+subject the same way. A DCS file's clipping path that a relink with `clip` no longer needs becomes Clip to Bounding Box's
+rectangle, and Clip to Bounding Box's clip group around a DCS file's own is let go by `clip: false`. The UI commands `links.editOriginal` and
 `links.reveal` open the linked file in its app or show it in its folder (desktop). Edit Original runs only from the app's window,
 except for a placed document, which opens in a tab. With the preference `editOriginalSystemDefaults` (Preferences ›
 File Handling › Use System Defaults for Edit Original, on by default) off, Edit Original opens a raster image in the app
@@ -7597,7 +7622,38 @@ that made it, PhotoCraft, where it is installed, and anything else in the system
 ```json
 {"name":"run_command","arguments":{"command":"links.list","params":{"show":"missing"}}}
 {"name":"run_command","arguments":{"command":"links.placementOptions","params":{"ids":[12],"preserve":"fit","align":"top"}}}
+{"name":"run_command","arguments":{"command":"links.placementOptions","params":{"ids":[12,13,14],"preserve":"subject","key":12}}}
 {"name":"run_command","arguments":{"command":"links.unembed","params":{"id":14,"path":"/tmp/logo.png"}}}
+```
+
+Link sources are for a build that reads no files (the web): a page that embeds VectorCraft lists the linked files it can
+supply with `links.addSources {sources: [{path, url}], resolution?}` (`path` is what links name, their relative path or
+else their path; `url` is where the page serves the file at a size, `{width}`, `{height}` and `{side}`, the longer, filled
+in; `resolution`, default 300 ppi, is the host's output resolution). A linked image shows its saved preview until it is
+drawn magnified past it; the file is then fetched at the size its largest placement needs at that resolution (never fewer
+pixels than the preview has, never more than the file has), drawn in the preview's place and used for PDF export, and
+fetched again larger when the image is resized larger; a source given a new URL is fetched again from it, and what the
+old one still sends is dropped. What arrives is kept outside the document, so it is no edit: nothing is saved, journaled
+or undone, no document's revision moves, and undo never brings back the preview. A file cut short, not in the linked
+file's proportions, or turned or flipped by its EXIF orientation (a host supplies files upright), is refused and its source counts as failed until given again or supplied after all. A link with a source counts as found (`ok` in `links.list` and `links.check`, and in the
+Links panel) until its fetch fails. A source may carry `sidecar`, the file's XMP sidecar as text (what `<name>.xmp` beside
+it would hold): its main subject, in the file's own pixels, is the link's for Link Info and Placement Options › Preserve: Subject, before the one the
+link kept; giving a path a new sidecar changes no pixels. `links.supplySource {path, dataBase64}` hands a host's own copy of a source's file in (PNG, JPEG, GIF, WebP, TIFF or BMP: a source's file is drawn as it is, so not PSD, TGA, HEIC or the other formats Open converts)
+(answering for its own width; the web build hands in what it fetched itself). `links.loadSources` asks for every linked image of the active document at once, drawn or not, and
+answers `{loaded, loading, failed, overBudget}`: a host calls it until `loading` is 0 before printing, and refuses to
+print while `failed` is more than 0 (those show and print their previews). `overBudget` counts the failed images whose
+supplied pixels do not fit the linked budget beside the others kept (a file larger than the budget alone is refused when
+supplied): raise it with `view.imageCache` and call again. `view.imageCache {decoded?,
+linked?}` sets the budgets, in bytes, of the decoded images all views share and of the pixels link sources supplied (the
+least recently drawn go past them: decoded again when next drawn, or, for supplied pixels, fetched again by `links.loadSources`; each from 16 MB to the installed memory, 2 GB
+on the web) and answers both with the bytes held now. At most 100000 paths are sources at once.
+Illustrator draws linked images from a preview and reads the file for output, with no setting for the preview's
+resolution (https://community.adobe.com/t5/illustrator-discussions/linked-file-preview-resolution/m-p/14871637).
+
+```json
+{"name":"run_command","arguments":{"command":"links.addSources","params":{"sources":[{"path":"pictures/ace.png","url":"pictures/ace.png?side={side}"}]}}}
+{"name":"run_command","arguments":{"command":"links.loadSources","params":{}}}
+{"name":"run_command","arguments":{"command":"view.imageCache","params":{"decoded":1073741824,"linked":536870912}}}
 ```
 
 ## Package and Document Info
@@ -10116,13 +10172,15 @@ Disable and Continue can't save the plug-in it turns off, this launch skips it a
 ## Colour adjustments
 
 Effect → Color Adjustments holds live effects that recolour what an object paints
-with (fills and strokes, gradient stops, type, gradient meshes, embedded images; on a group or layer every member),
+with (fills and strokes, gradient stops, type, gradient meshes, images, linked ones too; on a group or layer every member),
 each colour keeping its colour model: `adjust.brightnessContrast`, `adjust.curves` (`points` as `"x,y x,y …"` or
 `[[x, y], …]`, 0–255), `adjust.levels`, `adjust.hueSaturation`, `adjust.shiftToColor` and `adjust.temperatureTint`
 (`effect.list` documents their parameters). Apply them with `effect.apply` like any effect, or with `item` to recolour
 one fill or stroke; they stay editable (`effect.setParams`), export with the adjusted colours (an adjusted image as a
-recoloured copy) and become permanent with `effect.expandAppearance`. Patterns and the shadows and glows of raster
-effects keep their colours.
+recoloured copy, embedded: a linked image's no longer shows its file) and become permanent with
+`effect.expandAppearance`. A linked image is recoloured from its file's pixels, or the pixels a link source supplied for
+it, never from its preview; one showing the missing-file placeholder keeps it; a color mask's hidden colours stay hidden.
+Patterns and the shadows and glows of raster effects keep their colours.
 
 ## Vector halftone
 
@@ -12038,6 +12096,9 @@ the error text. The interactive fallback applies only to ordinary File > Save, n
 | Date | Change |
 |---|---|
 | 2026-11-13 | Fonts a host supplies: `text.addFont`, and `text.addFontSources` activated on demand, as Illustrator activates Adobe Fonts. |
+| 2026-11-13 | Colour adjustments on linked images: exported and expanded recoloured copies are embedded and made from supplied pixels on the web (every export format); a color mask stays; the missing-file placeholder is not recoloured. |
+| 2026-11-13 | Placement Options › Subject: on OK with nothing clipping the art it stays; a turned frame keeps its turn; a target is the clip; regions follow EXIF orientation; a changed sidecar marks the link modified; Relink with copy copies the sidecar; relinks outside the layers place by subject; DCS clip groups and Clip to Bounding Box's. `ui.dialog.set` on a mixed Placement Options field chooses it. |
+| 2026-11-13 | Link sources (`links.addSources`, `links.supplySource`, `links.loadSources`, `view.imageCache`): supplied pixels are no edit (no revision moves); `loadSources` answers `overBudget`, counted in `failed`; files cut short, of another shape or turned by their EXIF orientation are refused; budgets have a ceiling. |
 | 2026-11-13 | `path.freehand`: `closed`, when given, decides whether a stroke that continues a path (`extend`) closes it; the Pencil and the Paintbrush send it by Close Paths When Ends Are Within. |
 | 2026-11-13 | Snap to Point with Smart Guides off draws no Smart Guides labels or lines (#7250). |
 | 2026-11-13 | Envelopes: a top object's side whose pieces are all one curve split at anchors follows that curve's parameter (#7097). |
