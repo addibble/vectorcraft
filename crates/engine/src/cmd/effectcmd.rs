@@ -1320,6 +1320,63 @@ fn holds_seeded(d: &Document, n: &Node) -> bool {
         }
 }
 
+/// Remove from `art` and everything inside it the raster effects of the kinds `object` has (its own,
+/// or its fills' and strokes'), which the 3D art passes to its faces with their options as it lays
+/// them out: the object's image draws those. A raster effect of another kind the art has of its own
+/// (a 3D shadow's Gaussian Blur, the light's Softness) stays; one of a kind the object has too goes.
+fn strip_own_raster(art: &mut Node, object: &Node) {
+    let own: Vec<&str> = std::iter::once(&object.appearance.effects)
+        .chain(object.appearance.items.iter().map(|i| i.effects()))
+        .flatten()
+        .filter(|e| effects::is_raster(&e.id))
+        .map(|e| e.id.as_str())
+        .collect();
+    fn walk(n: &mut Node, own: &[&str]) {
+        let keep = |e: &Effect| !effects::is_raster(&e.id) || !own.contains(&e.id.as_str());
+        n.appearance.effects.retain(keep);
+        for it in &mut n.appearance.items {
+            it.effects_mut().retain(keep);
+        }
+        for c in n.children_mut().into_iter().flatten().filter(|c| !c.is_ruler_guide()) {
+            walk(Arc::make_mut(c), own);
+        }
+    }
+    walk(art, &own);
+}
+
+/// What [`expanded_node`] makes of an object's 3D effects before the rest of its appearance.
+struct ThreeDFirst {
+    /// The image of the object with its raster effects, when they make it one and it has a 3D
+    /// effect: made first, so that a 3D effect is built only when it can't be.
+    image: Option<Option<(Node, bool)>>,
+    /// The object becomes that image (blur, feather, inner glow), drawn into it as the canvas
+    /// draws it, its 3D effect and color adjustments with it: no art is built for it.
+    as_drawn: bool,
+    /// Its 3D effects were built here: one that built nothing isn't built again.
+    tried: bool,
+    /// Their art, which takes the color adjustments after it is shaded ([`effects::three_d_of`]).
+    built: Option<Node>,
+    /// Vector Halftone's dots, drawn in their place, sampled from them as the canvas samples them
+    /// (once, [`effects::three_d_or_first`]).
+    halftone: Option<Node>,
+}
+
+/// [`ThreeDFirst`] for `n`, its early image spending `raster` (`Err` when it would go past it).
+fn three_d_first(d: &mut Document, n: &Node, raster: &mut RasterBudget) -> std::result::Result<ThreeDFirst, OverBudget> {
+    let fx = rasterfx::raster_fx(n);
+    let whole_image = !fx.is_empty() && !fx.iter().all(effects::RasterFx::is_below);
+    let three_d = effects::has_revolve(n) || effects::has_solid(n);
+    let image = (whole_image && three_d).then(|| raster_image(d, n, raster)).transpose()?;
+    let as_drawn = matches!(image, Some(Some((_, false))));
+    let tried = three_d && !as_drawn;
+    let (built, halftone) = match tried.then(|| effects::three_d_or_first(d, n, true)) {
+        Some(effects::DrawnFirst::ThreeD(m)) => (Some(m), None),
+        Some(effects::DrawnFirst::Halftone(m)) => (None, Some(m)),
+        _ => (None, None),
+    };
+    Ok(ThreeDFirst { image, as_drawn, tried, built, halftone })
+}
+
 /// [`expand_node`] of `n`, which need not be in `d`: `n` with its appearance expanded, `None` when
 /// it has nothing to expand. `out` gets the objects whose appearance expands, by places in the walk
 /// of the expanded `n`, `n`'s first when its own does. The objects `skip` lists are not expanded.
@@ -1366,7 +1423,16 @@ fn expanded_node(
         }
         (raster.images, raster.pixels) = budget_before;
     };
+    // The 3D effects' art and the early image ([`three_d_first`]), before the color adjustments,
+    // which the 3D art takes after it is shaded.
+    let Ok(ThreeDFirst { image: early_image, as_drawn, tried, mut built, halftone }) = three_d_first(d, &n, raster) else {
+        leave(d, out, raster);
+        return None;
+    };
     if effects::has_adjustment(&n)
+        && built.is_none()
+        && halftone.is_none()
+        && !as_drawn
         // A linked image recoloured from the pixels a host supplied for it (link sources), not
         // its preview.
         && let Some(m) = crate::link_sources::with_supplied(d, |d| effects::adjust_in_document(d, &n, symbol_art))
@@ -1410,7 +1476,7 @@ fn expanded_node(
         return Some(m);
     }
     // Vector Halftone: the object becomes its dots, a group (with `id`) of paths with ids of their own.
-    if let Some(mut m) = vectorcraft_render::addons::halftone::art(d, &n) {
+    if let Some(mut m) = halftone.or_else(|| vectorcraft_render::addons::halftone::art(d, &n)) {
         let mut seen = std::collections::HashSet::from([id]);
         for c in m.children_mut().into_iter().flatten() {
             effects::fresh_ids(d, Arc::make_mut(c), &mut seen);
@@ -1432,7 +1498,10 @@ fn expanded_node(
     // left.
     let Ok(image) = copies.and_then(|copied| {
         changed |= copied;
-        raster_image(d, &n, raster)
+        match early_image {
+            Some(image) => Ok(image),
+            None => raster_image(d, &n, raster),
+        }
     }) else {
         leave(d, out, raster);
         return None;
@@ -1446,9 +1515,16 @@ fn expanded_node(
         // keeps it as its only member).
         Some((image, false)) => Some(rasterfx::replace_with_image(v, image)),
         image => {
-            let m = if (container || matches!(n.kind, NodeKind::Text(_))) && (effects::has_solid(&v) || effects::has_revolve(&v)) {
-                // A 3D effect on a group or layer, or on type: the shaded faces of its solids.
-                Ok::<_, OverBudget>(effects::expand_leaf(d, &v, &mut stroke_art))
+            let m = if let Some(mut art) = built.take() {
+                // A 3D effect's shaded faces (a group's members' solids), its raster effects left to
+                // the image as the object's are: those of its fills and strokes after the 3D effect,
+                // which the faces carry, too. A shadow's own blur (the light's Softness) stays, to
+                // expand to an image below.
+                strip_own_raster(&mut art, &n);
+                Ok::<_, OverBudget>(Some(effects::bake_pieces(d, art)))
+            } else if !as_drawn && (container || matches!(n.kind, NodeKind::Text(_))) && (effects::has_solid(&v) || effects::has_revolve(&v)) {
+                // A 3D effect on a group or layer, or on type, that built nothing above.
+                Ok(effects::expand_leaf_unbuilt(d, &v, &mut stroke_art))
             } else if container {
                 // A group's or layer's own fills and strokes become art among its members.
                 effects::evaluate_container(Some(&*d), &v)
@@ -1461,7 +1537,7 @@ fn expanded_node(
                 && !effects::has_transform_art(&v)
                 && !effects::has_transform_copies(&v)
             {
-                Ok(effects::expand_leaf(d, &v, &mut stroke_art))
+                Ok(if tried { effects::expand_leaf_unbuilt(d, &v, &mut stroke_art) } else { effects::expand_leaf(d, &v, &mut stroke_art) })
             } else {
                 // Type, images, symbol instances, live objects (and paths whose Transform effect copies
                 // them, each copy an object of its own, or changes their fills and strokes): through
