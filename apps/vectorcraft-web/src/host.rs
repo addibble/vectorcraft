@@ -45,11 +45,21 @@
 //!   close: true }` (`protocol::panel`, `vectorcraft_ui_egui::host_panels`).
 //! - `vectorcraft:panelEvent` (to the parent): `{ panel, id, kind, selection | value }`, a click or a
 //!   change in one of the page's panels.
-//! - `vectorcraft:failed` (to the parent): `{ error }`. Before `ready`, the app couldn't start;
-//!   after it, the last message from the parent was refused (the app keeps running).
+//! - `vectorcraft:region` (from the parent, host-only): `{ image, rect, overlay?, editable? }`, a box
+//!   (and a picture over the image) on one image, or `{ clear: true }` (`protocol::region`,
+//!   `vectorcraft_ui_egui::host_region`).
+//! - `vectorcraft:regionChanged` (to the parent): `{ image, rect }`, where the user let the box go.
+//! - `vectorcraft:masks` (from the parent, host-only): `{ image }`, that image's opacity mask
+//!   shown as two tints (its white art red, the rest green), or `{ clear: true }`
+//!   (`protocol::masks`, `vectorcraft_ui_egui::host_region`).
+//! - `vectorcraft:failed` (to the parent): `{ error }`. The last message from the parent was
+//!   refused, its `error` beginning with that message's `type` (the app keeps running); the
+//!   listener is up from the start, so this may come before `ready` too. Before `ready`, any other
+//!   `error` says the app couldn't start.
 //!
-//! Only the parent window on the page's own origin is heard or answered, and a page with an opaque
-//! origin (`null`) has no bridge. The parent guards leaving the page with unsaved changes.
+//! Only the parent window on the page's own origin is heard or answered: a page framed by another
+//! origin, or with an opaque origin (`null`), has no bridge. The parent guards leaving the page
+//! with unsaved changes.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -94,6 +104,10 @@ pub struct Bridge {
     selection: Rc<RefCell<protocol::Reported<Vec<u64>>>>,
     /// The `vectorcraft:panel` messages heard, until the next frame applies them in order.
     panels: Rc<RefCell<Vec<protocol::PanelMessage>>>,
+    /// The last `vectorcraft:region` heard, until the next frame applies it.
+    region: Rc<RefCell<Option<protocol::RegionMessage>>>,
+    /// The last `vectorcraft:masks` heard, until the next frame applies it.
+    masks: Rc<RefCell<Option<protocol::MasksMessage>>>,
 }
 
 impl Bridge {
@@ -126,6 +140,8 @@ impl Bridge {
             selection_doc: Rc::default(),
             selection: Rc::default(),
             panels: Rc::default(),
+            region: Rc::default(),
+            masks: Rc::default(),
         })
     }
 
@@ -197,6 +213,29 @@ impl Bridge {
         }
     }
 
+    /// After the app's logic (once it has opened what came in): the parent's region and tinted
+    /// mask, so one marked on a document the same messages opened lands on that document.
+    pub fn mark(&self, app: &mut VectorcraftApp) {
+        match self.region.borrow_mut().take() {
+            Some(protocol::RegionMessage::Set { image, rect, overlay, editable }) => {
+                if let Err(error) = vectorcraft_ui_egui::host_region::set_region(app, image, rect, overlay.as_deref(), editable) {
+                    self.post_failed(&error);
+                }
+            }
+            Some(protocol::RegionMessage::Clear) => vectorcraft_ui_egui::host_region::clear_region(app),
+            None => {}
+        }
+        match self.masks.borrow_mut().take() {
+            Some(protocol::MasksMessage::Show { image }) => {
+                if let Err(error) = vectorcraft_ui_egui::host_region::set_masks(app, image) {
+                    self.post_failed(&error);
+                }
+            }
+            Some(protocol::MasksMessage::Clear) => vectorcraft_ui_egui::host_region::clear_masks(app),
+            None => {}
+        }
+    }
+
     /// After each pass: the saves posted in it, so a close waiting for the parent to store a
     /// document waits for the last save of that document (the one the close made, or a later Save).
     pub fn follow_saves(&self, app: &mut VectorcraftApp) {
@@ -258,6 +297,17 @@ impl Bridge {
                     ]);
                 }
             }
+        }
+    }
+
+    /// After each frame: tell the parent where the user let its region's box go
+    /// (`vectorcraft:regionChanged`).
+    pub fn report_region(&self, app: &mut VectorcraftApp) {
+        for (image, [left, top, right, bottom]) in std::mem::take(&mut app.ui.host_region.changed) {
+            let Some(rect) = message(&[("left", left.into()), ("top", top.into()), ("right", right.into()), ("bottom", bottom.into())]) else {
+                continue;
+            };
+            self.send(&[("type", "vectorcraft:regionChanged".into()), ("image", JsValue::from_f64(image.0 as f64)), ("rect", rect.into())]);
         }
     }
 
@@ -334,6 +384,46 @@ impl Bridge {
                     }
                     Err(error) => {
                         log::warn!("refused the page's configuration: {error}");
+                        bridge.post_failed(&error);
+                    }
+                }
+                return;
+            }
+            if string(&data, "type").as_deref() == Some("vectorcraft:masks") {
+                match protocol::masks(boolean(&data, "clear"), number(&data, "image")) {
+                    Ok(message) => {
+                        *bridge.masks.borrow_mut() = Some(message);
+                        wake();
+                    }
+                    Err(error) => {
+                        log::warn!("refused the page's masks: {error}");
+                        bridge.post_failed(&error);
+                    }
+                }
+                return;
+            }
+            if string(&data, "type").as_deref() == Some("vectorcraft:region") {
+                let rect = js_sys::Reflect::get(&data, &JsValue::from_str("rect")).ok().filter(|r| r.is_object());
+                let fields = protocol::RegionFields {
+                    clear: boolean(&data, "clear"),
+                    image: number(&data, "image"),
+                    rect: rect.map(|r| [number(&r, "left"), number(&r, "top"), number(&r, "right"), number(&r, "bottom")]),
+                    overlay: match js_sys::Reflect::get(&data, &JsValue::from_str("overlay")) {
+                        Ok(v) if v.is_undefined() || v.is_null() => protocol::Field::Absent,
+                        // One past the most is refused without copying it into the app.
+                        Ok(v) if byte_length(&v).is_some_and(|n| n > protocol::MAX_OVERLAY_BYTES) => protocol::Field::Wrong,
+                        Ok(v) => buffer(&v).map_or(protocol::Field::Wrong, protocol::Field::Given),
+                        Err(_) => protocol::Field::Wrong,
+                    },
+                    editable: boolean(&data, "editable"),
+                };
+                match protocol::region(fields) {
+                    Ok(message) => {
+                        *bridge.region.borrow_mut() = Some(message);
+                        wake();
+                    }
+                    Err(error) => {
+                        log::warn!("refused the page's region: {error}");
                         bridge.post_failed(&error);
                     }
                 }
@@ -544,11 +634,24 @@ fn actions(data: &JsValue) -> Option<Vec<protocol::TaskBarActionFields>> {
 
 /// `bytes` as an `ArrayBuffer` or `Uint8Array`.
 fn bytes(data: &JsValue) -> Option<Vec<u8>> {
-    let bytes = js_sys::Reflect::get(data, &JsValue::from_str("bytes")).ok()?;
+    buffer(&js_sys::Reflect::get(data, &JsValue::from_str("bytes")).ok()?)
+}
+
+/// A value's length in bytes when it is an `ArrayBuffer` or `Uint8Array`, read without copying it.
+fn byte_length(bytes: &JsValue) -> Option<usize> {
+    if let Some(array) = bytes.dyn_ref::<js_sys::Uint8Array>() {
+        Some(array.byte_length() as usize)
+    } else {
+        bytes.dyn_ref::<js_sys::ArrayBuffer>().map(|b| b.byte_length() as usize)
+    }
+}
+
+/// A value's bytes when it is an `ArrayBuffer` or `Uint8Array`.
+fn buffer(bytes: &JsValue) -> Option<Vec<u8>> {
     if let Some(array) = bytes.dyn_ref::<js_sys::Uint8Array>() {
         Some(array.to_vec())
     } else if bytes.is_instance_of::<js_sys::ArrayBuffer>() {
-        Some(js_sys::Uint8Array::new(&bytes).to_vec())
+        Some(js_sys::Uint8Array::new(bytes).to_vec())
     } else {
         None
     }
