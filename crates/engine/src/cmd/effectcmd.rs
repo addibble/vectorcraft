@@ -1043,6 +1043,38 @@ pub(crate) fn expand_node(d: &mut Document, id: NodeId, brushes: &[vectorcraft_b
     }
 }
 
+/// What [`expanded_node`] makes of an object's 3D effects before the rest of its appearance.
+struct ThreeDFirst {
+    /// The image of the object with its raster effects, when they make it one and it has a 3D
+    /// effect: made first, so that a 3D effect is built only when it can't be.
+    image: Option<Option<(Node, bool)>>,
+    /// The object becomes that image (blur, feather, inner glow), drawn into it as the canvas
+    /// draws it, its 3D effect and color adjustments with it: no art is built for it.
+    as_drawn: bool,
+    /// Its 3D effects were built here: one that built nothing isn't built again.
+    tried: bool,
+    /// Their art, which takes the color adjustments after it is shaded ([`effects::three_d_of`]).
+    built: Option<Node>,
+    /// Vector Halftone's dots, drawn in their place, sampled from them as the canvas samples them
+    /// (once, [`effects::three_d_or_first`]).
+    halftone: Option<Node>,
+}
+
+fn three_d_first(d: &mut Document, n: &Node) -> ThreeDFirst {
+    let fx = rasterfx::raster_fx(n);
+    let whole_image = !fx.is_empty() && !fx.iter().all(effects::RasterFx::is_below);
+    let three_d = effects::has_revolve(n) || effects::has_solid(n);
+    let image = (whole_image && three_d).then(|| raster_image(d, n));
+    let as_drawn = matches!(image, Some(Some((_, false))));
+    let tried = three_d && !as_drawn;
+    let (built, halftone) = match tried.then(|| effects::three_d_or_first(d, n, true)) {
+        Some(effects::DrawnFirst::ThreeD(m)) => (Some(m), None),
+        Some(effects::DrawnFirst::Halftone(m)) => (None, Some(m)),
+        _ => (None, None),
+    };
+    ThreeDFirst { image, as_drawn, tried, built, halftone }
+}
+
 /// [`expand_node`] of `n`, which need not be in `d`: `n` with its appearance expanded, `None` when
 /// it has nothing to expand. `out` gets the objects whose appearance expands, by places in the walk
 /// of the expanded `n`, `n`'s first when its own does.
@@ -1063,7 +1095,11 @@ fn expanded_node(d: &mut Document, mut n: Node, brushes: &[vectorcraft_brush::Br
         }
         _ => None,
     };
+    let ThreeDFirst { image: early_image, as_drawn, tried, mut built, halftone } = three_d_first(d, &n);
     if effects::has_adjustment(&n)
+        && built.is_none()
+        && halftone.is_none()
+        && !as_drawn
         // A linked image recoloured from the pixels a host supplied for it (link sources), not
         // its preview.
         && let Some(m) = crate::link_sources::with_supplied(d, |d| effects::adjust_in_document(d, &n, symbol_art))
@@ -1100,7 +1136,7 @@ fn expanded_node(d: &mut Document, mut n: Node, brushes: &[vectorcraft_brush::Br
         return Some(m);
     }
     // Vector Halftone: the object becomes its dots, a group (with `id`) of paths with ids of their own.
-    if let Some(mut m) = vectorcraft_render::addons::halftone::art(d, &n) {
+    if let Some(mut m) = halftone.or_else(|| vectorcraft_render::addons::halftone::art(d, &n)) {
         let mut seen = std::collections::HashSet::from([id]);
         for c in m.children_mut().into_iter().flatten() {
             effects::fresh_ids(d, Arc::make_mut(c), &mut seen);
@@ -1110,7 +1146,10 @@ fn expanded_node(d: &mut Document, mut n: Node, brushes: &[vectorcraft_brush::Br
         }
         return Some(m);
     }
-    let image = raster_image(d, &n);
+    let image = match early_image {
+        Some(image) => image,
+        None => raster_image(d, &n),
+    };
     let mut v = n.clone();
     rasterfx::strip_raster(&mut v, false);
     let mut stroke_art =
@@ -1122,9 +1161,15 @@ fn expanded_node(d: &mut Document, mut n: Node, brushes: &[vectorcraft_brush::Br
         // keeps it as its only member).
         Some((image, false)) => Some(rasterfx::replace_with_image(v, image)),
         image => {
-            let m = if (container || matches!(n.kind, NodeKind::Text(_))) && (effects::has_solid(&v) || effects::has_revolve(&v)) {
-                // A 3D effect on a group or layer, or on type: the shaded faces of its solids.
-                effects::expand_leaf(d, &v, &mut stroke_art)
+            let m = if let Some(mut art) = built.take() {
+                // A 3D effect's shaded faces (a group's members' solids), its raster effects left to
+                // the image as the object's are: those of its fills and strokes after the 3D effect,
+                // which the faces carry, too.
+                rasterfx::strip_raster(&mut art, true);
+                Some(effects::bake_pieces(d, art))
+            } else if !as_drawn && (container || matches!(n.kind, NodeKind::Text(_))) && (effects::has_solid(&v) || effects::has_revolve(&v)) {
+                // A 3D effect on a group or layer, or on type, that built nothing above.
+                effects::expand_leaf_unbuilt(d, &v, &mut stroke_art)
             } else if container {
                 // A group's or layer's own fills and strokes become art among its members.
                 effects::evaluate_container(Some(&*d), &v).map(|mut m| {
@@ -1135,7 +1180,7 @@ fn expanded_node(d: &mut Document, mut n: Node, brushes: &[vectorcraft_brush::Br
                 && !effects::has_transform_art(&v)
                 && !effects::has_transform_copies(&v)
             {
-                effects::expand_leaf(d, &v, &mut stroke_art)
+                if tried { effects::expand_leaf_unbuilt(d, &v, &mut stroke_art) } else { effects::expand_leaf(d, &v, &mut stroke_art) }
             } else {
                 // Type, images, symbol instances, live objects (and paths whose Transform effect copies
                 // them, each copy an object of its own, or changes their fills and strokes): through

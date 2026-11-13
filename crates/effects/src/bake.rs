@@ -131,6 +131,9 @@ thread_local! {
     /// Whether [`bake_node`] is baking inside an object the export does not write ([`unwritten`]),
     /// where no instance is placed.
     static UNWRITTEN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    /// The next [`bake_node`] is of the recolored copy of an object whose 3D effects
+    /// [`three_d_of`] just built nothing for: they aren't built a second time.
+    static THREE_D_UNBUILT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 /// `f` run for an object one level deeper ([`LEVEL`]) than the one being baked.
@@ -278,6 +281,66 @@ fn placed_symbol_art(d: &Document, n: &Node) -> Option<(Node, u64)> {
     Some((g, most))
 }
 
+/// The art the canvas draws in an object's place before its geometry effects reshape it, as
+/// [`drawn_first`] chooses it.
+pub enum DrawnFirst {
+    /// Crop Marks': the object and its marks.
+    Marks(Node),
+    /// Vector Halftone's: the object as its dots.
+    Halftone(Node),
+    /// The 3D effect's.
+    ThreeD(Node),
+    /// None of these: the object is reshaped by its geometry effects, or drawn as it is.
+    Neither,
+}
+
+/// What the canvas draws for `n` in `d` first, in the order it tries them: Crop Marks' art (none
+/// without bounds), else Vector Halftone's dots as `halftone` makes them (none when they would have
+/// no area or take too many cells), else its 3D effect's art (Revolve's as Expand Appearance makes
+/// it when `expand`). The renderer and [`three_d_of`] choose by it alike, so exports and Expand
+/// Appearance build a 3D effect exactly when the canvas draws it.
+pub fn drawn_first(d: &Document, n: &Node, halftone: impl FnOnce(&Document, &Node) -> Option<Node>, expand: bool) -> DrawnFirst {
+    if let Some(m) = crop_marks_art(n) {
+        return DrawnFirst::Marks(m);
+    }
+    if let Some(m) = halftone(d, n) {
+        return DrawnFirst::Halftone(m);
+    }
+    let revolved = if expand { crate::revolve::expand_revolve_art_in(Some(d), n) } else { crate::revolve_art_in(Some(d), n) };
+    revolved.or_else(|| crate::solid_art_in(Some(d), n)).map_or(DrawnFirst::Neither, DrawnFirst::ThreeD)
+}
+
+/// What `n`'s 3D effects draw in `d`, as the canvas draws them: the art they build (Revolve's as
+/// Expand Appearance makes it when `expand`), evaluated, with its faces recolored by `n`'s color
+/// adjustments, which act on the shaded art wherever they are in `n`'s effects. A Vector Halftone
+/// after the 3D effect, which made no dots of `n` (else it is drawn first), is left off the art, as
+/// the canvas leaves it. `None` when `n` has no 3D effect, they build nothing, or Crop Marks or
+/// Vector Halftone draw other art for it first ([`drawn_first`]).
+pub fn three_d_of(d: &mut Document, n: &Node, expand: bool) -> Option<Node> {
+    match three_d_or_first(d, n, expand) {
+        DrawnFirst::ThreeD(m) => Some(m),
+        _ => None,
+    }
+}
+
+/// [`three_d_of`] as [`DrawnFirst::ThreeD`], or what the canvas draws in its place first, made
+/// once for the caller to use: Crop Marks' art, or Vector Halftone's dots, sampled from `n` as the
+/// canvas samples them (its 3D effect's shaded art, then its color adjustments). `Neither` when `n`
+/// has no 3D effect or they build nothing.
+pub fn three_d_or_first(d: &mut Document, n: &Node, expand: bool) -> DrawnFirst {
+    if !(crate::has_revolve(n) || crate::has_solid(n)) {
+        return DrawnFirst::Neither;
+    }
+    let m = match drawn_first(d, n, crate::addons::halftone::halftone_art, expand) {
+        DrawnFirst::ThreeD(m) => m,
+        other => return other,
+    };
+    let m = evaluate_container(Some(d), &m).unwrap_or(m);
+    let mut m = if has_adjustment(&m) { adjust_in_document(d, &m, None).unwrap_or(m) } else { m };
+    m.appearance.effects.retain(|e| e.id != crate::addons::halftone::HALFTONE);
+    DrawnFirst::ThreeD(m)
+}
+
 /// `n` with its geometry effects evaluated (`None` = unchanged).
 fn bake_node(d: &mut Document, n: &Node) -> Option<Node> {
     // Inside an object the export leaves out, effects are baked but no instance is placed.
@@ -287,15 +350,27 @@ fn bake_node(d: &mut Document, n: &Node) -> Option<Node> {
         UNWRITTEN.with(|c| c.set(false));
         return out;
     }
+    let unbuilt = THREE_D_UNBUILT.with(|c| c.replace(false));
     // A cancelled export leaves the rest of the document as it is: the caller drops the result.
     // A ruler guide draws nothing and stays as it is, last in its layer.
     if n.is_ruler_guide() || !(needs_bake(n) || holds_placed_symbol(n)) || vectorcraft_doc::cancel::is_cancelled() {
         return None;
     }
+    // A 3D effect's art, its faces recolored by the object's color adjustments; or Vector
+    // Halftone's dots of it, sampled as the canvas samples them (once).
+    let three_d = !unbuilt && (crate::has_revolve(n) || crate::has_solid(n));
+    if three_d {
+        match three_d_or_first(d, n, false) {
+            DrawnFirst::ThreeD(m) | DrawnFirst::Halftone(m) => return Some(bake_pieces(d, m)),
+            DrawnFirst::Marks(_) | DrawnFirst::Neither => {}
+        }
+    }
     // Colour adjustments: the object recoloured (inside it too), then baked as it is.
     if has_adjustment(n)
         && let Some(m) = adjust_in_document(d, n, None)
     {
+        // Its 3D effects built nothing above, and recolored they build nothing either.
+        THREE_D_UNBUILT.with(|c| c.set(three_d || unbuilt));
         return Some(bake_node(d, &m).unwrap_or(m));
     }
     // Crop marks: the object and its marks.
@@ -304,10 +379,6 @@ fn bake_node(d: &mut Document, n: &Node) -> Option<Node> {
     }
     // Vector Halftone: the object as its dots.
     if let Some(m) = crate::addons::halftone::halftone_art(d, n) {
-        return Some(bake_pieces(d, m));
-    }
-    if let Some(m) = crate::revolve_art_in(Some(d), n).or_else(|| crate::solid_art_in(Some(d), n)) {
-        let m = evaluate_container(Some(d), &m).unwrap_or(m);
         return Some(bake_pieces(d, m));
     }
     // Type, images, symbol instances and live objects: reshaped through their outlines, and so are
@@ -474,7 +545,7 @@ fn clip_group_with_type_clip(d: &mut Document, n: &Node) -> Option<Node> {
 /// `m`, art evaluated from an object, with its children baked and then given ids of their own (the
 /// pieces copied from the source keep the source's ids until then). The pieces are baked with the
 /// ids the renderer draws them with: Random in a Transform effect takes its seed from the id.
-fn bake_pieces(d: &mut Document, mut m: Node) -> Node {
+pub fn bake_pieces(d: &mut Document, mut m: Node) -> Node {
     let mut seen = std::collections::HashSet::from([m.id]);
     let children = m.children().cloned().unwrap_or_default();
     let children = children
@@ -782,11 +853,20 @@ pub type StrokeArt<'a> = &'a mut dyn FnMut(&mut Document, &PathData, FillRule, &
 /// `n`'s id, name, transparency, opacity mask and remaining (raster) effects. A single piece
 /// without transparency or effects of its own takes `n`'s place itself. Hidden fills, strokes and
 /// effects are dropped. `None` for other kinds of objects.
+/// A 3D effect is built into its shaded faces first, whatever else `n`'s effects draw, its color
+/// adjustments left to the caller (Expand Appearance builds an object's 3D effects as the canvas
+/// draws them itself, [`three_d_of`], and expands the rest with [`expand_leaf_unbuilt`]).
 pub fn expand_leaf(d: &mut Document, n: &Node, stroke_art: StrokeArt) -> Option<Node> {
     if let Some(m) = crate::revolve::expand_revolve_art_in(Some(d), n).or_else(|| crate::solid_art_in(Some(d), n)) {
         let m = evaluate_container(Some(d), &m).unwrap_or(m);
         return Some(bake_pieces(d, m));
     }
+    expand_leaf_unbuilt(d, n, stroke_art)
+}
+
+/// [`expand_leaf`] for a caller that built `n`'s 3D effects already ([`three_d_of`]) and got
+/// nothing: they aren't built again.
+pub fn expand_leaf_unbuilt(d: &mut Document, n: &Node, stroke_art: StrokeArt) -> Option<Node> {
     let (g, rule, ctx, mut m) = leaf_base(n)?;
     m.appearance.effects.retain(|e| e.visible);
     let mut pieces = vec![];
