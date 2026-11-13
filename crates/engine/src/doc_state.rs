@@ -49,6 +49,8 @@ pub struct DocState {
     pub(crate) global_edit_support: cmd::globaledit::SupportCache,
     /// What leaving symbol editing mode goes back to ([`cmd::symboledit`]).
     pub(crate) symbol_edit_return: cmd::symboledit::Return,
+    /// What leaving opacity mask editing goes back to ([`cmd::maskedit`]).
+    pub(crate) mask_edit_return: cmd::symboledit::Return,
     pub interaction: Option<Interaction>,
     /// Edits made while this is open are one undo step (a scrubbed numeric field).
     pub undo_group: Option<UndoGroup>,
@@ -334,6 +336,7 @@ impl DocState {
             similar_outlines: Default::default(),
             global_edit_support: Default::default(),
             symbol_edit_return: Default::default(),
+            mask_edit_return: Default::default(),
             interaction: None,
             undo_group: None,
             last_transform: None,
@@ -444,6 +447,15 @@ impl DocState {
         }
         if saved {
             self.mark_saved();
+        }
+    }
+    /// Note that the edit that replaced `before` changed nothing that is saved (entering or leaving
+    /// an edit mode, whose temporary layer saving leaves out), though it keeps its undo step: a
+    /// document saved as `before` stays saved, and a save or recovery copy taken of `before` counts
+    /// as having its content ([`DocState::same_content`]), as after [`DocState::change_unsaved`].
+    pub(crate) fn saved_content_kept(&mut self, before: &Arc<Document>) {
+        if !Arc::ptr_eq(before, &self.doc) {
+            self.unsaved_changes.replaced(Arc::downgrade(before), &self.doc);
         }
     }
     /// Keep what interaction `it` (taken from this document) changed, as one undo step.

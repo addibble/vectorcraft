@@ -640,7 +640,9 @@ fn exports_while_editing_leave_the_editing_layer_out() {
     let mut s = session();
     editing_mask(&mut s);
     let svg = |s: &mut Session| s.execute("document.serialize", &json!({"format": "svg"})).unwrap()["text"].as_str().unwrap().to_string();
-    let pdf = |s: &mut Session| data(&s.execute("document.export", &json!({"format": "pdf"})).unwrap());
+    // The drawing alone: a PDF that preserves editing also carries the native document, whose
+    // next id entering pushed on.
+    let pdf = |s: &mut Session| data(&s.execute("document.export", &json!({"format": "pdf", "preserveEditing": false})).unwrap());
     let png = |s: &mut Session| data(&s.execute("document.export", &json!({"format": "png"})).unwrap());
     let (svg_editing, pdf_editing, png_editing) = (svg(&mut s), pdf(&mut s), png(&mut s));
     assert!(!svg_editing.contains("Opacity Mask Editing") && !svg_editing.contains("Opacity_Mask_Editing"));
