@@ -7227,7 +7227,8 @@ or 512 MiB in the web app, as RGBA or as decoded, and it is drawn at the largest
 reduced size"; the document keeps the whole file) or, when it can't be read that way or has more pixels than the
 allowance has bytes, drawn as a crossed gray box on the canvas and left out of exports ("too large to draw"); `document.open` and `file.place` say the same in their `warnings`). `links.info {id?}` is the Link Info: `image.info`'s fields plus
 `status`, `format`, the file's `ppi` and the `effectivePpi`, `scale` (% of 100%), `rotation` (degrees,
-counter-clockwise), `placement` and, for a linked file, `fileName`, `location`, `fileSize`, `created`, `modified`.
+counter-clockwise), `placement` and, for a linked file, `fileName`, `location`, `fileSize`, `created`, `modified`, and
+`subject` when the file names its main subject (below).
 With automation read roots, a file outside them has no `path` or `found` in `links.list` and `links.check`, and no
 `link`, `path`, `location`, `fileSize` or `modified` in `links.info`; its row keeps the file's name.
 An image placed from a DCS file has the `format` `DCS`. `links.list {dcsTransparency: true}` (the panel menu's Show
@@ -7243,9 +7244,28 @@ every object in the layers each time the list is read. A `dcsTransparency` that 
 returns `{id, onCanvas: false, owner}`, and the panel says the link has no place on the canvas. `links.embed {ids?}` keeps linked files' pixels in the document (an image whose
 file is missing stays linked: relink it first); `links.unembed {id, path}` writes an embedded image to a file
 (another extension converts it) and links to it, and without `path` returns `{name, dataBase64}`.
-`links.placementOptions {ids?, preserve?: transforms|bounds|fileDimensions|fit|fill, align?: topLeft…bottomRight,
+`links.placementOptions {ids?, preserve?: transforms|bounds|fileDimensions|fit|fill|subject, align?: topLeft…bottomRight,
 clip?}` decides how a relinked or updated file takes an image's place (default `bounds`: stretched into the old
-bounds; `clip` puts it in a clip group of the old bounds when it is larger). The UI commands `links.editOriginal` and
+bounds; `clip` puts it in a clip group of its own, clipped to the old bounds, when it is larger), and applies it at once to
+each linked image and placed document from the file it already shows, reading nothing: `fit` and `fill` put a distorted
+(stretched or sheared) image back in proportion, `fileDimensions` at its file's 100% size, unrotated, `bounds` and
+`transforms` move nothing; embedded images keep their place. Art that clip group already holds is placed in its
+rectangle (`transforms` keeps it where it is), and without `clip` it leaves the group; a clip group the user made is
+never reshaped. Options set as they were, with nothing to move, change nothing (no undo step). Without options it answers
+`{placement}` of the first image, and `mixed`: the options the images don't share. Otherwise it answers `applied` (the
+ids that moved, changed size, or were clipped or let out of their clip), and, when there are any, `embedded` and
+`previewing`: linked images `fileDimensions` left in place because only their preview is loaded, which doesn't keep the
+file's resolution (`fit` and `fill` take a preview's pixels as square).
+`subject` places by what the picture shows: a linked file's main subject is the IPTC image region with the role
+`mainSubjectArea` (IPTC Photo Metadata's Image Region, in XMP as `Iptc4xmpExt:ImageRegion`; a rectangle, circle or
+polygon, in relative or pixel units, read as the rectangle around it) in its XMP sidecar (`<name>.xmp` beside it) or,
+without one, in its own XMP (JPEG APP1, PNG `iTXt`, WebP `XMP `), read whenever the file is and kept with the link. A
+relinked or updated file is scaled uniformly so its subject (all of it, when it names none) fits inside the old file's
+subject, at `align`. On OK each subject fits inside `target` (`{x, y, width, height}` in the document), or, with `key`
+(an object id; by default the selection's key object, as the Align panel takes it, when it is one of `ids`), in the
+place the key's subject has in the frame clipping the key, scaled to each image's frame (like this one: one size, one
+place), else in the frame clipping the image (a clip group around it, else its bounds), as Content-Aware Fit fits an
+image to its frame. The UI commands `links.editOriginal` and
 `links.reveal` open the linked file in its app or show it in its folder (desktop). Edit Original runs only from the app's window,
 except for a placed document, which opens in a tab. With the preference `editOriginalSystemDefaults` (Preferences ›
 File Handling › Use System Defaults for Edit Original, on by default) off, Edit Original opens a raster image in the app
@@ -7254,6 +7274,7 @@ that made it, PhotoCraft, where it is installed, and anything else in the system
 ```json
 {"name":"run_command","arguments":{"command":"links.list","params":{"show":"missing"}}}
 {"name":"run_command","arguments":{"command":"links.placementOptions","params":{"ids":[12],"preserve":"fit","align":"top"}}}
+{"name":"run_command","arguments":{"command":"links.placementOptions","params":{"ids":[12,13,14],"preserve":"subject","key":12}}}
 {"name":"run_command","arguments":{"command":"links.unembed","params":{"id":14,"path":"/tmp/logo.png"}}}
 ```
 

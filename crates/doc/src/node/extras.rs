@@ -79,6 +79,10 @@ pub struct NodeExtras {
     /// knockout group its knockout shape is the whole area of its triangle, not only where the
     /// image is opaque ([`Node::knockout_outline`]).
     pub warp_piece: bool,
+    /// Links › Placement Options › Clip to Bounding Box made this clip group: it holds just an
+    /// image or placed document, clipped to the bounds the options place it in (a clip group the
+    /// user made never has it).
+    pub placement_clip: bool,
 }
 
 /// No extras: what [`Node::extras`] gives for a node without any.
@@ -108,6 +112,7 @@ pub(super) static NO_EXTRAS: NodeExtras = NodeExtras {
     pixel_aligned: false,
     color_mask: None,
     warp_piece: false,
+    placement_clip: false,
 };
 
 /// A node's [`NodeExtras`], if it has any ([`Node::extras`]). Extras that are all unset equal
