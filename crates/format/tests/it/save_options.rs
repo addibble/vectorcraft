@@ -94,7 +94,13 @@ fn paths_doc(paths: usize, anchors: usize) -> Document {
     let mut b = DocBuilder::new(1000.0, 1000.0);
     for i in 0..paths {
         let points: Vec<Point> = (0..anchors).map(|j| Point::new(j as f64, i as f64 + (j % 2) as f64)).collect();
-        let node = b.path_node(PathData::single(SubPath::polyline(&points, false)), Default::default());
+        let mut sub = SubPath::polyline(&points, false);
+        // An in handle on an open path's first anchor, which SVG's path data cannot say: the path
+        // is saved anchor by anchor, which pretty-printing spreads over many lines.
+        if let Some(first) = sub.anchors.first_mut() {
+            first.h_in = Point::new(first.p.x - 1.0, first.p.y);
+        }
+        let node = b.path_node(PathData::single(sub), Default::default());
         b.add(node);
     }
     b.doc
@@ -128,7 +134,7 @@ fn many_objects_are_saved_compact() {
     assert!(!SaveOptions::for_doc(&d).pretty);
 }
 
-/// Anchors per path that make a document of `paths` paths about `bytes` of compact JSON.
+/// Anchors per path that make a document of `paths` paths about `bytes` of compact JSON, as saved.
 fn anchors_for(paths: usize, bytes: usize) -> usize {
     let per_anchor = saved_compact(&paths_doc(1, 1000)).unwrap().len() / 1000;
     bytes / per_anchor / paths

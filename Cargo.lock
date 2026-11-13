@@ -1364,7 +1364,7 @@ dependencies = [
 [[package]]
 name = "craft-vectorcraft-format"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=64b181977a0488e4d1e167bc5cc8cfededc2ed4b#64b181977a0488e4d1e167bc5cc8cfededc2ed4b"
+source = "git+https://github.com/addibble/craft-libs?rev=fdf211f1b5cd43fff14b9be3d2bed74d9a61ac06#fdf211f1b5cd43fff14b9be3d2bed74d9a61ac06"
 dependencies = [
  "flate2",
  "serde",
@@ -7105,6 +7105,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "vectorcraft-testkit",
+ "zmij",
 ]
 
 [[package]]

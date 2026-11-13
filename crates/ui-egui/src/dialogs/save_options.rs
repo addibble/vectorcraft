@@ -548,8 +548,10 @@ fn choose(d: &mut Dialog, o: &FormatOption, c: &Choices, i: usize) {
 }
 
 /// The native versions VectorCraft writes, newest first, each with the first release that reads
-/// it (the format version each release tag writes: 2 in 0.1, 3 from 0.2, 4 from 0.8).
-const NATIVE_VERSIONS: [(u32, &str); 4] = [(4, "0.8"), (3, "0.2"), (2, "0.1"), (1, "0.1")];
+/// it (the format version each release tag writes: 2 in 0.1, 3 from 0.2, 4 from 0.8); `None` for
+/// the versions after [`vectorcraft_format::RELEASED_VERSION`], which no release reads: this
+/// version of VectorCraft is the first.
+const NATIVE_VERSIONS: [(u32, Option<&str>); 6] = [(6, None), (5, None), (4, Some("0.8")), (3, Some("0.2")), (2, Some("0.1")), (1, Some("0.1"))];
 
 /// A native file's Version (#4931): a menu of the versions VectorCraft writes, named by the
 /// releases that read them, so a version it can't write can't be chosen. A version without
@@ -559,7 +561,10 @@ fn native_version(ui: &mut egui::Ui, d: &mut Dialog, o: &FormatOption) {
     ui.label(egui::RichText::new(tl!("Version:")).color(t.text_dim)).on_hover_text(o.description);
     let names: Vec<String> = NATIVE_VERSIONS
         .iter()
-        .map(|(n, release)| crate::i18n::fmt(tl!("VectorCraft {release} and later (version {n})"), &[("release", release), ("n", &n.to_string())]))
+        .map(|(n, release)| match release {
+            Some(release) => crate::i18n::fmt(tl!("VectorCraft {release} and later (version {n})"), &[("release", release), ("n", &n.to_string())]),
+            None => crate::i18n::fmt(tl!("This version of VectorCraft and later (version {n})"), &[("n", &n.to_string())]),
+        })
         .collect();
     let names: Vec<&str> = names.iter().map(String::as_str).collect();
     let at = NATIVE_VERSIONS.iter().position(|(n, _)| *n == native_version_of(d)).unwrap_or(0);
