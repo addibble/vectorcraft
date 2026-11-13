@@ -2026,3 +2026,71 @@ fn a_3d_effect_that_builds_nothing_draws_the_item_as_without_it() {
         }
     }
 }
+
+/// A frame's pixels, and the bounds the renderer that drew it keeps for an object.
+type DrawnAndKept = (Vec<u8>, Option<Rect>);
+
+/// A symbol instance stretched through its symbol's 9-slice guides, with `fx` of its own, drawn
+/// before `change` (which moves the guides or changes the symbol's natural size), then by the same
+/// renderer after it, and by a new one; the bounds each keeps for it.
+fn drawn_after_a_change(fx: Vec<Effect>, change: fn(&mut Document)) -> (Vec<u8>, DrawnAndKept, DrawnAndKept) {
+    let mut d = Document::new(120.0, 100.0);
+    let rect = |d: &mut Document, r: Rect, c: Color| {
+        Arc::new(Node::path(d.alloc_id(), shapes::rectangle(r), Appearance::basic(Paint::solid(c), Paint::None, 0.0)))
+    };
+    let (a, b) = (
+        rect(&mut d, Rect::new(-15.0, -10.0, -2.0, 10.0), Color::rgb(0.1, 0.3, 0.8)),
+        rect(&mut d, Rect::new(2.0, -6.0, 15.0, 6.0), Color::rgb(0.9, 0.6, 0.1)),
+    );
+    let art = Node::group(d.alloc_id(), vec![a, b]);
+    d.symbols.push(vectorcraft_doc::Symbol { dynamic: false, name: "Mark".into(), art: Arc::new(art) });
+    d.unknown.insert(vectorcraft_doc::SYMBOL_SIZES.into(), json!({ "Mark": [20.0, 20.0] }));
+    let xf = Affine::translate((55.0, 50.0)) * Affine::scale_non_uniform(2.5, 0.8);
+    let mut n = Node::new(d.alloc_id(), vectorcraft_doc::NodeKind::SymbolInstance { symbol: "Mark".into(), xf });
+    n.appearance.effects = fx;
+    let l = d.layers[0].id;
+    let id = d.insert(Some(l), 0, n).unwrap();
+    d.set_symbol_nine_slice("Mark", Some(nine_slice(0.1)));
+    let opts = RenderOptions { background: Some([255, 255, 255, 255]), ..Default::default() };
+    let mut r = Renderer::new();
+    let before = r.render(&d, 120, 100, Affine::IDENTITY, &opts).pixels;
+    change(&mut d);
+    let drawn = r.render(&d, 120, 100, Affine::IDENTITY, &opts).pixels;
+    let mut fresh = Renderer::new();
+    let new = fresh.render(&d, 120, 100, Affine::IDENTITY, &opts).pixels;
+    let n = d.layers[0].children().unwrap().iter().find(|c| c.id == id).unwrap().clone();
+    let symbols = d.symbol_boxes().quick();
+    (before, (drawn, r.bounds_of(&symbols, &n)), (new, fresh.bounds_of(&symbols, &n)))
+}
+
+/// A change made to the document, named for the assertions.
+type Change = (&'static str, fn(&mut Document));
+
+fn nine_slice(g: f64) -> vectorcraft_doc::SymbolNineSlice {
+    vectorcraft_doc::SymbolNineSlice { left: g, top: g, right: g, bottom: g }
+}
+
+/// A stretched 9-slice instance is drawn and measured again when its symbol's guides move or its
+/// natural size changes: with Roughen, whose art the renderer keeps, with Drop Shadow, whose raster
+/// it keeps, and with none.
+#[test]
+fn a_9_slice_instance_follows_its_guides() {
+    let changes: [Change; 2] = [
+        ("guides moved", |d| d.set_symbol_nine_slice("Mark", Some(nine_slice(0.45)))),
+        ("natural size changed", |d| {
+            d.unknown.insert(vectorcraft_doc::SYMBOL_SIZES.into(), json!({ "Mark": [30.0, 12.0] }));
+        }),
+    ];
+    for (what, change) in changes {
+        for fx in [
+            vec![],
+            vec![Effect { id: "distort.roughen".into(), params: json!({"size": 3, "relative": false, "detail": 5}), visible: true }],
+            vec![Effect { id: "stylize.dropShadow".into(), params: json!({}), visible: true }],
+        ] {
+            let (before, (drawn, kept), (fresh, measured)) = drawn_after_a_change(fx.clone(), change);
+            assert!(before != fresh, "{what}, {fx:?}: the change moves the art");
+            assert!(drawn == fresh, "{what}, {fx:?}: drawn as a new renderer draws it");
+            assert_eq!(kept, measured, "{what}, {fx:?}: measured as a new renderer measures it");
+        }
+    }
+}
