@@ -201,6 +201,9 @@ pub enum Outcome {
         to: u64,
         document: Option<u64>,
     },
+    /// A `ui.widgets` reply, sent at the end of the first pass after it that builds the
+    /// screen-reader tree ([`widget_list::end_of_pass`]).
+    Widgets(widget_list::Asked),
 }
 
 /// The reply to `ui.pointer`: the selection, the key object and the active tool.
@@ -1267,7 +1270,15 @@ pub fn handle(app: &mut VectorcraftApp, ctx: &egui::Context, req: &ControlReques
             err(format!("internal error: {msg} (please report this bug)"))
         }
     };
-    let Outcome::Done(mut reply) = outcome else { return outcome };
+    let mut reply = match outcome {
+        Outcome::Done(reply) => reply,
+        // Hidden when it is sent, with the libraries hidden now.
+        Outcome::Widgets(mut asked) => {
+            asked.before = before;
+            return Outcome::Widgets(asked);
+        }
+        outcome => return outcome,
+    };
     hide_in_reply(app, &mut reply, &req.params, before);
     Outcome::Done(reply)
 }
@@ -1395,8 +1406,14 @@ fn restore_written_paths(reply: &mut Value, kept: Vec<(String, String)>) {
 /// reply, with `sent` as the request's params. Without a read root in force it leaves the reply as
 /// it is.
 pub(crate) fn hide_in_deferred_reply(app: &VectorcraftApp, reply: &mut Value, sent: &Value) {
+    hide_in_deferred_reply_with(app, reply, sent, Hiding::default());
+}
+
+/// [`hide_in_deferred_reply`], hiding too the libraries of `before`, those hidden when the request
+/// was handled.
+fn hide_in_deferred_reply_with(app: &VectorcraftApp, reply: &mut Value, sent: &Value, before: Hiding) {
     if vectorcraft_engine::file_access::current().is_some() {
-        hide_in_reply(app, reply, sent, Hiding::default());
+        hide_in_reply(app, reply, sent, before);
     }
 }
 
@@ -1477,6 +1494,10 @@ fn dispatch(app: &mut VectorcraftApp, ctx: &egui::Context, req: &ControlRequest)
         "engine.commands" => ok(all_commands(app)),
         "document.inspect" => wrap(app.run("document.inspect", p.clone())),
         "ui.inspect" => ok(inspect(app, ctx)),
+        "ui.widgets" => match widget_list::ask(app, p) {
+            Ok(asked) => Outcome::Widgets(asked),
+            Err(e) => err(e),
+        },
         "ui.docking" => ok(crate::panel_docking::inspect(app, ctx)),
         // A request that stops with a panic quoting the status text, after clearing the Color Guide's
         // limit with `forget`.
@@ -1813,6 +1834,8 @@ pub(crate) fn save_screenshot_with_limit(
     }
 }
 
+pub(crate) mod widget_list;
+
 #[cfg(test)]
 mod tests;
 
@@ -2067,6 +2090,13 @@ fn set_ui(app: &mut VectorcraftApp, req: &ControlRequest) -> Outcome {
     if let Some(e) = flags.iter().find_map(|k| crate::menus::opt_bool(p, k).err()) {
         return err(e);
     }
+    // A finite size between half and four times the drawn one, so the glyphs stay on the canvas;
+    // checked before anything is set too.
+    let cursor_scale = match crate::menus::opt_number(p, "cursorScale") {
+        Ok(None) => None,
+        Ok(Some(v)) if v.is_finite() && (0.5..=4.0).contains(&v) => Some(v as f32),
+        _ => return err("`cursorScale` is a number from 0.5 to 4"),
+    };
     // Outline is a setting of the active document's view: without one, nothing is set.
     if p.get("outline").is_some_and(Value::is_boolean) && app.session.active().is_none() {
         return err("no document");
@@ -2103,6 +2133,9 @@ fn set_ui(app: &mut VectorcraftApp, req: &ControlRequest) -> Outcome {
     }
     if let Some(v) = p.get("controlBar").and_then(Value::as_bool) {
         app.ui.control_bar = v;
+    }
+    if let Some(v) = cursor_scale {
+        app.cursor_scale = v;
     }
     if let Some(v) = p.get("imageTracePreview").and_then(Value::as_bool) {
         r = app.run("imageTrace.preview", json!({"on": v}));

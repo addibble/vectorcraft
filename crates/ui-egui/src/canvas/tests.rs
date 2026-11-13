@@ -12855,6 +12855,87 @@ fn mac_cursor_canvas_respects_precise_scaling_focus_and_presentation() {
     assert!(frame(&mut app, true).is_none());
 }
 
+/// The control channel's `cursorScale` (`ui.set`) sizes the tool cursor on every path the canvas
+/// shows it by: the glyph it paints (on Wayland, on every build), the bitmap it hands the OS where
+/// the OS shows one, and the request to the Mac's native cursor.
+#[test]
+fn the_cursor_scale_sizes_the_tool_cursor_on_every_path() {
+    let view = vectorcraft_engine::ViewInfo::default();
+    let drawn = |wayland: bool, scale: f32| -> (egui::Context, egui::FullOutput) {
+        let mut app = VectorcraftApp::new(Session::new(), crate::Services { wayland, ..Default::default() });
+        app.run("file.new", json!({"width": 400, "height": 300})).unwrap();
+        app.session.select_tool("pen", view).unwrap();
+        app.hover_doc = Some(Point::new(200.0, 150.0));
+        app.cursor_scale = scale;
+        let ctx = egui::Context::default();
+        let input = egui::RawInput { focused: true, events: vec![egui::Event::PointerMoved(pos2(200.0, 150.0))], ..Default::default() };
+        let mut out = ctx.run_ui(input, |ui| canvas_cursor(&mut app, ui, view, true));
+        out.textures_delta.clear();
+        (ctx, out)
+    };
+    let painted = |out: &egui::FullOutput| out.shapes.iter().fold(egui::Rect::NOTHING, |r, s| r.union(s.shape.visual_bounding_rect()));
+    let (one, two) = (painted(&drawn(true, 1.0).1), painted(&drawn(true, 2.0).1));
+    assert!(one.is_positive(), "the glyph is painted");
+    assert!((two.width() / one.width() - 2.0).abs() < 0.1 && (two.height() / one.height() - 2.0).abs() < 0.1, "{one:?} {two:?}");
+    if crate::cursors::OS_CURSORS {
+        let size = |scale| drawn(false, scale).1.platform_output.cursor_image.expect("an OS cursor").size;
+        let (one, two) = (size(1.0), size(2.0));
+        assert!(two[0] > one[0] * 3 / 2 && two[1] > one[1] * 3 / 2, "{one:?} {two:?}");
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let size = |scale| {
+            let (ctx, _) = drawn(false, scale);
+            crate::cursors::native_request::take(&ctx).expect("a native request").bitmap.representations[0].size
+        };
+        let (one, two) = (size(1.0), size(2.0));
+        assert!(two[0] > one[0] * 3 / 2 && two[1] > one[1] * 3 / 2, "{one:?} {two:?}");
+    }
+}
+
+/// The Mac's native cursor takes a bitmap at most four times the glyph's size: a larger
+/// `cursorScale` times the UI zoom is drawn at that size, not swapped for the system's arrow.
+#[cfg(target_os = "macos")]
+#[test]
+fn the_native_cursor_is_drawn_at_its_largest_size_past_it() {
+    let view = vectorcraft_engine::ViewInfo::default();
+    let requested = |scale: f32, zoom: f32| {
+        let mut app = VectorcraftApp::new(Session::new(), crate::Services::default());
+        app.run("file.new", json!({"width": 400, "height": 300})).unwrap();
+        app.session.select_tool("pen", view).unwrap();
+        app.hover_doc = Some(Point::new(200.0, 150.0));
+        app.cursor_scale = scale;
+        app.session.prefs.scale_cursor_with_ui = true;
+        let ctx = egui::Context::default();
+        ctx.set_zoom_factor(zoom);
+        let input = egui::RawInput { focused: true, events: vec![egui::Event::PointerMoved(pos2(200.0, 150.0))], ..Default::default() };
+        let mut out = ctx.run_ui(input, |ui| canvas_cursor(&mut app, ui, view, true));
+        out.textures_delta.clear();
+        crate::cursors::native_request::take(&ctx).map(|r| r.bitmap.representations[0].size)
+    };
+    let largest = requested(crate::cursors::native_request::MAX_SCALE, 1.0).expect("a native request at the largest size");
+    assert_eq!(requested(4.0, 2.0), Some(largest), "past the largest size");
+}
+
+/// The place cursor's thumbnail grows with `cursorScale` as the tool cursors do.
+#[test]
+fn the_place_cursor_grows_with_the_cursor_scale() {
+    let painted = |scale: f32| {
+        let mut app = VectorcraftApp::new(Session::new(), crate::Services::default());
+        app.cursor_scale = scale;
+        let ctx = egui::Context::default();
+        let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+            let painter = ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Tooltip, egui::Id::unique("place-cursor")));
+            crate::place::paint_cursor(&mut app, ui.ctx(), &painter, pos2(100.0, 100.0));
+        });
+        out.textures_delta.clear();
+        out.shapes.iter().fold(egui::Rect::NOTHING, |r, s| r.union(s.shape.visual_bounding_rect()))
+    };
+    let (one, two) = (painted(1.0), painted(2.0));
+    assert!(one.is_positive(), "the thumbnail is painted");
+    assert!((two.width() / one.width() - 2.0).abs() < 0.1 && (two.height() / one.height() - 2.0).abs() < 0.1, "{one:?} {two:?}");
+}
+
 #[cfg(target_os = "macos")]
 fn mac_cursor_headless(ctx: &egui::Context, input: egui::RawInput, draw: impl FnMut(&mut egui::Ui)) -> egui::FullOutput {
     let mut output = ctx.run_ui(input, draw);

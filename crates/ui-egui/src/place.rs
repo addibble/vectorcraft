@@ -420,23 +420,25 @@ pub fn paint_cursor(app: &mut VectorcraftApp, ctx: &egui::Context, painter: &egu
     });
     let (id, size) = tex.unzip();
     let size = size.unwrap_or(egui::vec2(THUMB as f32, THUMB as f32 * 0.75));
-    let k = THUMB as f32 / size.x.max(size.y).max(1.0);
-    let r = egui::Rect::from_min_size(pos + THUMB_OFFSET, size * k);
+    // The control channel's `cursorScale` (`ui.set`) sizes it as it sizes the tool cursors.
+    let scale = app.cursor_scale;
+    let k = THUMB as f32 / size.x.max(size.y).max(1.0) * scale;
+    let r = egui::Rect::from_min_size(pos + THUMB_OFFSET * scale, size * k);
     painter.rect_filled(r.expand(1.0), 0.0, t.panel);
     match id {
         Some(id) => {
             painter.image(id, r, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), egui::Color32::from_white_alpha(200));
         }
         None => {
-            painter.text(r.center(), egui::Align2::CENTER_CENTER, name, theme::semibold(10.0), t.text_dim);
+            painter.text(r.center(), egui::Align2::CENTER_CENTER, name, theme::semibold(10.0 * scale), t.text_dim);
         }
     }
     painter.rect_stroke(r.expand(1.0), 0.0, egui::Stroke::new(1.0, t.border), egui::StrokeKind::Outside);
     if count > 1 {
         // The badge: how many files are loaded.
-        let c = r.right_top() + egui::vec2(-2.0, 2.0);
-        painter.circle_filled(c, 9.0, t.accent);
-        painter.text(c, egui::Align2::CENTER_CENTER, count.to_string(), theme::semibold(10.5), egui::Color32::WHITE);
+        let c = r.right_top() + egui::vec2(-2.0, 2.0) * scale;
+        painter.circle_filled(c, 9.0 * scale, t.accent);
+        painter.text(c, egui::Align2::CENTER_CENTER, count.to_string(), theme::semibold(10.5 * scale), egui::Color32::WHITE);
     }
 }
 

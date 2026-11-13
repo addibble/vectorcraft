@@ -6,6 +6,8 @@ use std::sync::Arc;
 
 const CAPACITY: usize = 128;
 const MAX_PADDED_SIDE: u16 = 258;
+/// The largest logical scale a request is prepared at; the canvas asks for no more.
+pub const MAX_SCALE: f32 = 4.0;
 
 /// Opaque identity: the resolved tool cursor and logical scale, independent of display scale.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -39,7 +41,7 @@ struct Cache(Vec<(Key, Option<Arc<Bitmap>>)>);
 impl Cache {
     fn get(&mut self, cursor: Cursor, scale: f32) -> Option<(Key, Arc<Bitmap>)> {
         // Bound before tessellation, including malicious/non-finite preference values.
-        if !scale.is_finite() || !(0.125..=4.0).contains(&scale) {
+        if !scale.is_finite() || !(0.125..=MAX_SCALE).contains(&scale) {
             return None;
         }
         let key = Key(cursor, scale.to_bits());

@@ -536,6 +536,11 @@ fn canvas_cursor(app: &mut VectorcraftApp, ui: &Ui, view_info: vectorcraft_engin
         // User Interface › Scale Cursor Proportional to UI: the glyphs grow with UI Scaling;
         // off, they keep their size.
         let ui_scale = if app.session.prefs.scale_cursor_with_ui { 1.0 } else { ui.ctx().zoom_factor() };
+        // The control channel's `cursorScale` (`ui.set`) sizes them on every path below; a bitmap
+        // larger than the system takes (256 pixels a side) shows as the system's own cursor, and
+        // the Mac's native one is at most `native_request::MAX_SCALE` times the glyph.
+        let cursor_scale = app.cursor_scale;
+        let scaled = move |f: f32| f * cursor_scale / ui_scale;
         match ui.input(|i| i.pointer.hover_pos()) {
             // An OS cursor: the system moves it at once, where a painted one trails the pointer
             // (#444). The system cursor stands in for cursors without a glyph. Over a window
@@ -544,17 +549,20 @@ fn canvas_cursor(app: &mut VectorcraftApp, ui: &Ui, view_info: vectorcraft_engin
             // Interim #2292: remove when pinned winit correctly handles macOS cursor image and hotspot sizing.
             #[cfg(target_os = "macos")]
             Some(_) if !app.services.wayland => {
-                crate::cursors::native_request::request(ui.ctx(), c, cursor_icon(c), custom, ui.ctx().zoom_factor() / ui_scale)
+                // At most the largest bitmap it prepares: past it, the glyph at that size rather
+                // than the system's arrow.
+                let scale = scaled(ui.ctx().zoom_factor()).min(crate::cursors::native_request::MAX_SCALE);
+                crate::cursors::native_request::request(ui.ctx(), c, cursor_icon(c), custom, scale)
             }
             Some(_) if custom && crate::cursors::os_cursors(crate::cursors::OS_CURSORS, app.services.wayland) => {
-                let ppp = ui.ctx().pixels_per_point() / ui_scale;
+                let ppp = scaled(ui.ctx().pixels_per_point());
                 ui.ctx().set_cursor_image(app.canvas.cursors.get(c, ppp));
                 cursor_icon(c)
             }
             Some(hp)
                 if custom
                     && crate::cursors::paint_glyphs(crate::cursors::HIDES_ONLY_WHEN_KEY, ui.input(|i| i.focused), app.services.no_cursor_theme)
-                    && crate::cursors::paint(&painter, c, hp, 1.0 / ui_scale) =>
+                    && crate::cursors::paint(&painter, c, hp, scaled(1.0)) =>
             {
                 // The painted glyph stands in for the hidden system pointer. Without a cursor theme
                 // (Wayland) none is painted: the system pointer can't be hidden there (#2450).
