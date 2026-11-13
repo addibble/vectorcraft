@@ -2466,3 +2466,53 @@ fn symbol_sort_by_name_orders_the_symbols_in_one_undo_step() {
     s.execute("symbol.sortByName", &json!({})).unwrap();
     assert_eq!(s.doc().unwrap().history.undo.len(), before);
 }
+
+/// Object › Expand and Break Link stain an instance's art as it shows it: a spot color stained by
+/// its own swatch stays on its plate at the tint between, and a Registration stain in full is
+/// Registration, not a process color.
+#[test]
+fn expanding_a_stained_instance_keeps_its_inks() {
+    use vectorcraft_color::{Color, Paint, Swatch};
+    let spot = |tint: f32| Paint::Solid { color: Color::cmyk(1.0, 0.7, 0.0, 0.4).tinted(tint), swatch: Some("Spot".into()), tint };
+    for (command, stain, opacity, want) in [
+        ("object.expand", spot(0.2), 0.5, Some(("Spot", 0.6))),
+        ("symbol.breakLink", spot(0.2), 0.5, Some(("Spot", 0.6))),
+        ("object.expand", Paint::registration(), 1.0, None),
+        ("symbol.breakLink", Paint::registration(), 1.0, None),
+    ] {
+        let mut s = session();
+        let st = s.doc_mut().unwrap();
+        let d = std::sync::Arc::make_mut(&mut st.doc);
+        d.swatches.push(Swatch { name: "Spot".into(), paint: Paint::solid(Color::cmyk(1.0, 0.7, 0.0, 0.4)), global: true, spot: true });
+        let shape = vectorcraft_geom::shapes::rectangle(Rect::new(0.0, 0.0, 40.0, 40.0));
+        let art = Node::path(d.alloc_id(), shape, vectorcraft_doc::Appearance::basic(spot(1.0), Paint::None, 0.0));
+        let art = Node::group(d.alloc_id(), vec![std::sync::Arc::new(art)]);
+        d.symbols.push(vectorcraft_doc::Symbol { dynamic: false, name: "Dot".into(), art: std::sync::Arc::new(art) });
+        let mut inst =
+            Node::new(d.alloc_id(), NodeKind::SymbolInstance { symbol: "Dot".into(), xf: vectorcraft_geom::Affine::translate((50.0, 50.0)) });
+        inst.appearance = vectorcraft_doc::Appearance::basic(stain.clone(), Paint::None, 0.0).into();
+        if let Some(f) = inst.appearance.fill_mut() {
+            f.opacity = opacity;
+        }
+        let id = inst.id;
+        let layer = d.layers[0].id;
+        d.insert(Some(layer), 0, inst).unwrap();
+        s.execute("select.set", &json!({"ids": [id.0]})).unwrap();
+        s.execute(command, &json!({})).unwrap_or_else(|e| panic!("{command}: {e}"));
+        let mut paints = vec![];
+        s.doc().unwrap().doc.walk(|n| {
+            if matches!(n.kind, NodeKind::Path { .. }) {
+                paints.push(n.appearance.fill_paint());
+            }
+        });
+        let [paint] = paints.as_slice() else { panic!("{command}: one path, got {paints:?}") };
+        match want {
+            Some((name, tint)) => {
+                let Paint::Solid { swatch, tint: t, .. } = paint else { panic!("{command}: {paint:?}") };
+                assert_eq!(swatch.as_deref(), Some(name), "{command}: the spot color's link is kept");
+                assert!((t - tint).abs() < 1e-6, "{command}: at the tint between, got {t}");
+            }
+            None => assert_eq!(paint, &stain, "{command}: the stain in full is that ink"),
+        }
+    }
+}

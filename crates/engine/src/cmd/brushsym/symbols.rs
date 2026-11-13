@@ -401,9 +401,8 @@ fn expanded_instance(d: &mut Document, inst: &Node, own: bool) -> Option<Node> {
     let NodeKind::SymbolInstance { symbol, xf } = &inst.kind else { return None };
     let sym = d.symbols.iter().find(|s| &s.name == symbol)?;
     let mut art = if own { vectorcraft_doc::symbol_overrides::dynamic_art(&sym.art, inst) } else { (*sym.art).clone() };
-    if let Some((color, amount)) = brush::stain(inst) {
-        brush::tint_node(&mut art, &color, amount);
-    }
+    // Stained as the instance shows it: its inks and swatch links kept.
+    vectorcraft_doc::symbol_overrides::stain_art(&mut art, inst);
     let mut art = d.place_symbol_art(symbol, &art, *xf)?;
     let turn = vectorcraft_doc::orient::placed_turn(inst.bbox_angle, *xf);
     if turn != 0.0 {

@@ -320,26 +320,23 @@ fn bake_node(d: &mut Document, n: &Node) -> Option<Node> {
         if let Some(m) = moved_type_group(n) {
             return Some(bake_pieces(d, m));
         }
-        // A symbol instance's art as the canvas draws it: with its own appearance changes, stained
-        // by its fill.
-        let symbol = match &n.kind {
-            NodeKind::SymbolInstance { symbol, .. } => {
-                d.symbols.iter().find(|s| s.name == *symbol).map(|s| vectorcraft_doc::symbol_overrides::instance_art(&s.art, n))
-            }
-            _ => None,
-        };
         // Instances baked inside the art of others stop at the depth limit, or once their art
         // passes the objects one export bakes that way: an instance of a symbol whose art holds
-        // instances of itself is kept as it is there.
+        // instances of itself is kept as it is there. Its art is counted before it is copied.
         let instance = matches!(n.kind, NodeKind::SymbolInstance { .. });
         if instance && INSTANCE_DEPTH.with(|c| c.get()) > 0 {
-            let count = symbol.as_ref().map_or(0, |a| a.count() as u64);
+            let count = match &n.kind {
+                NodeKind::SymbolInstance { symbol, .. } => d.symbols.iter().find(|s| s.name == *symbol).map_or(0, |s| s.art.count() as u64),
+                _ => 0,
+            };
             let spent = NESTED_NODES.with(|c| c.get()).saturating_add(count);
             if INSTANCE_DEPTH.with(|c| c.get()) >= vectorcraft_doc::depth::MAX_DEPTH || spent > crate::SYMBOL_ART_MAX_NODES {
                 return None;
             }
             NESTED_NODES.with(|c| c.set(spent));
         }
+        // As it shows it: with a dynamic symbol's changes, stained by its fill.
+        let symbol = vectorcraft_doc::symbol_overrides::art_of_instance(d, n);
         let m = reshape(Some(d), n, symbol.as_ref())?;
         if instance {
             INSTANCE_DEPTH.with(|c| c.set(c.get() + 1));

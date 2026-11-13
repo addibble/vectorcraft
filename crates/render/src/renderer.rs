@@ -8,7 +8,7 @@ use super::frame::{
 };
 use super::geometry::{MAX_GUIDE_DASHES, polygon_length, rects_overlap, region_pixels};
 use super::node_checks::{
-    depends_on_document, drawable, holds_instance, holds_plugin_effect, holds_type, owns_stroke, painted_items, place, single_plain_fill, stain_bits,
+    depends_on_document, drawable, holds_instance, holds_plugin_effect, holds_type, owns_stroke, painted_items, place, single_plain_fill, stain_key,
 };
 use super::options::{AntiAlias, ISOLATION_DIM, MAX_CONTEXT_SIDE, RenderOptions, Rendered, downsample, supersample_factor};
 use super::paint::{SUBSTITUTED, blend_mode, fill_rule};

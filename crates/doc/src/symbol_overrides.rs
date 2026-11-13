@@ -151,50 +151,92 @@ pub fn dynamic_art(art: &Node, inst: &Node) -> Node {
     a
 }
 
-/// Mix every solid paint under `n` towards `color` by `amount` (0..1): the Symbol Stainer.
+/// Mix every solid paint under `n` towards `color` by `amount` (0..1): the Symbol Stainer, with a
+/// color of no swatch ([`stain_node`]).
 pub fn tint_node(n: &mut Node, color: &Color, amount: f32) {
+    stain_node(n, &Paint::solid(*color), amount);
+}
+
+/// Mix every solid paint under `n` towards the solid `stain` by `amount` (0..1), each in its color
+/// model where both share one (CMYK stays on the process plates, Gray on black;
+/// [`Color::lerp_keep_model`]). A paint linked to the swatch the stain is linked to keeps the link,
+/// at the tint between theirs (a spot color stays on its plate); a paint stained in full takes the
+/// stain itself, its link too (a spot or Registration stain); any other stained paint is a color of
+/// its own, without a link. No change at an amount of 0, or for a stain that isn't a solid color.
+pub fn stain_node(n: &mut Node, stain: &Paint, amount: f32) {
     let amount = amount.clamp(0.0, 1.0);
+    if amount == 0.0 || !matches!(stain, Paint::Solid { .. }) {
+        return;
+    }
     for it in &mut n.appearance.items {
         let p = match it {
             AppearanceItem::Fill(f) => &mut f.paint,
             AppearanceItem::Stroke(s) => &mut s.paint,
         };
-        if let Paint::Solid { color: c, .. } = p {
-            *p = Paint::solid(c.lerp(color, amount));
-        }
+        stain_paint(p, stain, amount);
     }
     if let NodeKind::Text(t) = &mut n.kind {
         for r in &mut t.runs {
             for p in [&mut r.style.fill, &mut r.style.stroke] {
-                if let Paint::Solid { color: c, .. } = p {
-                    *p = Paint::solid(c.lerp(color, amount));
-                }
+                stain_paint(p, stain, amount);
             }
         }
     }
     if let Some(ch) = n.children_mut() {
         for c in ch.iter_mut() {
-            tint_node(Arc::make_mut(c), color, amount);
+            stain_node(Arc::make_mut(c), stain, amount);
         }
     }
+}
+
+/// `p` mixed towards `stain` by `amount` (above 0), as [`stain_node`] mixes it.
+fn stain_paint(p: &mut Paint, stain: &Paint, amount: f32) {
+    let (Paint::Solid { color, swatch, tint }, Paint::Solid { color: to, swatch: to_swatch, tint: to_tint }) = (&*p, stain) else { return };
+    *p = match (swatch, to_swatch) {
+        (Some(a), Some(b)) if a == b => {
+            Paint::Solid { color: color.lerp_keep_model(to, amount), swatch: Some(a.clone()), tint: tint + (to_tint - tint) * amount }
+        }
+        _ if amount >= 1.0 => stain.clone(),
+        _ => Paint::solid(color.lerp_keep_model(to, amount)),
+    };
+}
+
+/// The fill that stains instance `inst`'s art, and how far (its opacity): its visible solid fill,
+/// with its swatch link. `None` for an unstained instance, as [`stain`] says.
+pub fn staining_fill(inst: &Node) -> Option<(&Paint, f32)> {
+    let f = inst.appearance.fill().filter(|f| f.visible && f.opacity > 0.0 && matches!(f.paint, Paint::Solid { .. }))?;
+    Some((&f.paint, f.opacity))
 }
 
 /// The stain instance `inst` puts on its symbol's art: its visible fill color and that fill's
 /// opacity (how far the art mixes towards it). `None` for an unstained instance, including one
 /// whose fill has an opacity of 0, so its art keeps its paints and their swatch links.
 pub fn stain(inst: &Node) -> Option<(Color, f32)> {
-    let f = inst.appearance.fill().filter(|f| f.visible && f.opacity > 0.0)?;
-    Some((f.paint.color()?, f.opacity))
+    let (p, amount) = staining_fill(inst)?;
+    Some((p.color()?, amount))
 }
 
 /// A symbol's art for instance `inst`, as the canvas draws it: with the instance's own appearance
-/// changes to it ([`dynamic_art`]), stained by the instance's fill ([`stain`]).
+/// changes to it ([`dynamic_art`]), stained by the instance's fill ([`stain_art`]).
 pub fn instance_art(art: &Node, inst: &Node) -> Node {
     let mut a = dynamic_art(art, inst);
-    if let Some((c, amount)) = stain(inst) {
-        tint_node(&mut a, &c, amount);
-    }
+    stain_art(&mut a, inst);
     a
+}
+
+/// Stain `art` (a symbol's) by instance `inst`'s fill, as [`instance_art`] does: the stain's swatch
+/// link and the inks kept as [`stain_node`] keeps them.
+pub fn stain_art(art: &mut Node, inst: &Node) {
+    if let Some((p, amount)) = staining_fill(inst) {
+        stain_node(art, p, amount);
+    }
+}
+
+/// The art of symbol instance `inst` as it shows it in `doc` ([`instance_art`]); `None` for any
+/// other object and for an instance whose symbol `doc` doesn't hold.
+pub fn art_of_instance(doc: &crate::Document, inst: &Node) -> Option<Node> {
+    let NodeKind::SymbolInstance { symbol, .. } = &inst.kind else { return None };
+    doc.symbols.iter().find(|s| s.name == *symbol).map(|s| instance_art(&s.art, inst))
 }
 
 /// Keep the overrides that name an object of `art` (a symbol's new art), dropping the rest.
@@ -272,5 +314,37 @@ mod tests {
         assert!(serde_json::from_str::<SymbolOverride>(&deep).is_err());
         let ok: SymbolOverride = serde_json::from_str("{\"path\":[1,0],\"opacity\":0.25}").unwrap();
         assert_eq!(ok, SymbolOverride { path: vec![1, 0], opacity: Some(0.25), ..Default::default() });
+    }
+
+    /// A path painted `paint`, and an instance stained by `fill` at `opacity`.
+    fn stained_by(paint: Paint, fill: Paint, opacity: f32) -> Paint {
+        let art = Node::path(NodeId(1), shapes::rectangle(Rect::new(0.0, 0.0, 10.0, 10.0)), Appearance::basic(paint, Paint::None, 0.0));
+        let mut inst = Node::new(NodeId(2), NodeKind::SymbolInstance { symbol: "Dot".into(), xf: vectorcraft_geom::Affine::IDENTITY });
+        inst.appearance = Appearance::basic(fill, Paint::None, 0.0).into();
+        if let Some(f) = inst.appearance.fill_mut() {
+            f.opacity = opacity;
+        }
+        instance_art(&art, &inst).appearance.fill_paint()
+    }
+
+    /// The stain keeps the inks the art and the stain print with: CMYK mixes as CMYK (a black on
+    /// the black plate alone stays off the others), a spot color stained by its own swatch stays on
+    /// its plate at the tint between, and a spot or Registration stain in full is that ink.
+    #[test]
+    fn the_stain_keeps_cmyk_spot_and_registration_inks() {
+        let black = Paint::solid(Color::cmyk(0.0, 0.0, 0.0, 1.0));
+        let cyan = Paint::solid(Color::cmyk(1.0, 0.0, 0.0, 0.0));
+        assert_eq!(stained_by(black.clone(), cyan.clone(), 0.5), Paint::solid(Color::cmyk(0.5, 0.0, 0.0, 0.5)));
+        let spot = |tint: f32| Paint::Solid { color: Color::cmyk(1.0, 0.7, 0.0, 0.4).tinted(tint), swatch: Some("Spot".into()), tint };
+        let Paint::Solid { color, swatch, tint } = stained_by(spot(1.0), spot(0.2), 0.5) else { panic!("solid") };
+        assert_eq!((swatch.as_deref(), tint), (Some("Spot"), 0.6));
+        let Color::Cmyk { c, m, y, k } = color else { panic!("{color:?}") };
+        let Color::Cmyk { c: c2, m: m2, y: y2, k: k2 } = Color::cmyk(1.0, 0.7, 0.0, 0.4).tinted(0.6) else { panic!("cmyk") };
+        assert!([c - c2, m - m2, y - y2, k - k2].iter().all(|d| d.abs() < 1e-6), "the swatch's color at that tint");
+        assert_eq!(stained_by(black.clone(), spot(0.8), 1.0), spot(0.8), "a spot stain in full");
+        assert_eq!(stained_by(cyan, Paint::registration(), 1.0), Paint::registration(), "Registration in full");
+        // Stained only part of the way by another color, a spot color becomes a process mix.
+        let Paint::Solid { swatch, color, .. } = stained_by(spot(1.0), black, 0.5) else { panic!("solid") };
+        assert!(swatch.is_none() && matches!(color, Color::Cmyk { .. }), "{color:?}");
     }
 }
