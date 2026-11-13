@@ -463,9 +463,11 @@ impl eframe::App for WebShell {
             app.font_source_failed(&src.family, &reason);
         }
         app.tick(ctx);
-        // After the tick: the saves it posted, and whether anything is unsaved now. A hidden tab
-        // runs this pass alone, with no UI pass after it.
+        // After the tick has opened what the page sent: its region and tinted mask, which name an
+        // image of the document it opened; then the saves the tick posted, and whether anything is
+        // unsaved now. A hidden tab runs this pass alone, with no UI pass after it.
         if let Some(bridge) = &self.host.bridge {
+            bridge.mark(app);
             bridge.follow_saves(app);
             bridge.report_dirty(app);
         }
@@ -526,6 +528,7 @@ impl eframe::App for WebShell {
                 bridge.report_link(app);
                 bridge.report_task_bar(app);
                 bridge.report_panels(app);
+                bridge.report_region(app);
                 bridge.report_selection(app);
             }
         }
