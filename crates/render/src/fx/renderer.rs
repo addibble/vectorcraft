@@ -691,16 +691,24 @@ impl Renderer {
             _ => None,
         };
         let container = is_container(a);
-        let art = match effects::crop_marks_art(a)
-            .or_else(|| crate::addons::halftone::art(doc, a))
-            .or_else(|| {
-                let art = effects::revolve_art_in(Some(doc), a).or_else(|| effects::solid_art_in(Some(doc), a));
-                self.stats.three_d_built += usize::from(art.is_some());
-                three_d |= art.is_some();
-                art
-            })
-            .or_else(|| effects::reshape(Some(doc), a, symbol.as_ref()))
-        {
+        // Crop Marks', Vector Halftone's or the 3D effect's art, chosen as exports and Expand
+        // Appearance choose it ([`effects::drawn_first`]).
+        // Whether the art is Vector Halftone's dots.
+        let mut halftone = false;
+        let first = match effects::drawn_first(doc, a, crate::addons::halftone::art, false) {
+            effects::DrawnFirst::Marks(m) => Some(m),
+            effects::DrawnFirst::Halftone(m) => {
+                halftone = true;
+                Some(m)
+            }
+            effects::DrawnFirst::ThreeD(m) => {
+                self.stats.three_d_built += 1;
+                three_d = true;
+                Some(m)
+            }
+            effects::DrawnFirst::Neither => None,
+        };
+        let art = match first.or_else(|| effects::reshape(Some(doc), a, symbol.as_ref())) {
             Some(r) => r,
             None if container => effects::evaluate_container(Some(doc), a).unwrap_or_else(|| (**a).clone()),
             None if matches!(a.kind, NodeKind::Text(_) | NodeKind::Image(_) | NodeKind::Path { .. } | NodeKind::Compound { .. }) => (**a).clone(),
@@ -716,8 +724,11 @@ impl Renderer {
                 item.effects_mut().retain(|e| !effects::is_three_d(&e.id));
             }
         }
-        // Vector Halftone samples the object with its colour adjustments: its dots keep their inks.
-        let outer = if effects::addons::halftone::has_halftone(a) { None } else { effects::color_map(&a.appearance.effects) };
+        // Vector Halftone samples the object with its colour adjustments: its dots keep their inks,
+        // beside Crop Marks too. An object whose halftone made no dots and whose 3D effect's art is
+        // drawn instead takes them here.
+        let dotted = halftone || (!three_d && effects::addons::halftone::has_halftone(a));
+        let outer = if dotted { None } else { effects::color_map(&a.appearance.effects) };
         let mut art = self.adjusted_art(doc, art, outer.as_ref());
         // A path's geometry effects still apply when it is drawn.
         let path = matches!(art.kind, NodeKind::Path { .. } | NodeKind::Compound { .. });

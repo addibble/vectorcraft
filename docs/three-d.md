@@ -686,6 +686,7 @@ Release measurements and a repeatable CLI scene are in [3D lighting performance]
 
 | Date | Change |
 |---|---|
+| 2026-11-13 | A color adjustment after a 3D effect recolors the shaded faces in exports and Expand Appearance too, as the canvas draws them, where they recolored the art before it was shaded; one before the 3D effect in the list recolors the shaded faces there too, as the canvas does. With Vector Halftone after the 3D effect, exports and Expand Appearance sample the halftone's dots from the shaded, recolored faces, as the canvas does, where they sampled the art recolored before shading. |
 | 2026-11-13 | Extrude & Bevel cuts its walls into slices only for a twist. A taper alone keeps each wall flat, so it is one face, without the light ticks at the joints between slices or the light line down a wall (#7019). Inflate still slices its sides for a taper. |
 | 2026-11-12 | The seams of Extrude & Bevel, Inflate and Rotate under a white light, and of the faces of Extrude & Bevel (Classic), Revolve (Classic) and Rotate (Classic), went from miter to round joins (the seams of Revolve and of colored lights, and 3D (Classic) Wireframe edges, were already round): no thorns on edge-on facets, and facets with no neighbor now have rounded convex corners ([Seams](#seams)). |
 | 2026-11-08 | Contours that cross, touch or overlap are merged by vectorcraft-pathops before Extrude & Bevel, Inflate and Rotate build a solid, sharing its limits; others are built as drawn. |
