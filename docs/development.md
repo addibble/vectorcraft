@@ -48,7 +48,7 @@ limit; fuel and memory still stop them) and builds the engine without its `word-
 whose compound-file reader (cfb) keeps its clock in JavaScript: such a build refuses `.doc` files.
 `cargo xtask ci`'s `no-js-engine` step builds it so.
 
-URL flag: `?webgl` forces the WebGL2 backend.
+URL flags: `?webgl` forces the WebGL2 backend; `?host=parent` lets a same-origin page that frames the app open files in it and store what it saves ([Embedding the web build](web-embed.md)).
 
 How the web shell (`apps/vectorcraft-web/src/web.rs`) differs from desktop:
 
