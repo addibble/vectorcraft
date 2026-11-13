@@ -24,7 +24,7 @@ craft-jsonquery = { git = "https://github.com/addibble/craft-libs", rev = "db07f
 # desktop. The `egui` feature adds `craft_window::decorate`. (craft-libs#217.)
 craft-window = { git = "https://github.com/storytold/craft-libs", rev = "64b181977a0488e4d1e167bc5cc8cfededc2ed4b", features = ["egui"] }
 # The `.vectorcraft` envelope: its members, version, embedded images and the data after the JSON.
-craft-vectorcraft-format = { git = "https://github.com/storytold/craft-libs", rev = "64b181977a0488e4d1e167bc5cc8cfededc2ed4b" }
+craft-vectorcraft-format = { git = "https://github.com/addibble/craft-libs", rev = "fdf211f1b5cd43fff14b9be3d2bed74d9a61ac06" }
 craft-gzip = { git = "https://github.com/storytold/craft-libs", rev = "64b181977a0488e4d1e167bc5cc8cfededc2ed4b" }
 # craft-update: app-specific pretend versions apply to startup and manual checks.
 # Native Affinity documents (craft-libs#914).
@@ -90,6 +90,8 @@ peniko = "0.6"
 thiserror = "2"
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
+# Shortest round-trip float text, the writer serde_json uses for numbers: SVG path data's coordinates.
+zmij = "1"
 log = "0.4"
 # All date/time conversion goes through chrono (no hand-rolled calendar code beyond the 400-year range extension; AGENTS.md).
 chrono = { version = "0.4.45", default-features = false, features = ["std"] }

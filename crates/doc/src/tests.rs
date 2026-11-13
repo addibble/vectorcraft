@@ -2,7 +2,9 @@ use super::*;
 use vectorcraft_geom::shapes;
 
 mod defaults;
+mod live_shape_bits;
 mod lookups;
+mod saved_links;
 mod slices;
 mod units;
 

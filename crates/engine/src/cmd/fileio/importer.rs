@@ -150,6 +150,7 @@ pub(super) fn load(name: &str, bytes: &[u8], plugin: &Plugin, p: &Value) -> Resu
         preview_only: false,
         editing_data: false,
         native_pdf_compatible: None,
+        native_version: None,
     })
 }
 

@@ -11,7 +11,10 @@ fn document(far_object: bool) -> Value {
     s.execute("file.new", &json!({"width": 200, "height": 200})).unwrap();
     s.execute("shape.rectangle", &json!({"x": 10, "y": 10, "width": 50, "height": 30})).unwrap();
     s.execute("shape.rectangle", &json!({"x": 100, "y": 100, "width": 20, "height": 20})).unwrap();
-    let mut v: Value = serde_json::from_slice(&vectorcraft_format::save(&s.doc().unwrap().doc, false)).unwrap();
+    // Saved with the structured geometry (anchors and an `xf` array) that the far object is moved
+    // in, which every reader takes as it takes SVG's notation.
+    let saved = vectorcraft_geom::saved::structured_geometry(|| vectorcraft_format::save(&s.doc().unwrap().doc, false));
+    let mut v: Value = serde_json::from_slice(&saved).unwrap();
     if far_object {
         let far = &mut v["document"]["layers"][0]["kind"]["children"][0]["kind"];
         far["path"]["subpaths"][0]["anchors"].as_array_mut().unwrap().iter_mut().for_each(|a| a["p"][1] = json!(a["p"][1].as_f64().unwrap() + 1e17));
@@ -66,4 +69,27 @@ fn a_file_whose_artboards_all_lie_beyond_the_canvas_is_refused() {
     let _ = std::fs::remove_file(&path);
     let e = r.unwrap_err().to_string();
     assert!(e.contains("artboards all lie beyond the canvas"), "{e}");
+}
+
+/// The same in a version 6 file's notation: a path's SVG path data, and a live shape saved without
+/// its path whose SVG transform puts it there.
+#[test]
+fn an_object_beyond_the_canvas_in_svg_notation_is_removed_on_open() {
+    let mut s = Session::new();
+    s.execute("file.new", &json!({"width": 200, "height": 200})).unwrap();
+    s.execute("shape.rectangle", &json!({"x": 10, "y": 10, "width": 50, "height": 30})).unwrap();
+    s.execute("shape.rectangle", &json!({"x": 100, "y": 100, "width": 20, "height": 20})).unwrap();
+    let saved: Value = serde_json::from_slice(&vectorcraft_format::save(&s.doc().unwrap().doc, false)).unwrap();
+    let live = &saved["document"]["layers"][0]["kind"]["children"][0]["kind"];
+    assert!(live.get("path").is_none() && live["live"]["xf"] == "translate(10 10)", "saved in the notation: {live}");
+    let far_path = json!({"type": "path", "path": {"d": "M10 1e17L60 1e17L60 1.0000000000000003e17Z"}});
+    let mut far_live = live.clone();
+    far_live["live"]["xf"] = json!("translate(10 1e17)");
+    for (tag, far) in [("d", far_path), ("transform", far_live)] {
+        let mut v = saved.clone();
+        v["document"]["layers"][0]["kind"]["children"][0]["kind"] = far;
+        let (s, warnings) = open_and_move(&v, tag);
+        assert_eq!(s.doc().unwrap().doc.layers[0].children().unwrap().len(), 1, "{tag}: the far rectangle is gone, the other stays");
+        assert!(warnings.to_string().contains("1 object beyond the canvas"), "{tag}: {warnings}");
+    }
 }

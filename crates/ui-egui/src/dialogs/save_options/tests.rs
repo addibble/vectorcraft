@@ -596,7 +596,10 @@ fn native_version_is_a_menu_of_the_versions_vectorcraft_writes() {
     let (mut app, written, _) = desktop("art.vectorcraft");
     assert_eq!(app.run("file.saveAs", json!({})).unwrap()["pending"], KIND);
     let text = crate::tests_labels::painted_text(&mut app, |app, ui| super::super::show(app, ui.ctx()));
-    assert!(text.contains("VectorCraft 0.8 and later (version 4)"), "{text}");
+    // No release reads the versions after the one releases write: this version is the first.
+    assert!(NATIVE_VERSIONS.iter().all(|(n, release)| release.is_none() == (*n > vectorcraft_format::RELEASED_VERSION)));
+    let (current, _) = NATIVE_VERSIONS[0];
+    assert!(text.contains(&format!("This version of VectorCraft and later (version {current})")), "{text}");
     assert_eq!(native_version_of(dialog(&app)), vectorcraft_format::VERSION);
     let d = app.ui.dialog.as_mut().unwrap();
     d.fields.insert("version".into(), json!(2));
@@ -621,7 +624,11 @@ fn a_refused_save_says_so_in_an_alert() {
     let d = dialog(&app);
     assert_eq!(
         (d.kind.as_str(), d.str("message").as_str(), d.str("detail").as_str()),
-        (crate::dialogs::confirm::MESSAGE, "Can't save “art.vectorcraft”.", "can't save version 55: VectorCraft writes versions 1 to 4")
+        (
+            crate::dialogs::confirm::MESSAGE,
+            "Can't save “art.vectorcraft”.",
+            &*format!("can't save version 55: VectorCraft writes versions {} to {}", vectorcraft_format::MIN_VERSION, vectorcraft_format::VERSION)
+        )
     );
     assert!(written.borrow().is_empty());
     let st = app.session.active().unwrap();

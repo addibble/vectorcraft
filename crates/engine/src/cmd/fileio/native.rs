@@ -26,8 +26,8 @@ pub const OPTIONS: &[FormatOption] = &[
     FormatOption {
         name: "version",
         ty: "integer",
-        default: "4",
-        description: "the format version to write: 4 (current), or 3, 2 or 1 for older VectorCraft versions (1 and 2 are never compressed; newer features they don't know are lost there)",
+        default: "6",
+        description: "the format version to write: 6 (current), 5 (geometry as anchors and matrices) for this version of VectorCraft's earlier readers, or 4, 3, 2 or 1 for VectorCraft's releases (4 also writes colours linked to swatches whole; 1 and 2 are never compressed; newer features they don't know are lost there); a file opened at 4 or 5 is saved at its version until another is given",
     },
     FormatOption {
         name: "preview",
@@ -202,7 +202,7 @@ pub(super) fn encode(cmd: &str, f: &Format, doc: &Document, p: &Value) -> Result
 pub(super) fn encode_to(cmd: &str, f: &Format, doc: &Document, p: &Value, w: impl std::io::Write) -> Result<()> {
     let (mut so, extras) = save_options(cmd, f, doc, p)?;
     // Include Linked Files keeps placed documents' files; older versions get their art.
-    let full = if so.include_linked || so.version < vectorcraft_format::VERSION {
+    let full = if so.include_linked || so.version < vectorcraft_format::PLACED_SINCE {
         crate::cmd::place::document::full_documents(doc).0
     } else {
         std::borrow::Cow::Borrowed(doc)
@@ -223,7 +223,7 @@ pub(super) fn encode_to(cmd: &str, f: &Format, doc: &Document, p: &Value, w: imp
     }
     drop(drawn);
     let native = match full {
-        Cow::Owned(full) if so.include_linked && so.version >= vectorcraft_format::VERSION => {
+        Cow::Owned(full) if so.include_linked && so.version >= vectorcraft_format::PLACED_SINCE => {
             // Include available bytes without replacing missing, relinkable placed objects.
             let mut original = doc.clone();
             original.images = full.images;
@@ -242,7 +242,7 @@ pub(super) fn encode_to(cmd: &str, f: &Format, doc: &Document, p: &Value, w: imp
 /// groups of their art for older versions.
 fn rounded(doc: &Document, version: u32, decimals: u8) -> Document {
     let mut d = doc.clone();
-    if version < vectorcraft_format::VERSION {
+    if version < vectorcraft_format::PLACED_SINCE {
         vectorcraft_format::placed_as_groups(&mut d);
     }
     d.round_geometry(decimals.min(vectorcraft_format::MAX_PRECISION));
