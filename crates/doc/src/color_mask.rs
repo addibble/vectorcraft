@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use crate::{Document, ImageObject, Node, NodeKind};
 
 /// Where a color mask's colors come from.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum MaskBackground {
     /// The most common color along the image's edges.
@@ -34,7 +34,7 @@ pub enum MaskBackground {
 }
 
 /// How near a color must be to a masked one.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum MaskMatch {
     /// The RGB distance, as a percentage of the largest one.
@@ -45,7 +45,7 @@ pub enum MaskMatch {
 }
 
 /// The colors an image object hides (see the module docs).
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ColorMask {
     /// Key into [`Document::images`]: the pixels of [`Self::from`] with the hidden colors made
     /// clear. Named `key` in the file, so the file keeps those pixels with the document.

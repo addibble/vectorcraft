@@ -159,7 +159,7 @@ pub use records::{ImageBlob, MaskEdit, NewArtIds, SavedSelection, SavedView, Svg
 pub use stored_art::{StoredPlace, StoredRoot};
 pub use units::{ColorMode, Unit, parse_number};
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Document {
     pub version: u32,
     #[serde(default)]

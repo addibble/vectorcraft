@@ -2,7 +2,7 @@ use super::para_style::ParaDirection;
 use super::{Appearance, AppearanceItem, Color, Dash, Deserialize, FillLayer, LineCap, LineJoin, Paint, Serialize, StrokeAlign, StrokeLayer};
 
 /// Character attributes (the Character panel).
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct CharStyle {
     pub font_family: String,
     #[serde(default = "regular")]
@@ -202,7 +202,7 @@ pub struct CharStyle {
 /// A glyph chosen for one character ([`CharStyle::glyph_alternate`]): the glyph id and the face it
 /// belongs to, named by its PostScript name and version string, so that a glyph id is never used
 /// in another font or another version of the font.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GlyphChoice {
     /// The character the glyph is drawn for.
     pub ch: char,
@@ -220,7 +220,7 @@ pub struct GlyphChoice {
 /// height of its OS/2 table), or its ideographic character face (ICF, OpenType's `icfb` and
 /// `icft` baselines). Layout sets the characters at the em size at which the chosen height equals
 /// the font size; with a font that has no such value, the size measures the em box.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum FontHeightReference {
     #[default]
@@ -234,7 +234,7 @@ pub enum FontHeightReference {
 /// the Western, Arabic-Indic and Eastern Arabic-Indic sets drawn in one of them or in the digits
 /// of an Indic script. The text keeps the digits that were typed; only the glyphs change (like
 /// All Caps).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum Digits {
     /// Each digit as typed.
@@ -340,7 +340,7 @@ impl Digits {
 /// baseline, at the top (right, in vertical type), centre or bottom (left) of the ideographic
 /// em boxes, or at the top (right) or bottom (left) of the ideographic character faces (ICF, the
 /// average box of the ideographs inside the em box: OpenType's `icft` and `icfb` baselines).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum CharAlign {
     #[default]
@@ -353,7 +353,7 @@ pub enum CharAlign {
 }
 
 /// Superscript or subscript proportions in percent of the font size (Document Setup → Type).
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ScriptMetrics {
     /// Glyph size.
     pub size: f64,
@@ -385,7 +385,7 @@ impl Default for ScriptMetrics {
 
 /// Character position (Character panel Superscript / Subscript). The proportions are the
 /// document's when the position is applied, and follow later Document Setup changes.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum CharPosition {
     #[default]
@@ -469,7 +469,7 @@ fn is_fifty(v: &f64) -> bool {
 /// each line set flush left (top, in vertical type), centered or flush right (bottom), or spread
 /// to the block's length with the last line set flush left, centered or flush right, or spread as
 /// well. Auto is the default and sets the lines as [`WarichuAlign::JustifyLeft`] does.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum WarichuAlign {
     #[default]

@@ -29,7 +29,7 @@ use crate::{AppearanceItem, Document, ImageBlob, ImageObject, LinkInfo, Node, No
 
 /// A placed document: an artboard of another VectorCraft file, or a page of a PDF or `.ai` file,
 /// shown as one locked object.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct PlacedDocument {
     /// The file (its `page` is the artboard or page shown, 1-based).
     pub link: LinkInfo,
@@ -54,7 +54,7 @@ pub struct PlacedDocument {
 
 /// The box of a PDF page a placed PDF or `.ai` file shows (File › Place's `crop`, other than
 /// `bounding`).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum PageBox {
     /// The visible page area.

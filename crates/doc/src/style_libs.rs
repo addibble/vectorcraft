@@ -19,7 +19,7 @@ use crate::{
 };
 
 /// A graphic style library: its name, its styles and the patterns they paint with.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct StyleLibrary {
     pub name: String,
     #[serde(default)]
@@ -103,7 +103,7 @@ pub const STYLES_EXT: &str = "vcstyles";
 const STYLES_VERSION: u32 = crate::twist::TWIST_CLOCKWISE_SINCE;
 
 /// The file: a header around the library.
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, schemars::JsonSchema)]
 struct NativeFile {
     format: String,
     version: u32,

@@ -11,7 +11,7 @@ use crate::freeform::Freeform;
 mod spread;
 pub use spread::{MAX_SPREAD_LEVEL, MAX_SPREAD_RUNS, MAX_SPREAD_STOPS, Padded};
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub enum GradientKind {
     #[default]
     Linear,
@@ -57,7 +57,7 @@ impl GradientKind {
 }
 
 /// How a gradient mixes the colours between its stops (the Gradient panel's Method).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub enum GradientMethod {
     /// Mixed in display RGB, as gradients always were.
     #[default]
@@ -196,7 +196,7 @@ pub fn hue_mix(a: &Color, b: &Color, t: f32, rising: bool) -> Color {
 /// What a linear, radial, conic or diamond gradient paints past the ends of its stops (the
 /// Gradient panel's Spread). With Repeat and Reflect, the stops run [`Gradient::repeats`] times
 /// along the vector (around the circle, for a conic), and keep going past both of its ends.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, schemars::JsonSchema)]
 pub enum GradientSpread {
     /// The first and last stops' colors carry on past the ends, as gradients always did.
     #[default]
@@ -334,7 +334,7 @@ fn curve_offset(a: &GradientStop, b: &GradientStop, v: f32) -> f32 {
     a.offset + (b.offset - a.offset) * u
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GradientStop {
     /// 0..=1 along the gradient.
     pub offset: f32,
@@ -425,7 +425,7 @@ fn half() -> f32 {
     0.5
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Gradient {
     pub kind: GradientKind,
     pub stops: Vec<GradientStop>,
@@ -901,7 +901,7 @@ pub fn midpoint_from_pos(stops: &[GradientStop], i: usize, pos: f32) -> Option<f
 }
 
 /// Where the gradient sits on an object, in document coordinates.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GradientGeom {
     pub start: Point,
     pub end: Point,
@@ -1283,7 +1283,7 @@ fn rebase_point(p: Point, from: Rect, to: Rect) -> Point {
 }
 
 /// A gradient applied to a fill or stroke.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GradientPaint {
     pub gradient: Gradient,
     /// None = fit to the object's bounds at `angle` each render (fresh gradients behave like this).

@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::Document;
 
 /// File Info → Copyright Status.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum CopyrightStatus {
     #[default]
@@ -45,7 +45,7 @@ impl CopyrightStatus {
 pub const MAX_RATING: u8 = 5;
 
 /// File → File Info.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct DocMetadata {
     /// The title the file this document was opened from gives itself (an SVG's root `<title>`, a

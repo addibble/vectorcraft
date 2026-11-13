@@ -4,7 +4,7 @@ use vectorcraft_geom::{PathData, Rect};
 
 use super::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 pub enum LineCap {
     #[default]
     Butt,
@@ -12,7 +12,7 @@ pub enum LineCap {
     Square,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 pub enum LineJoin {
     #[default]
     Miter,
@@ -20,7 +20,7 @@ pub enum LineJoin {
     Bevel,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 pub enum StrokeAlign {
     #[default]
     Center,
@@ -28,7 +28,7 @@ pub enum StrokeAlign {
     Outside,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Dash {
     /// Dash, gap, dash, gap… (up to 6 values in the Stroke panel).
     pub pattern: Vec<f64>,
@@ -59,7 +59,7 @@ const HEAD_REACH: f64 = 4.6;
 
 /// An arrowhead the user drew (Stroke panel menu › Edit Arrowheads…), carried with its art so a
 /// document that uses it draws it wherever it opens.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(from = "CustomArrowheadData")]
 pub struct CustomArrowhead {
     /// The name the arrowhead menus show (the symbol's name in the arrowheads file).
@@ -124,7 +124,7 @@ impl CustomArrowhead {
 }
 
 /// An arrowhead shape. Saved by variant name: new shapes are appended, never renamed or reordered.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub enum Arrowhead {
     Triangle,
     TriangleOpen,
@@ -309,7 +309,7 @@ impl Arrowhead {
 
 /// Where an arrowhead sits relative to the end of its path. In both modes the stroke stops under
 /// the head, so the line never shows through a hollow head or past its tip.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 pub enum ArrowAlign {
     /// The tip extends past the end point (the path keeps its length).
     #[default]
