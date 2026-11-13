@@ -2220,3 +2220,40 @@ fn character_section_shows_the_type_tool_selections_style() {
     assert_eq!(crate::panels::character::text_editing(&app), None);
     assert_eq!(shown(&mut app), ["Regular"], "the Selection tool shows the first run's style");
 }
+
+/// Commands an embedding page hid (`vectorcraft:configure`) leave the Properties panel's Quick
+/// Actions and the Control bar's image buttons, as they leave the menus and the task bar.
+#[test]
+fn quick_actions_and_the_control_bar_leave_out_the_commands_a_page_hid() {
+    let mut app = new_app();
+    let img = image::RgbaImage::from_pixel(20, 20, image::Rgba([90, 120, 200, 255]));
+    let mut png = vec![];
+    img.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).unwrap();
+    app.run("file.place", json!({"name": "p.png", "dataBase64": vectorcraft_format::base64_encode(&png), "link": false, "at": [100, 100]})).unwrap();
+    app.select_tool("selection");
+    let ctx = egui::Context::default();
+    let control_bar = |app: &mut VectorcraftApp| {
+        // A Control bar wide enough for every button: a narrower one leaves out what has no room.
+        panel_frame(app, &ctx, vec![], |app, ui| {
+            let row = egui::UiBuilder::new().max_rect(Rect::from_min_size(Pos2::ZERO, vec2(2000.0, 40.0)));
+            ui.scope_builder(row, |ui| ui.horizontal(|ui| crate::place::control_bar_details(app, ui, 0.0)));
+        })
+    };
+    for label in ["Crop Image", "Mask", "Remove Background", "Image Trace", "Simplify"] {
+        assert!(shows(&tall(&mut app, &ctx, vec![]), label), "Quick Actions show {label}");
+    }
+    for label in ["Crop Image", "Mask", "Image Trace"] {
+        assert!(shows(&control_bar(&mut app), label), "the Control bar shows {label}");
+    }
+    app.ui.host_hidden = vec!["ui.cropImage".into(), "object.maskImage".into(), "imageTrace.*".into(), "object.path.simplify".into()];
+    let texts = tall(&mut app, &ctx, vec![]);
+    for label in ["Crop Image", "Mask", "Image Trace", "Simplify"] {
+        assert!(!shows(&texts, label), "Quick Actions leave out {label}");
+    }
+    assert!(shows(&texts, "Remove Background"), "what wasn't hidden stays");
+    let texts = control_bar(&mut app);
+    for label in ["Crop Image", "Mask", "Image Trace"] {
+        assert!(!shows(&texts, label), "the Control bar leaves out {label}");
+    }
+    assert!(shows(&texts, "Remove Background"));
+}

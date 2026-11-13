@@ -2,28 +2,38 @@ use super::{Sense, Stroke, Tokens, Ui, VectorcraftApp, icons, json, theme, vec2,
 
 /// [`view_tab_title`] for a document with one view.
 #[cfg(test)]
-pub(super) fn tab_title(d: &vectorcraft_engine::DocState, zoom: f64, outline: bool, display_print_size: bool) -> String {
-    view_tab_title(d, None, zoom, outline, display_print_size)
+pub(super) fn tab_title(d: &vectorcraft_engine::DocState, host: Option<&str>, zoom: f64, outline: bool, display_print_size: bool) -> String {
+    view_tab_title(d, host, None, zoom, outline, display_print_size)
 }
 
 /// A document tab's title: "Name* @ 66.67 % (RGB/Preview)", or while an opacity mask is edited
 /// "Name* @ 66.67 % (<Opacity Mask>/Opacity Mask)". For a view of a document with more than one
-/// view, the view's `number` follows the name: "Name:2* @ 66.67 % (RGB/Preview)".
-fn view_tab_title(d: &vectorcraft_engine::DocState, number: Option<u32>, zoom: f64, outline: bool, display_print_size: bool) -> String {
+/// view, the view's `number` follows the name: "Name:2* @ 66.67 % (RGB/Preview)". `host` is a
+/// title the host gave the document ([`crate::state::HostTitle`]), shown in place of its name.
+fn view_tab_title(
+    d: &vectorcraft_engine::DocState,
+    host: Option<&str>,
+    number: Option<u32>,
+    zoom: f64,
+    outline: bool,
+    display_print_size: bool,
+) -> String {
     let mode = if d.doc.mask_edit.is_some() {
         format!("<{0}>/{0}", tl!("Opacity Mask"))
     } else {
         let color = if d.doc.color_mode == vectorcraft_doc::ColorMode::Cmyk { "CMYK" } else { "RGB" };
         format!("{color}/{}", if outline { tl!("Outline") } else { tl!("Preview") })
     };
-    format!("{} @ {} ({mode})", view_tab_name(d, number), zoom_label(zoom, display_print_size).replace('%', " %"))
+    format!("{} @ {} ({mode})", view_tab_name(d, host, number), zoom_label(zoom, display_print_size).replace('%', " %"))
 }
 
 /// The start of [`view_tab_title`], which an inactive document tab shows alone (#8582): "Name*",
-/// or for a view of a document with more than one view, "Name:2*".
-fn view_tab_name(d: &vectorcraft_engine::DocState, number: Option<u32>) -> String {
+/// or for a view of a document with more than one view, "Name:2*". `host` is a title the host
+/// gave the document, shown in place of its name.
+fn view_tab_name(d: &vectorcraft_engine::DocState, host: Option<&str>, number: Option<u32>) -> String {
     let number = number.map(|n| format!(":{n}")).unwrap_or_default();
-    format!("{}{number}{}", d.title(), if d.is_dirty() { "*" } else { "" })
+    let name = host.map_or_else(|| d.title(), str::to_string);
+    format!("{name}{number}{}", if d.is_dirty() { "*" } else { "" })
 }
 
 /// The title of window `w`, a view of document `d`: with the view's zoom and Outline or Preview,
@@ -31,7 +41,8 @@ fn view_tab_name(d: &vectorcraft_engine::DocState, number: Option<u32>) -> Strin
 fn window_tab_title(app: &VectorcraftApp, w: crate::doc_windows::Win, d: &vectorcraft_engine::DocState) -> String {
     let view = crate::doc_windows::view(app, w);
     let zoom = view.map_or(1.0, |v| v.zoom);
-    view_tab_title(d, crate::doc_windows::label(app, w), zoom, view.is_some_and(|v| v.outline), app.session.prefs.display_print_size)
+    let host = crate::state::host_title(&app.ui.host_titles, d);
+    view_tab_title(d, host, crate::doc_windows::label(app, w), zoom, view.is_some_and(|v| v.outline), app.session.prefs.display_print_size)
 }
 
 /// The title of window `w`'s tab and floating window ([`crate::doc_windows`]).
@@ -222,8 +233,11 @@ pub fn doc_tabs(app: &mut VectorcraftApp, ui: &mut Ui) {
         .filter_map(|w| Some((w, app.session.documents().get(w.0)?)))
         .map(|(w, d)| {
             let title = window_tab_title(app, w, d);
-            let (text, color) =
-                if Some(w) == shown { (title.clone(), t.text_strong) } else { (view_tab_name(d, crate::doc_windows::label(app, w)), t.text_dim) };
+            let (text, color) = if Some(w) == shown {
+                (title.clone(), t.text_strong)
+            } else {
+                (view_tab_name(d, crate::state::host_title(&app.ui.host_titles, d), crate::doc_windows::label(app, w)), t.text_dim)
+            };
             let galley = ui.painter().layout_no_wrap(text.clone(), theme::semibold(title_size), color);
             (w, text, title, galley)
         })

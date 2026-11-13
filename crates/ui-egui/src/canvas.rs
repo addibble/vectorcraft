@@ -272,6 +272,7 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
     if app.session.active().is_none() {
         // No document and Show The Home Screen When No Documents Are Open off: an empty window.
         ui.painter().rect_filled(full, 0.0, t.panel_darker);
+        host_empty_message(app, ui, full, &t);
         return;
     }
     let outer = full;
@@ -468,6 +469,59 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
     if resp.hovered() {
         canvas_cursor(app, ui, view_info, hover_still);
     }
+}
+
+/// The embedding page's message and link in the empty window, when it gave them (already in the
+/// user's language). The link is the page's to follow: a click is only noted for it to hear. Both
+/// on one line when they fit, else the message above the link, each wrapped to the window.
+fn host_empty_message(app: &mut VectorcraftApp, ui: &Ui, full: egui::Rect, t: &Tokens) {
+    let font = egui::FontId::proportional(16.0);
+    let room = (full.width() - 32.0).max(40.0);
+    let wrapped = |text: &String, color| ui.painter().layout(text.clone(), font.clone(), color, room);
+    let message = app.ui.host_empty_message.as_ref().map(|m| wrapped(m, t.text_dim));
+    let link = app.ui.host_empty_link.as_ref().map(|l| wrapped(l, t.accent));
+    let gap = if message.is_some() && link.is_some() { 6.0 } else { 0.0 };
+    let (mw, lw) = (message.as_ref().map_or(0.0, |g| g.size().x), link.as_ref().map_or(0.0, |g| g.size().x));
+    let one_line = mw + gap + lw <= room && message.as_ref().is_none_or(|g| g.rows.len() == 1) && link.as_ref().is_none_or(|g| g.rows.len() == 1);
+    let (mh, lh) = (message.as_ref().map_or(0.0, |g| g.size().y), link.as_ref().map_or(0.0, |g| g.size().y));
+    let c = full.center();
+    // Each part's top-left corner.
+    let (message_at, link_at) = if one_line {
+        let x = c.x - (mw + gap + lw) / 2.0;
+        (egui::pos2(x, c.y - mh / 2.0), egui::pos2(x + mw + gap, c.y - lh / 2.0))
+    } else {
+        let top = c.y - (mh + gap + lh) / 2.0;
+        (egui::pos2(c.x - mw / 2.0, top), egui::pos2(c.x - lw / 2.0, top + mh + gap))
+    };
+    if let Some(g) = message {
+        ui.painter().galley(message_at, g, t.text_dim);
+    }
+    if let Some(g) = link {
+        let r = egui::Rect::from_min_size(link_at, g.size());
+        let resp = ui.interact(r, egui::Id::unique("host-empty-link"), Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand);
+        if resp.hovered() {
+            for (x, y) in underlines(&g, r.min) {
+                ui.painter().hline(x, y, Stroke::new(1.0, t.accent));
+            }
+        }
+        ui.painter().galley(r.min, g, t.accent);
+        if resp.clicked() {
+            app.ui.host_empty_link_clicked = true;
+        }
+    }
+}
+
+/// The underline of each row of `g`, a link laid out at `at`: under its own text, so a link
+/// wrapped to two rows is underlined on both, each as wide as its row.
+pub(crate) fn underlines(g: &egui::Galley, at: Pos2) -> Vec<(egui::Rangef, f32)> {
+    g.rows
+        .iter()
+        .filter(|row| !row.row.glyphs.is_empty())
+        .map(|row| {
+            let r = row.rect().translate(at.to_vec2());
+            (r.x_range(), r.bottom())
+        })
+        .collect()
 }
 
 /// The pointer on the canvas: the tool's input, unless the context menu or the 3D gizmo has the press.

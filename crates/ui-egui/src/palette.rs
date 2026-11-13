@@ -1057,6 +1057,8 @@ pub fn show(app: &mut VectorcraftApp, ctx: &egui::Context) {
     let q = app.ui.palette_query.to_lowercase();
     let entries = entries_in(ctx, crate::i18n::current(), app.services.native_menu.is_some());
     let mut matches = matching(&entries, &q);
+    // An embedding page's hidden commands (`menus::host_hidden`) are left out.
+    matches.retain(|e| !menus::host_hidden(app, &e.id));
     let total = matches.len();
     // The highlighted result (#1757): Up and Down move it (wrapping), Page Up and Page Down move it
     // by a page, the pointer over a result takes it, and a new query starts again from the first.

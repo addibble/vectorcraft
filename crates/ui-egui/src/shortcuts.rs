@@ -676,6 +676,8 @@ fn run_single_key(app: &mut VectorcraftApp, ctx: &egui::Context, chords: &[craft
             held_tool::choose(app, ctx, tool, pressed, repeat);
             false
         }
+        // A command an embedding page hid does nothing from its key.
+        None if crate::menus::host_hidden(app, &hit.id) => false,
         None => {
             run_hit(app, ctx, hit);
             if !dialog_or_palette_open(app) {

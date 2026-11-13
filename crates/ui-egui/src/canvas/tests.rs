@@ -12475,6 +12475,26 @@ fn the_task_bar_offers_the_artboard_tools_actions() {
     assert_eq!(names(&mut app), ["Resize", "Duplicate", "Export"]);
 }
 
+/// The bar's buttons for commands an embedding page hid (`vectorcraft:configure`) leave it, as
+/// their menu items do: the bar's own buttons by the commands they run.
+#[test]
+fn the_task_bar_leaves_out_the_commands_a_page_hid() {
+    let mut app = VectorcraftApp::new(Session::new(), Default::default());
+    app.session.execute("file.new", &json!({"width": 200, "height": 100, "artboards": 3})).unwrap();
+    app.ui.host_hidden = vec!["object.path.simplify".into(), "artboard.rearrange".into()];
+    let ctx = egui::Context::default();
+    let names = |app: &mut VectorcraftApp| task_bar_labels(app, &ctx).into_iter().map(|(t, _)| t).collect::<Vec<_>>();
+    app.select_tool("artboard");
+    crate::panels::artboards::select(&mut app, 1);
+    let b = app.session.active().unwrap().doc.artboards[1].rect;
+    let view = app.view_mut().unwrap();
+    (view.center, view.zoom) = (b.center(), 1.0);
+    assert_eq!(names(&mut app), ["Resize", "Duplicate", "Export"]);
+    app.select_tool("selection");
+    app.session.execute("shape.rectangle", &json!({"x": 20, "y": 20, "width": 40, "height": 40})).unwrap();
+    assert_eq!(names(&mut app), ["Edit Path", "Offset Path", "Duplicate"]);
+}
+
 /// Screen readers name the Contextual Task Bar's text buttons by their labels.
 #[test]
 fn screen_readers_name_the_task_bars_text_buttons() {
