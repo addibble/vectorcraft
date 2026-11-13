@@ -126,6 +126,29 @@ pub fn ellipse_pie(r: Rect, start: f64, end: f64) -> PathData {
     ellipse_arc(r, start, end, EllipseMode::Slice)
 }
 
+/// How many cubics draw an elliptical arc of `span` degrees (its size, 0 to 360): one per
+/// quarter turn or part of one, so 1 to 4. The shape tools' arcs take their exact spans by it;
+/// an arc read from SVG path data takes its span less half a degree of grace
+/// ([`crate::notation`]), since rounding there can put a span a hair past a quarter turn.
+pub(crate) fn arc_pieces(span: f64) -> u32 {
+    if span <= 90.0 {
+        1
+    } else if span <= 180.0 {
+        2
+    } else if span <= 270.0 {
+        3
+    } else {
+        4
+    }
+}
+
+/// The handle length, as a fraction of the radius and along the tangent, of the cubic that
+/// draws `step` degrees of a circle: 4/3·tan(step/4), the standard approximation (within 0.03%
+/// of the radius for a quarter turn). Its sign follows `step`.
+pub(crate) fn arc_handle(step: f64) -> f64 {
+    4.0 / 3.0 * (step.to_radians() / 4.0).tan()
+}
+
 /// The ellipse inscribed in `r` cut from `start` to `end` degrees according to `mode`:
 /// - [`EllipseMode::Slice`]: closed through the centre (pie chart).
 /// - [`EllipseMode::Chord`]: closed with a straight chord between the endpoints.
@@ -153,17 +176,9 @@ pub fn ellipse_arc(r: Rect, start: f64, end: f64, mode: EllipseMode) -> PathData
         let t = deg.to_radians();
         Vec2::new(-rx * t.sin(), -ry * t.cos())
     };
-    let pieces = if span <= 90.0 {
-        1
-    } else if span <= 180.0 {
-        2
-    } else if span <= 270.0 {
-        3
-    } else {
-        4
-    };
+    let pieces = arc_pieces(span);
     let step = span / f64::from(pieces);
-    let k = 4.0 / 3.0 * (step.to_radians() / 4.0).tan();
+    let k = arc_handle(step);
     let mut anchors = Vec::with_capacity(pieces as usize + 2);
     if mode == EllipseMode::Slice {
         anchors.push(Anchor::corner(c));

@@ -3,7 +3,7 @@
 //! A `.vectorcraft` file is UTF-8 JSON, gzip-compressed when saved with Use Compression (told apart
 //! by its magic bytes on open, whatever the version):
 //! ```json
-//! { "format": "vectorcraft", "version": 3, "generator": "VectorCraft 0.1.0",
+//! { "format": "vectorcraft", "version": 6, "generator": "VectorCraft 0.1.0",
 //!   "preview": { "mime": "image/png", "data": "<base64>" },
 //!   "profiles": { "<profile name>": { "mime": "application/vnd.iccprofile", "data": "<base64>" } },
 //!   "pdf": { "mime": "application/pdf", "data": "<base64>" },
@@ -15,7 +15,13 @@
 //! defaults (`vectorcraft_doc::as_saved`): a field equal to the value a reader fills in when it
 //! is missing is left out (a text run at 100% horizontal scale, a paragraph with no indents), so a
 //! document's JSON holds what differs from the defaults. Older versions read such files, since they
-//! fill in the same values; files saved for older apps keep every field. Only the images the
+//! fill in the same values; files saved for older apps keep every field. A colour linked to a global
+//! swatch is saved by the swatch's name (`"paint": "Accent"`, or without its `color` at another
+//! tint) when it is exactly the swatch's colour, and filled in from the swatch on reading
+//! (`vectorcraft_color::saved_links`). Geometry is written in SVG's notation
+//! (`vectorcraft_geom::notation`): a path's anchors as path data (`{"d": "M0 0L10 0…"}`), a transform
+//! as an SVG transform (`"translate(10 20)"`), and a live shape without the path its parameters
+//! rebuild. Only the images the
 //! document uses are written. `preview` (optional) is a PNG of the first artboard, at most
 //! [`PREVIEW_MAX`] pixels on its longer side, for file browsers. `profiles` (optional, Embed ICC
 //! Profiles) holds the ICC files of colour profiles the document is tagged with, for machines that
@@ -30,7 +36,11 @@
 //! compressed; v4 may keep large data (images, placed documents, the PDF, profiles of at least
 //! [`INLINE_MAX`] bytes) after the JSON instead of in it: the JSON is followed by [`BLOB_MAGIC`] and
 //! the bytes, and such an entry says where they are (`"blob": [offset, length]`) instead of giving
-//! `data`. Every version loads, and [`save_with`] writes any of them for older apps (under the
+//! `data`; v5 may write a colour linked to a global swatch by the swatch's name ([`NAMED_COLORS_SINCE`]);
+//! v6 writes geometry in SVG's notation ([`SVG_GEOMETRY_SINCE`]; readers take either form, the
+//! structured one where the notation cannot say a path exactly). From v4 on, fields equal to the
+//! value a reader fills in for them are left out. Every version loads, and [`save_with`] writes any
+//! of them for older apps (under the
 //! format name `drawcraft`, which every version reads). Readers reject files whose `version` is
 //! newer than they support.
 //!
@@ -62,11 +72,22 @@ use vectorcraft_doc::{Document, ImageBlob};
 pub use atomic::{read_only_location, sync_file, write_atomic, write_atomic_with, write_new_with};
 pub use craft_vectorcraft_format::base64::{decode as base64_decode, decoded_len as base64_decoded_len, encode as base64_encode};
 pub use craft_vectorcraft_format::{
-    BLOB_MAGIC, COMPRESSED_SINCE, EXTENSION, ICC_MIME, INLINE_MAX, LEGACY_EXTENSION, MIN_VERSION, PREVIEW_MAX, VERSION, is_compressed, json_part,
-    sniff,
+    BLOB_MAGIC, COMPRESSED_SINCE, EXTENSION, ICC_MIME, INLINE_MAX, LEGACY_EXTENSION, MIN_VERSION, PREVIEW_MAX, is_compressed, json_part, sniff,
 };
 use stream::{Gz, Indent, KeyScan, Out};
 
+/// v6: geometry in SVG's notation (v1 to v5 files still load). The envelope's reader
+/// (craft-vectorcraft-format) takes versions up to its own `VERSION`.
+pub const VERSION: u32 = 6;
+/// The first version whose readers fill in the fields a file leaves out at their defaults.
+pub const DEFAULTS_OMITTED_SINCE: u32 = 4;
+/// The first version whose readers take a colour linked by its swatch's name.
+pub const NAMED_COLORS_SINCE: u32 = 5;
+/// The first version whose readers know placed documents: older ones get the art they show.
+pub const PLACED_SINCE: u32 = 4;
+/// The first version whose readers know geometry in SVG's notation (`vectorcraft_geom::notation`):
+/// older ones get the structured form.
+pub const SVG_GEOMETRY_SINCE: u32 = 6;
 /// Most bytes the JSON of a compressed file may unpack to (a guard against decompression bombs,
 /// as are [`MAX_BLOB`] and [`MAX_BLOBS`]). A compressed save refuses a document past any of them,
 /// so every file VectorCraft writes reads back. On wasm32 the cap is a quarter of the native
@@ -83,6 +104,11 @@ pub const MAX_BLOBS: u64 = if cfg!(target_arch = "wasm32") { 1 << 30 } else { 4 
 /// Most bytes a compressed file whose JSON isn't followed by the marker where VectorCraft puts it
 /// (hand-made or damaged files) may unpack to: it is unpacked whole.
 const MAX_UNPACKED: u64 = 512 << 20;
+/// The version VectorCraft's releases write (later ones are this build's own). Saves for an
+/// older version are for apps before 0.21.0, so they get Color Halftone's Max Radius in points
+/// and Twist turned the other way, and a file of an older version opens converted; files of this
+/// version and later open as they are (the app's Save writes such a file at its own version).
+pub const RELEASED_VERSION: u32 = 4;
 
 /// Is `ext` (without the dot, any case) a native document extension?
 pub fn is_native_ext(ext: &str) -> bool {
@@ -203,9 +229,8 @@ impl SaveOptions {
     /// as [`save_to`] writes the document with them (in their version)?
     pub fn pretty_fits(&self, doc: &Document) -> bool {
         let objects: usize = doc.layers.iter().map(|l| l.count()).sum();
-        // Measured as it is saved: the current version leaves out defaults, as save_to does.
-        let fits = || body(doc, self).is_ok_and(|b| pretty_size_at_most(&b, PRETTY_MAX_BYTES));
-        objects <= PRETTY_MAX_OBJECTS && if self.version >= VERSION { vectorcraft_doc::as_saved(fits) } else { fits() }
+        // Measured as it is saved (defaults left out, colours by name), as save_to writes it.
+        objects <= PRETTY_MAX_OBJECTS && as_written(self.version, || body(doc, self).is_ok_and(|b| pretty_size_at_most(&b, PRETTY_MAX_BYTES)))
     }
 }
 
@@ -250,7 +275,7 @@ fn body(doc: &Document, o: &SaveOptions) -> Result<Body, FormatError> {
     d.guides_to_saved();
     // Older apps don't know placed documents: they get the art the objects show, with its
     // resources. Otherwise resources only exporting adds are never saved.
-    if version < VERSION && d.has_placed() {
+    if version < PLACED_SINCE && d.has_placed() {
         d = d.with_placed_art().into_owned();
         d.placed_as_groups();
     } else {
@@ -269,7 +294,7 @@ fn body(doc: &Document, o: &SaveOptions) -> Result<Body, FormatError> {
     // Apps before this one's version take Color Halftone's Max Radius in points (#3260), and
     // predate 0.21.0, turning Twist the other way. The radii first: their conversion runs only on
     // a document of version 3 or later, and the Twist one then marks it version 1.
-    if version < VERSION {
+    if version < RELEASED_VERSION {
         d.halftone_radii_to_points();
         d.store_legacy_twist_angles();
     }
@@ -320,9 +345,22 @@ const JSON_CHUNK: usize = 64 << 10;
 /// file: write to a temporary file ([`write_atomic_with`]).
 pub fn save_to(doc: &Document, o: &SaveOptions, w: impl Write) -> Result<(), FormatError> {
     o.check()?;
-    // The current version leaves out fields equal to what a reader fills in for them; files for
-    // older apps keep every field, as those apps wrote them.
-    if o.version >= VERSION { vectorcraft_doc::as_saved(|| write(doc, o, w)) } else { write(doc, o, w) }
+    as_written(o.version, || write(doc, o, w))
+}
+
+/// `f` run as a document is serialized for `version`: fields equal to what a reader fills in for
+/// them are left out, linked colours written by name and geometry in SVG's notation, for the
+/// readers that know each; files for older apps keep every field.
+fn as_written<R>(version: u32, f: impl FnOnce() -> R) -> R {
+    if version >= SVG_GEOMETRY_SINCE {
+        vectorcraft_doc::as_saved(f)
+    } else if version >= NAMED_COLORS_SINCE {
+        vectorcraft_doc::as_saved(|| vectorcraft_doc::geom::saved::structured_geometry(f))
+    } else if version >= DEFAULTS_OMITTED_SINCE {
+        vectorcraft_doc::as_saved(|| vectorcraft_doc::geom::saved::structured_geometry(|| vectorcraft_doc::color::saved_links::written_whole(f)))
+    } else {
+        f()
+    }
 }
 
 fn write(doc: &Document, o: &SaveOptions, w: impl Write) -> Result<(), FormatError> {
@@ -470,6 +508,9 @@ impl Envelope {
     }
 }
 
+/// The document of a native file, as [`load_file`] reads it, without its notes: a caller that
+/// should tell what opening changed (swatches recreated, art dropped) reads [`load_file`]'s
+/// `depth_notes`.
 pub fn load(bytes: &[u8]) -> Result<Document, FormatError> {
     load_info(bytes).map(|(doc, _)| doc)
 }
@@ -480,7 +521,9 @@ pub struct NativeFile {
     pub doc: Document,
     /// What was done to bring the document within the nesting caps
     /// ([`Document::limit_depth_noting`]: a file saved before them, or a damaged one) and within
-    /// the canvas ([`Document::drop_beyond_canvas`]: a damaged or hand-made file).
+    /// the canvas ([`Document::drop_beyond_canvas`]: a damaged or hand-made file), and the
+    /// swatches its colours are linked to by name that it lacked, recreated black, or that aren't
+    /// global colours, shown black ([`vectorcraft_doc::swatches::noting_recreated_swatches`]).
     pub depth_notes: Vec<String>,
     pub info: FileInfo,
     /// ICC files by profile name (saved with Embed ICC Profiles; undecodable ones are left out).
@@ -500,9 +543,10 @@ pub struct FileInfo {
 }
 
 impl FileInfo {
-    /// Written by an older version or under the former name: saving rewrites it in today's format.
+    /// Written for an app before today's releases ([`RELEASED_VERSION`]) or under the former
+    /// name: saving rewrites it in today's format.
     pub fn is_old(&self) -> bool {
-        self.legacy || self.version < VERSION
+        self.legacy || self.version < RELEASED_VERSION
     }
 }
 
@@ -541,26 +585,43 @@ fn load_unpacked(file: unpack::Unpacked<'_>, max_nodes: usize, max_values: usize
         ReadError::Envelope(e) => e.into(),
         e => FormatError::NotVectorcraft(e.to_string()),
     };
-    // The document and the saved PDF preference come from one pass over the JSON.
-    let (mut f, pdf_compatible) = match within_budgets(max_nodes, max_values, || Contents::<Document>::read_with_pdf_preference(file.json())) {
+    // A file newer than this reader is reported as such, even when its document doesn't read.
+    let read_error = |e| match file_version(file.json()) {
+        Some(v) if v > u64::from(VERSION) => FormatError::TooNew(u32::try_from(v).unwrap_or(u32::MAX)),
+        _ => read_error(e),
+    };
+    // The document and the saved PDF preference come from one pass over the JSON; the note names
+    // the swatches its colours were linked to that it lacked, recreated as it was read.
+    let (read, mut recreated) = vectorcraft_doc::swatches::noting_recreated_swatches(|| {
+        within_budgets(max_nodes, max_values, || Contents::<Document>::read_with_pdf_preference(file.json()))
+    });
+    let (mut f, pdf_compatible) = match read {
         Ok(read) => read,
         // That pass refuses a `pdfCompatible` that is not a boolean, and any other data error.
         // When it stopped at the preference, the file is read again without it, and only then is
         // its JSON scanned for the preference a second time, so such a file opens as before. Any
         // other error, such as a document past a budget, is returned without a second read.
         Err(ReadError::Json(e)) if e.is_data() && refused_preference_at(file.json(), &e) => {
-            let f = within_budgets(max_nodes, max_values, || Contents::<Document>::read(file.json())).map_err(read_error)?;
+            let (f, recreated_again) = vectorcraft_doc::swatches::noting_recreated_swatches(|| {
+                within_budgets(max_nodes, max_values, || Contents::<Document>::read(file.json()))
+            });
+            let f = f.map_err(read_error)?;
+            recreated = recreated_again;
             let pdf_compatible = pdf_member(file.json()).map_err(|e| FormatError::NotVectorcraft(e.to_string()))?;
             (f, pdf_compatible)
         }
         Err(e) => return Err(read_error(e)),
     };
+    // The envelope's reader takes every version up to its own; this crate reads up to `VERSION`.
+    if f.version > VERSION {
+        return Err(FormatError::TooNew(f.version));
+    }
     let info = FileInfo { version: f.version, legacy: f.format == LEGACY_EXTENSION, pdf_compatible };
     // A version 1 document saved before VectorCraft 0.21.0, or for an app before it (an older file
     // version): its Twist angles turned the other way. The app that wrote it is read from the JSON
     // before the data after it is taken; the walk's depth is bounded by the JSON reader's nesting
     // limit.
-    let current_file = f.version >= VERSION;
+    let current_file = f.version >= RELEASED_VERSION;
     f.document.migrate_twist_angles(|| current_file && vectorcraft_doc::twist::written_clockwise(generator(file.json()).as_deref()));
     // The bytes after the JSON, read in one pass: the images' first, then the profiles'.
     let entries: Vec<[u64; 2]> = f.images.values().chain(f.profiles.values()).filter_map(|i| i.blob).collect();
@@ -584,7 +645,8 @@ fn load_unpacked(file: unpack::Unpacked<'_>, max_nodes: usize, max_values: usize
         }
         doc.images.insert(k, blob);
     }
-    let depth_notes = fix_read(&mut doc)?;
+    let mut depth_notes = fix_read(&mut doc)?;
+    depth_notes.extend(recreated);
     let profiles = f
         .profiles
         .into_iter()
@@ -614,7 +676,9 @@ fn within_budgets<T>(max_nodes: usize, max_values: usize, read: impl FnOnce() ->
 
 /// A document's JSON as a file holds it (its saved form, [`vectorcraft_doc::as_saved`]) read
 /// within the budgets a file's document is read in, before [`fix_read`]: what reads the model
-/// from JSON other than a file (a JSON Patch over the open document) reads it this way.
+/// from JSON other than a file (a JSON Patch over the open document) reads it this way. Unlike a
+/// file opened, it refuses a colour linked by name to a swatch the document lacks or that isn't a
+/// global colour, naming the swatch and the fix, and recreates none.
 pub fn read_document_json(value: serde_json::Value) -> Result<Document, FormatError> {
     within_budgets(vectorcraft_doc::node::MAX_READ_NODES, vectorcraft_doc::node::MAX_BUFFERED_VALUES, || serde_json::from_value::<Document>(value))
         .map_err(|e| FormatError::NotVectorcraft(e.to_string()))
@@ -824,6 +888,36 @@ impl<'de> Visitor<'de> for Preference {
 /// The file's first `generator` member, the app that wrote it (`None`: it has none, it is not a
 /// string, or the file is not an object of members). The other members, and any further
 /// `generator`, are skipped without being kept, as reading the file skips them.
+/// The file's top-level `version`, read on its own (`None` when the JSON or the member doesn't
+/// read as a number), for telling a file too new from one whose document doesn't read.
+fn file_version(json: &[u8]) -> Option<u64> {
+    struct Version(Option<u64>);
+    struct Members;
+    impl<'de> serde::de::Visitor<'de> for Members {
+        type Value = Version;
+        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.write_str("a file's members")
+        }
+        fn visit_map<A: serde::de::MapAccess<'de>>(self, mut m: A) -> Result<Version, A::Error> {
+            let mut version = None;
+            while let Some(key) = m.next_key::<std::borrow::Cow<'de, str>>()? {
+                if key == "version" && version.is_none() {
+                    version = m.next_value::<serde_json::Value>()?.as_u64();
+                } else {
+                    m.next_value::<serde::de::IgnoredAny>()?;
+                }
+            }
+            Ok(Version(version))
+        }
+    }
+    impl<'de> serde::Deserialize<'de> for Version {
+        fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+            d.deserialize_map(Members)
+        }
+    }
+    serde_json::from_slice::<Version>(json).ok()?.0
+}
+
 fn generator(json: &[u8]) -> Option<String> {
     struct Generator(Option<String>);
     struct Members;
@@ -1005,6 +1099,13 @@ mod tests {
         let v1 = text.replacen(&format!("\"version\":{VERSION}"), "\"version\":1", 1);
         assert_eq!(load_info(v1.as_bytes()).unwrap().1, FileInfo { version: 1, legacy: false, pdf_compatible: false });
         assert!(load_info(v1.as_bytes()).unwrap().1.is_old());
+        // Files of the version releases write and of this build's later ones open as they are.
+        for version in RELEASED_VERSION..=VERSION {
+            let bytes = save_with(&d, &SaveOptions { version, ..SaveOptions::default() }).unwrap();
+            assert!(!load_info(&bytes).unwrap().1.is_old(), "version {version}");
+        }
+        let v3 = save_with(&d, &SaveOptions { version: RELEASED_VERSION - 1, ..SaveOptions::default() }).unwrap();
+        assert!(load_info(&v3).unwrap().1.is_old());
     }
 
     /// A file is native when its top-level `format` member names VectorCraft, read as JSON reads
@@ -1118,7 +1219,9 @@ mod tests {
                         file.profiles.insert(name.clone(), tail.image(ICC_MIME, icc, false));
                     }
                     file.pdf = o.pdf.as_deref().map(|p| tail.image("application/pdf", p, false));
-                    let mut expected = if pretty { serde_json::to_vec_pretty(&file) } else { serde_json::to_vec(&file) }.unwrap();
+                    // Serialized as the save serializes for `version` (defaults left out, colours by name).
+                    let mut expected =
+                        as_written(version, || if pretty { serde_json::to_vec_pretty(&file) } else { serde_json::to_vec(&file) }).unwrap();
                     tail.write_to(&mut expected).unwrap();
                     assert_eq!(tail.is_empty(), version < 4, "version {version}");
                     assert!(save_with(&d, &o).unwrap() == expected, "version {version}, pretty {pretty}, {} profiles", o.profiles.len());
@@ -1133,7 +1236,8 @@ mod tests {
                 }
             }
         }
-        assert_eq!(checked, 20);
+        // Four forms of every version, and two compressed of each version that can be.
+        assert_eq!(checked, 4 * VERSION + 2 * (VERSION + 1 - COMPRESSED_SINCE));
     }
 
     /// Files are read through the crate's `Contents` with the messages VectorCraft gave before,
@@ -1153,10 +1257,19 @@ mod tests {
         let doc = v["document"].to_string();
         let file = |format: &str, version: u32| format!(r#"{{"format":"{format}","version":{version},"document":{doc}}}"#);
         assert_eq!(message(&file("svg", 4)).as_deref(), Some("not a VectorCraft file: format is `svg`"));
-        assert_eq!(message(&file("vectorcraft", 9)).as_deref(), Some("file version 9 is newer than this VectorCraft supports (4)"));
-        // A document that does not read is reported first, as before.
+        assert_eq!(
+            message(&file("vectorcraft", 9)).as_deref(),
+            Some(format!("file version 9 is newer than this VectorCraft supports ({VERSION})").as_str())
+        );
+        // A file too new is reported as such even when its document does not read (a later
+        // version's document needn't), and a document that does not read otherwise.
+        assert_eq!(
+            message(r#"{"format":"vectorcraft","version":9,"document":7}"#).as_deref(),
+            Some(format!("file version 9 is newer than this VectorCraft supports ({VERSION})").as_str())
+        );
         assert!(
-            message(r#"{"format":"vectorcraft","version":9,"document":7}"#).is_some_and(|m| m.starts_with("not a VectorCraft file: invalid type"))
+            message(&format!(r#"{{"format":"vectorcraft","version":{VERSION},"document":7}}"#))
+                .is_some_and(|m| m.starts_with("not a VectorCraft file: invalid type"))
         );
         for json in [format!(r#"["vectorcraft",3,{doc},{{}},{{}}]"#), format!(r#"["vectorcraft",3,{doc}]"#)] {
             assert_eq!(load(json.as_bytes()).map(|d| d.artboards.len()).ok(), Some(1), "{json}");
@@ -1196,7 +1309,7 @@ mod tests {
             // Saved for an older app, in every older version: the radius in points, which opens
             // here in pixels again.
             let px = radius(&old);
-            for version in MIN_VERSION..VERSION {
+            for version in MIN_VERSION..RELEASED_VERSION {
                 let bytes = save_with(&old, &SaveOptions { version, ..SaveOptions::default() }).unwrap();
                 let json = String::from_utf8(unpack::Unpacked::new(&bytes).unwrap().json().to_vec()).unwrap();
                 let at = json.find("\"maxRadius\":").unwrap() + "\"maxRadius\":".len();
@@ -1206,6 +1319,15 @@ mod tests {
                 assert!((radius(&back) - px).abs() < 1e-9, "{ppi} ppi, version {version}: {}", radius(&back));
             }
             assert_eq!(radius(&old), px, "{ppi} ppi: saving leaves the open document as it is");
+            // The version releases write and this build's later ones keep it in pixels.
+            for version in RELEASED_VERSION..=VERSION {
+                let bytes = save_with(&old, &SaveOptions { version, ..SaveOptions::default() }).unwrap();
+                let json = String::from_utf8(unpack::Unpacked::new(&bytes).unwrap().json().to_vec()).unwrap();
+                let at = json.find("\"maxRadius\":").unwrap() + "\"maxRadius\":".len();
+                let saved: f64 = json[at..].split([',', '}']).next().unwrap().trim().parse().unwrap();
+                assert_eq!(saved, px, "{ppi} ppi, version {version} holds the pixels");
+                assert_eq!(radius(&load(&bytes).unwrap()), px, "{ppi} ppi, version {version}");
+            }
         }
     }
 
@@ -1416,11 +1538,20 @@ mod tests {
         assert_eq!((again.version, angle(&again)), (now, Some(-30.0)), "saved again, it is the current version");
         // Saved for an older file version (apps before 0.21.0): version 1 with the angle negated
         // back, whatever the generator, and it reopens as it was.
-        for version in MIN_VERSION..VERSION {
+        for version in MIN_VERSION..RELEASED_VERSION {
             let bytes = save_with(&d, &SaveOptions { version, ..SaveOptions::default() }).unwrap();
             let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
             assert_eq!(v["document"]["version"], 1, "file version {version}");
             assert!(String::from_utf8_lossy(&bytes).contains(r#""angle":-30.0"#), "file version {version}");
+            let back = load(&bytes).unwrap();
+            assert_eq!((back.version, angle(&back)), (now, Some(30.0)), "file version {version}");
+        }
+        // The version releases write and this build's later ones: the document's own version
+        // and angle, as an app of 0.21.0 or later reads them.
+        for version in RELEASED_VERSION..=VERSION {
+            let bytes = save_with(&d, &SaveOptions { version, ..SaveOptions::default() }).unwrap();
+            let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+            assert_eq!(v["document"]["version"], now, "file version {version}");
             let back = load(&bytes).unwrap();
             assert_eq!((back.version, angle(&back)), (now, Some(30.0)), "file version {version}");
         }

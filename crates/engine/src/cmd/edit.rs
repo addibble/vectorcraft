@@ -727,13 +727,29 @@ fn unknown_key(doc: &Document, base: &Document, written: &[(String, Value)]) -> 
     }
     let out = vectorcraft_doc::describing(|| serde_json::to_value(doc))?;
     for (at, w) in written {
-        let Some(o) = out.pointer(at) else { return Ok(Some(at.clone())) };
+        let Some(o) = out.pointer(at) else {
+            // A path's `d` or `kinds` written on their own: the path's notation (below).
+            let notation = at
+                .rsplit_once('/')
+                .is_some_and(|(parent, k)| matches!(k, "d" | "kinds") && out.pointer(parent).is_some_and(|p| p.get("subpaths").is_some()));
+            if notation {
+                continue;
+            }
+            return Ok(Some(at.clone()));
+        };
         let mut stack = vec![(w, o, at.clone())];
         while let Some((w, o, at)) = stack.pop() {
             match (w, o) {
                 (Value::Object(w), Value::Object(o)) => {
+                    // A path written as a saved file holds it (`d` and its `kinds`, in SVG's
+                    // notation) where the model's full form has its `subpaths`: those keys are
+                    // the path, read; any other key there the path's reader skips.
+                    let path = o.contains_key("subpaths");
                     for (k, v) in w {
                         let here = format!("{at}/{}", k.replace('~', "~0").replace('/', "~1"));
+                        if path && matches!(k.as_str(), "d" | "kinds") {
+                            continue;
+                        }
                         match o.get(k) {
                             Some(x) => stack.push((v, x, here)),
                             None => return Ok(Some(here)),

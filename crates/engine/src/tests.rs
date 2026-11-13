@@ -1,7 +1,7 @@
 use serde_json::json;
 
 use super::*;
-use vectorcraft_geom::Point;
+use vectorcraft_geom::{AnchorKind, PathData, Point};
 use vectorcraft_tools::{PointerEvent, PointerKind, ToolKey};
 
 mod actionset;
@@ -1576,6 +1576,184 @@ fn path_create_with_path_data_refuses_closed_given_as_text() {
     }
 }
 
+/// `path.create` reads `d`'s geometry as a saved file's (an arc one cubic per quarter turn with
+/// half a degree of grace); its closing rule and kinds depend on `kinds`: with it, as a saved
+/// file reads them, without, as path data written by hand (a closing point within 1e-7 of the
+/// start folded in, kinds from the handles, as it always has). Path data it cannot read, or that
+/// draws nothing, is refused with what is wrong.
+#[test]
+fn path_create_reads_path_data_as_a_file_does() {
+    let mut s = session();
+    let made = |s: &mut Session, p: Value| {
+        let id = NodeId(s.execute("path.create", &p).unwrap()["id"].as_u64().unwrap());
+        let NodeKind::Path { path, .. } = &s.doc().unwrap().doc.node(id).unwrap().kind else { panic!("a path") };
+        path.clone()
+    };
+    let geometry = |p: &PathData| p.subpaths.iter().flat_map(|s| &s.anchors).map(|a| (a.h_in, a.p, a.h_out)).collect::<Vec<_>>();
+    let kinds =
+        |p: &PathData| p.subpaths.iter().flat_map(|s| &s.anchors).map(|a| if a.kind == AnchorKind::Smooth { 's' } else { 'c' }).collect::<String>();
+    for (d, smooth) in [
+        ("M0 0A1000 1000 0 1 1 10 0", "csssc"),
+        ("M0 0A5 5 0 0 1 10 0", "csc"),
+        ("M0 0C10 10 50 10 60 0S110 -10 120 0", "csc"),
+        ("M0 0Q30 30 60 0T120 0Z", "csc"),
+        ("m10 10h20v20h-20z m5 5 l1 1", "cccccc"),
+        // Was smooth by its handles before path data went through the file's reader, and still is.
+        ("M0 0C1 1 9 1 10 0C11 -1 19 -1 20 0", "csc"),
+        ("M0 5C0 2.24 2.24 0 5 0C7.76 0 10 2.24 10 5C10 7.76 7.76 10 5 10C2.24 10 0 7.76 0 5Z", "ssss"),
+        ("M0 0A5 5 0 0 1 10 0A5 5 0 0 1 0 0Z", "ssss"),
+        // An open subpath a move ends keeps its corners, as it always has; the last is inferred.
+        ("M0 0C0 10 20 10 20 0C20 -10 40 -10 40 0M50 50L60 60", "ccccc"),
+        ("M50 50L60 60M0 0C0 10 20 10 20 0C20 -10 40 -10 40 0", "cccsc"),
+        // An arc's joins in an open subpath another follows: corners, as from_bezpath made them.
+        ("M0 0A5 5 0 0 1 10 0M50 50L60 60", "ccccc"),
+    ] {
+        let by_file = vectorcraft_geom::notation::parse_path_data(d, None).unwrap();
+        let path = made(&mut s, json!({"d": d}));
+        assert_eq!(geometry(&path), geometry(&by_file), "{d}");
+        assert_eq!(kinds(&path), smooth, "{d}");
+        // What PathData::from_bezpath made of the same data, where kurbo reads it as SVG does.
+        if !d.contains(['A', 'S', 'T']) {
+            assert_eq!(path, PathData::from_bezpath(&vectorcraft_geom::BezPath::from_svg(d).unwrap()), "{d}");
+        }
+    }
+    // `kinds` says each anchor's kind, as in a file, the anchors counted as a file holds them: a
+    // `d` and `kinds` as a file saved before the near closing case was written them.
+    assert_eq!(kinds(&made(&mut s, json!({"d": "M0 0L10 0L10 10", "kinds": "csc"}))), "csc");
+    assert_eq!(kinds(&made(&mut s, json!({"d": "M0 0L10 0L10 10L0 5e-8Z", "kinds": "cscc"}))), "cscc");
+    // Without kinds the same d folds its closing point within 1e-7, as written by hand; with
+    // kinds it is a saved file's d, every anchor counted.
+    assert_eq!(made(&mut s, json!({"d": "M0 0L10 0L10 10L0 5e-8Z"})).anchor_count(), 3);
+    assert!(s.execute("path.create", &json!({"d": "M0 0L10 0L10 10L0 5e-8Z", "kinds": "csc"})).is_err());
+    assert_eq!(kinds(&made(&mut s, json!({"d": "M0 0C1 1 9 1 10 0C11 -1 19 -1 20 0", "kinds": "ccc"}))), "ccc");
+    for (p, why) in [
+        (json!({"d": "M0 0R1 1"}), "`R` is not path data"),
+        (json!({"d": "M0 0L1 1", "kinds": "c"}), "`kinds` gives subpath 0 1 letters but it has 2 anchors"),
+        (json!({"d": "M0 0L1 1", "kinds": 5}), "`kinds` must be a string"),
+        (json!({"d": 5}), "`d` must be a string"),
+        (json!({"d": ""}), "need at least one anchor"),
+        (json!({"d": "  "}), "need at least one anchor"),
+        (json!({"anchors": [{"x": 0, "y": 0}], "kinds": "c"}), "`kinds` goes with `d`"),
+    ] {
+        let err = s.execute("path.create", &p).unwrap_err().to_string();
+        assert!(err.contains(why), "{p}: {err}");
+    }
+}
+
+proptest::proptest! {
+    #![proptest_config(proptest::prelude::ProptestConfig { cases: 256, failure_persistence: None, ..proptest::prelude::ProptestConfig::default() })]
+
+    /// Over path data kurbo reads to the end (M, L, C, Q, H and V either case, numbers without a
+    /// leading `+`, `Z` followed by a move, a segment or the end), `path.create` without `kinds`
+    /// makes what PathData::from_bezpath made of it, kinds included.
+    #[test]
+    fn path_create_is_from_bezpath_where_kurbo_reads_all_of_it(d in arb_kurbo_path()) {
+        let mut s = session();
+        let id = NodeId(s.execute("path.create", &json!({"d": d})).unwrap()["id"].as_u64().unwrap());
+        let NodeKind::Path { path, .. } = &s.doc().unwrap().doc.node(id).unwrap().kind else { panic!("a path") };
+        proptest::prop_assert_eq!(path, &PathData::from_bezpath(&vectorcraft_geom::BezPath::from_svg(&d).unwrap()), "{}", d);
+    }
+}
+
+/// One step of a subpath `arb_kurbo_subpath` writes: its command, relative or not, its numbers.
+#[derive(Clone, Debug)]
+enum KurboStep {
+    Line(bool, (f64, f64)),
+    Curve(bool, (f64, f64), (f64, f64), (f64, f64)),
+    /// A curve whose first control point reflects the last curve's second, so the handles at the
+    /// join line up (written as `C` with the reflected point, as kurbo reads `C` as given).
+    Smooth((f64, f64), (f64, f64)),
+    Quad(bool, (f64, f64), (f64, f64)),
+    Horizontal(bool, f64),
+    Vertical(bool, f64),
+}
+
+/// Path data kurbo reads to the end: subpaths of segments (M, L, C, Q, H and V either case,
+/// numbers without a leading `+`), each begun by a move (`M`, or `m` from where the last one left
+/// off) or, after a `Z`, by its first segment alone, and ended by nothing, `Z`, a line back to
+/// exactly its start then `Z`, a relative line back (a rounding error off, as relative data ends)
+/// then `z`, or a line to 5e-8 off its start then `Z`. Curves whose first control point reflects
+/// the last one's second make joins whose handles line up.
+fn arb_kurbo_path() -> impl proptest::strategy::Strategy<Value = String> {
+    use proptest::prelude::*;
+    let n = || (-1000i32..1000).prop_map(|n| f64::from(n) / 10.0);
+    let pt = move || (n(), n());
+    let step = prop_oneof![
+        (any::<bool>(), pt()).prop_map(|(r, p)| KurboStep::Line(r, p)),
+        (any::<bool>(), pt(), pt(), pt()).prop_map(|(r, a, b, c)| KurboStep::Curve(r, a, b, c)),
+        (pt(), pt()).prop_map(|(b, c)| KurboStep::Smooth(b, c)),
+        (any::<bool>(), pt(), pt()).prop_map(|(r, a, b)| KurboStep::Quad(r, a, b)),
+        (any::<bool>(), n()).prop_map(|(r, x)| KurboStep::Horizontal(r, x)),
+        (any::<bool>(), n()).prop_map(|(r, y)| KurboStep::Vertical(r, y)),
+    ];
+    let sub = (pt(), any::<bool>(), any::<bool>(), proptest::collection::vec(step, 0..5), 0u8..5);
+    proptest::collection::vec(sub, 1..4).prop_map(|subs| {
+        let mut d = String::new();
+        // Where the reader is, the subpath's start, and whether the last subpath was closed (so a
+        // segment may follow its Z without a move).
+        let (mut at, mut start, mut closed) = ((0.0f64, 0.0f64), (0.0f64, 0.0f64), false);
+        let abs = |at: (f64, f64), rel: bool, p: (f64, f64)| if rel { (at.0 + p.0, at.1 + p.1) } else { p };
+        for (i, (move_to, rel_move, no_move, steps, ending)) in subs.into_iter().enumerate() {
+            if i > 0 && closed && no_move && !steps.is_empty() {
+                // After Z the current point is the closed subpath's start; the segments go on from it.
+                at = start;
+            } else if rel_move {
+                let delta = (move_to.0 - at.0, move_to.1 - at.1);
+                d += &format!("m{} {}", delta.0, delta.1);
+                at = (at.0 + delta.0, at.1 + delta.1);
+                start = at;
+            } else {
+                d += &format!("M{} {}", move_to.0, move_to.1);
+                (at, start) = (move_to, move_to);
+            }
+            // The last curve's second control point, which a reflected curve reflects.
+            let mut c2 = None::<(f64, f64)>;
+            for step in steps {
+                match step {
+                    KurboStep::Line(r, p) => {
+                        d += &format!("{}{} {}", if r { 'l' } else { 'L' }, p.0, p.1);
+                        (at, c2) = (abs(at, r, p), None);
+                    }
+                    KurboStep::Curve(r, a, b, p) => {
+                        d += &format!("{}{} {} {} {} {} {}", if r { 'c' } else { 'C' }, a.0, a.1, b.0, b.1, p.0, p.1);
+                        (at, c2) = (abs(at, r, p), Some(abs(at, r, b)));
+                    }
+                    KurboStep::Smooth(b, p) => {
+                        let prev = c2.unwrap_or(at);
+                        let a = (at.0 + (at.0 - prev.0), at.1 + (at.1 - prev.1));
+                        d += &format!("C{} {} {} {} {} {}", a.0, a.1, b.0, b.1, p.0, p.1);
+                        (at, c2) = (p, Some(b));
+                    }
+                    KurboStep::Quad(r, q, p) => {
+                        d += &format!("{}{} {} {} {}", if r { 'q' } else { 'Q' }, q.0, q.1, p.0, p.1);
+                        (at, c2) = (abs(at, r, p), None);
+                    }
+                    KurboStep::Horizontal(r, x) => {
+                        d += &format!("{}{x}", if r { 'h' } else { 'H' });
+                        (at, c2) = ((if r { at.0 + x } else { x }, at.1), None);
+                    }
+                    KurboStep::Vertical(r, y) => {
+                        d += &format!("{}{y}", if r { 'v' } else { 'V' });
+                        (at, c2) = ((at.0, if r { at.1 + y } else { y }), None);
+                    }
+                }
+            }
+            closed = true;
+            match ending {
+                1 => d += "Z",
+                2 => d += &format!("L{} {}Z", start.0, start.1),
+                3 => d += &format!("l{} {}z", start.0 - at.0, start.1 - at.1),
+                4 => d += &format!("L{} {}Z", start.0 + 5e-8, start.1),
+                _ => closed = false,
+            }
+            if closed {
+                at = start;
+            }
+        }
+        d
+    })
+}
+
 /// #1824: with anchors selected with Direct Selection, the Transform panel's X/Y/W/H
 /// (`object.setBounds`) are the box around those anchors, and only they move or scale.
 #[test]
@@ -3010,6 +3188,41 @@ fn document_query_and_schema_read_the_model_a_part_at_a_time() {
     assert!(list["properties"].as_array().unwrap().iter().any(|p| p["name"] == "number"), "a numbered list's style too: {list}");
 }
 
+/// A paint's schema is one choice of five forms (a global swatch's name, or a paint object of one
+/// of four kinds), so `document.schema` answers the form a paint is, whichever form a saved file
+/// gives it, and the path walks into it.
+#[test]
+fn document_schema_walks_into_a_paint() {
+    let mut s = session();
+    s.execute("swatch.new", &json!({"name": "Accent", "color": "#cc3319", "global": true})).unwrap();
+    let plain = rect(&mut s, 0.0, 0.0, 10.0, 10.0);
+    s.execute("paint.setFill", &json!({"color": "#336699"})).unwrap();
+    let named = rect(&mut s, 20.0, 0.0, 10.0, 10.0);
+    s.execute("paint.setFill", &json!({"swatch": "Accent"})).unwrap();
+    let tinted = rect(&mut s, 40.0, 0.0, 10.0, 10.0);
+    s.execute("paint.setFill", &json!({"swatch": "Accent", "tint": 40})).unwrap();
+    let at = |s: &mut Session, id: NodeId, rest: &str| {
+        s.execute("document.schema", &json!({"at": format!("$.layers..[?@.id == {}].appearance.items[0].paint{rest}", id.0)}))
+    };
+    // The fill (the first item) with a colour of its own: the solid object, and the colour in it.
+    let paint = at(&mut s, plain, "").unwrap();
+    let names: Vec<&str> = paint["properties"].as_array().unwrap().iter().filter_map(|p| p["name"].as_str()).collect();
+    assert!(names.contains(&"color") && names.contains(&"swatch"), "the solid variant itself: {paint}");
+    assert_eq!(at(&mut s, plain, ".color").unwrap()["type"], "Color");
+    // Linked at 100%, the saved file holds the swatch's name: the string branch.
+    let by_name = at(&mut s, named, "").unwrap();
+    assert_eq!((&by_name["valueType"], &by_name["shape"]), (&json!("string"), &json!("string")), "the name branch itself: {by_name}");
+    assert!(by_name["variants"].is_null(), "{by_name}");
+    // Linked at a tint, the solid object without its colour, which the swatch gives.
+    let at_tint = at(&mut s, tinted, "").unwrap();
+    assert_eq!(at_tint["tag"], "solid", "{at_tint}");
+    let missing = at(&mut s, tinted, ".color").unwrap_err().to_string();
+    assert!(missing.contains("nothing in the document matches"), "a linked colour leaves its value to the swatch: {missing}");
+    assert_eq!(at(&mut s, tinted, ".swatch").unwrap()["valueType"], "string");
+    let kinds = s.execute("document.schema", &json!({"type": "Paint"})).unwrap();
+    assert_eq!(kinds["variants"].as_array().map(Vec::len), Some(5), "{kinds}");
+}
+
 /// `document.patch` edits the model by JSON Patch at the pointers `document.query` answers: one
 /// undo step, journaled, all or none, with fresh ids for what is added or copied.
 #[test]
@@ -3143,6 +3356,45 @@ fn document_patch_refuses_what_a_file_would_read_back_otherwise() {
     s.execute("select.save", &json!({"name": "Mark"})).unwrap();
     s.execute("document.patch", &json!({"patch": [{"op": "remove", "path": "/layers/0/kind/children/0"}]})).unwrap();
     assert!(s.doc().unwrap().doc.node(NodeId(a)).is_none());
+}
+
+/// A patch that leaves paints linked by name to a swatch the document no longer has (removed,
+/// renamed) or that is no longer a global colour is refused, naming the swatch and the fix, and
+/// nothing is recreated: only a file opened recreates a missing swatch. A string that names no
+/// swatch ("none", "#336699") is refused, not made a swatch.
+#[test]
+fn document_patch_refuses_paints_linked_to_a_swatch_it_takes_away() {
+    let mut s = session();
+    s.execute("swatch.new", &json!({"name": "Accent", "color": "#cc3319", "global": true})).unwrap();
+    rect(&mut s, 0.0, 0.0, 10.0, 10.0);
+    s.execute("paint.setFill", &json!({"swatch": "Accent"})).unwrap();
+    let v = s.execute("document.query", &json!({"path": "$.swatches[?@.name == 'Accent']"})).unwrap();
+    let swatch = v["matches"][0]["pointer"].as_str().unwrap().to_string();
+    let fill = s.execute("document.query", &json!({"path": "$.layers[0].kind.children[0].appearance.items[0].paint"})).unwrap();
+    assert_eq!(fill["matches"][0]["value"], "Accent", "linked by name");
+    let paint = fill["matches"][0]["pointer"].as_str().unwrap().to_string();
+    let before = s.doc().unwrap().doc.clone();
+    for (op, why) in [
+        (json!({"op": "remove", "path": swatch}), "\"Accent\", a swatch the document lacks: add \"Accent\" as a global colour swatch"),
+        (json!({"op": "replace", "path": format!("{swatch}/name"), "value": "Brand"}), "\"Accent\", a swatch the document lacks"),
+        (
+            json!({"op": "add", "path": format!("{swatch}/global"), "value": false}),
+            "\"Accent\", a swatch that isn't a global colour: make \"Accent\" a global colour swatch",
+        ),
+        (json!({"op": "replace", "path": paint, "value": "none"}), "\"none\", a swatch the document lacks"),
+        (json!({"op": "replace", "path": paint, "value": "#336699"}), "\"#336699\", a swatch the document lacks"),
+    ] {
+        let err = s.execute("document.patch", &json!({"patch": [op]})).unwrap_err().to_string();
+        assert!(err.contains(why) && err.contains("or give the paint its colour"), "{op}: {err}");
+        assert_eq!(s.doc().unwrap().doc, before, "{op}");
+    }
+    // Renamed with every paint naming it, in one patch: taken.
+    s.execute(
+        "document.patch",
+        &json!({"patch": [{"op": "replace", "path": format!("{swatch}/name"), "value": "Brand"}, {"op": "replace", "path": paint, "value": "Brand"}]}),
+    )
+    .unwrap();
+    assert!(s.doc().unwrap().doc.swatch("Brand").is_some());
 }
 
 /// While symbol editing is on, the document's JSON does not hold the art being edited: a patch
@@ -3306,7 +3558,25 @@ fn document_patch_refuses_a_key_the_model_does_not_have() {
         let err = s.execute("document.patch", &json!({"patch": [op]})).unwrap_err().to_string();
         assert!(err.contains(key) && err.contains("not a field"), "{err}");
     }
+    // A path in SVG's notation, as a saved file holds it, is the path; another key beside it
+    // is not.
+    let mut drawn = v["matches"][0]["value"].clone();
+    drawn.as_object_mut().unwrap().remove("id");
+    drawn["kind"] = json!({"type": "path", "path": {"d": "M0 0L10 0L10 10Z", "kinds": "csc"}});
+    let mut stray = drawn.clone();
+    stray["kind"]["path"]["dd"] = json!(1);
+    let err =
+        s.execute("document.patch", &json!({"patch": [{"op": "add", "path": "/layers/0/kind/children/-", "value": stray}]})).unwrap_err().to_string();
+    assert!(err.contains("/layers/0/kind/children/1/kind/path/dd") && err.contains("not a field"), "{err}");
     assert_eq!(s.doc().unwrap().doc.layers, before.layers);
+    s.execute("document.patch", &json!({"patch": [{"op": "add", "path": "/layers/0/kind/children/-", "value": drawn}]})).unwrap();
+    let read = s.execute("document.query", &json!({"path": "$.layers[0].kind.children[1].kind.path"})).unwrap();
+    assert_eq!(read["matches"][0]["value"], json!({"d": "M0 0L10 0L10 10Z", "kinds": "csc"}));
+    // So is its `d` replaced on its own, at the pointer a query answers.
+    s.execute("document.patch", &json!({"patch": [{"op": "replace", "path": "/layers/0/kind/children/1/kind/path/d", "value": "M0 0L20 0L20 20Z"}]}))
+        .unwrap();
+    let read = s.execute("document.query", &json!({"path": "$.layers[0].kind.children[1].kind.path.d"})).unwrap();
+    assert_eq!(read["matches"][0]["value"], json!("M0 0L20 0L20 20Z"));
     s.execute("document.patch", &json!({"patch": [{"op": "add", "path": "/unknown", "value": {"vendor": {"any": [1]}}}]})).unwrap();
     assert_eq!(s.doc().unwrap().doc.unknown.get("vendor"), Some(&json!({"any": [1]})));
 }

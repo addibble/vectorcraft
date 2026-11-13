@@ -22,6 +22,8 @@ pub enum LiveShape {
         /// Maps the untransformed shape (origin at its top-left) into the document. A rotation
         /// or reflection plus a move, unless a shear (or a file saved before transforms folded
         /// their scale into `w`/`h`) put more in it.
+        #[serde(with = "vectorcraft_geom::notation::affine")]
+        #[schemars(with = "vectorcraft_geom::notation::Transform")]
         xf: Affine,
     },
     Ellipse {
@@ -29,6 +31,8 @@ pub enum LiveShape {
         h: f64,
         /// Pie start/end angles in degrees (0/360 = full ellipse).
         pie: (f64, f64),
+        #[serde(with = "vectorcraft_geom::notation::affine")]
+        #[schemars(with = "vectorcraft_geom::notation::Transform")]
         xf: Affine,
     },
     Polygon {
@@ -36,6 +40,8 @@ pub enum LiveShape {
         /// 3–1000, as [`LiveShape::set_sides`] gives it; a file's count is clamped when read.
         #[serde(deserialize_with = "de_sides")]
         sides: u32,
+        #[serde(with = "vectorcraft_geom::notation::affine")]
+        #[schemars(with = "vectorcraft_geom::notation::Transform")]
         xf: Affine,
         /// Corner radii in document units, by vertex from the first one clockwise (none: sharp).
         #[serde(default, skip_serializing_if = "Vec::is_empty")]

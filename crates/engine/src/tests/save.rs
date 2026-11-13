@@ -815,3 +815,37 @@ fn a_guide_hidden_or_locked_on_its_own_survives_save_and_reopen() {
     }
     let _ = std::fs::remove_dir_all(d);
 }
+
+/// A file of a version this build writes but a release may not read (5) or of the releases' own
+/// (4) is saved at that version by Save, so the app that wrote it still opens it; a later version
+/// is a choice made with Save As (its `version` option), which the document then keeps.
+#[test]
+fn save_writes_a_file_at_the_version_it_was_opened_at() {
+    let d = dir("opened-version");
+    for version in [vectorcraft_format::RELEASED_VERSION, vectorcraft_format::NAMED_COLORS_SINCE, vectorcraft_format::VERSION] {
+        let file = path(&d, &format!("v{version}.vectorcraft"));
+        let mut s = session();
+        rect(&mut s);
+        let bytes = vectorcraft_format::save_with(&s.doc().unwrap().doc, &vectorcraft_format::SaveOptions { version, ..Default::default() }).unwrap();
+        std::fs::write(&file, bytes).unwrap();
+        let mut s = Session::new();
+        s.execute("document.open", &json!({"path": file})).unwrap();
+        assert!(!s.doc().unwrap().converted, "version {version}");
+        rect(&mut s);
+        s.execute("document.save", &json!({})).unwrap();
+        let (_, info) = vectorcraft_format::load_info(&std::fs::read(&file).unwrap()).unwrap();
+        assert_eq!(info.version, version, "Save keeps the version");
+        // Revert reads it again: still that version.
+        rect(&mut s);
+        s.execute("file.revert", &json!({})).unwrap();
+        rect(&mut s);
+        s.execute("document.save", &json!({})).unwrap();
+        assert_eq!(vectorcraft_format::load_info(&std::fs::read(&file).unwrap()).unwrap().1.version, version, "after Revert");
+        // Save As the current version: kept from then on.
+        s.execute("document.save", &json!({"path": file, "version": vectorcraft_format::VERSION})).unwrap();
+        rect(&mut s);
+        s.execute("document.save", &json!({})).unwrap();
+        assert_eq!(vectorcraft_format::load_info(&std::fs::read(&file).unwrap()).unwrap().1.version, vectorcraft_format::VERSION);
+    }
+    let _ = std::fs::remove_dir_all(&d);
+}

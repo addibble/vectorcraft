@@ -595,7 +595,8 @@ An **exporter** gets something else: the native `.vectorcraft` document JSON wit
 renditions or save-preference metadata (the format is documented in
 [`crates/format/src/lib.rs`](../crates/format/src/lib.rs)). That is every layer, object, appearance and effect record,
 artboard, swatch and symbol, so an exporter reads whatever the document holds; it checks `version`, since a later host
-may write a newer one. Images of 8 KiB or more are listed in `images` with their MIME type and `blob` but without their
+may write a newer one. It is the version VectorCraft's releases write (4): a path's anchors and a transform's matrix,
+every colour whole, even where a saved file of a later version writes SVG path data or a swatch's name. Images of 8 KiB or more are listed in `images` with their MIME type and `blob` but without their
 data, which follows the JSON in a saved file; smaller ones keep their base64 `data`.
 
 An **importer** gets the bytes of the file being opened, as they are (not JSON), at most 128 MiB of them.

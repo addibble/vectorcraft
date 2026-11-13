@@ -95,9 +95,37 @@ pub use skip::describing;
 /// file saved before differently (`tests::defaults` pins them). The format's writer serializes documents
 /// this way; so may anything that shows a document as its file holds it. (Not the minified layout a
 /// large document is saved in: that is whitespace, and either layout is the saved form.)
+///
+/// Geometry is then written in SVG's notation too ([`vectorcraft_geom::notation`]): paths as path
+/// data, transforms as SVG transforms. The mode itself is kept by [`vectorcraft_geom::saved`], so
+/// that the geometry types below this crate read it.
 pub fn as_saved<R>(f: impl FnOnce() -> R) -> R {
-    let _restore = skip::enter();
-    f()
+    vectorcraft_geom::saved::as_saved(f)
+}
+
+impl Serialize for Document {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        if skip::saving() {
+            vectorcraft_color::saved_links::with(self.saved_links(), || Document::serialize(self, s))
+        } else {
+            Document::serialize(self, s)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Document {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        // Its paints may leave their colours to its swatches, which it fills in before anything
+        // else sees them; character styles' paints are JSON, read as paints only then.
+        vectorcraft_color::saved_links::reading(|| {
+            let before = vectorcraft_color::saved_links::unresolved_read();
+            let mut doc = Document::deserialize(d)?;
+            if vectorcraft_color::saved_links::unresolved_read() != before || doc.char_styles_leave_colours_to_swatches() {
+                doc.resolve_saved_links().map_err(serde::de::Error::custom)?;
+            }
+            Ok(doc)
+        })
+    }
 }
 
 pub use appearance::StrokeGradientMode;
@@ -177,7 +205,11 @@ pub use records::{ImageBlob, MaskEdit, NewArtIds, SavedSelection, SavedView, Svg
 pub use stored_art::{StoredPlace, StoredRoot};
 pub use units::{ColorMode, Unit, parse_number};
 
+/// Its serde lends the paints its swatches while it is written as saved ([`as_saved`]), so a colour
+/// linked to a global swatch is written by the swatch's name, and fills such colours in when it is
+/// read ([`vectorcraft_color::saved_links`]).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(remote = "Self")]
 pub struct Document {
     pub version: u32,
     #[serde(default, skip_serializing_if = "crate::skip::left_out")]

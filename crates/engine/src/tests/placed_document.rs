@@ -909,6 +909,30 @@ fn saved_for_older_apps_with_a_precision_the_placed_art_is_rounded_too() {
     assert_ne!(preview, crate::cmd::fileio::preview_png(&s.doc().unwrap().doc).unwrap());
 }
 
+/// Saved with a precision for a version that knows placed documents (4 and later), the file
+/// keeps the placed document, and so does the preview: it shows the placed file's art, not the
+/// rounded groups only older versions get.
+#[test]
+fn saved_for_versions_that_know_placed_documents_the_preview_shows_them_placed() {
+    let dir = Folder::new("placed-precision-current");
+    let src = dir.file("triangle.vectorcraft");
+    let mut d = Document::new(100.0, 100.0);
+    let layer = d.layers[0].id;
+    let id = d.alloc_id();
+    let points = [(3.4876474632797176, 1.0), (90.0, 2.123456789), (40.0, 80.0)].map(|(x, y)| vectorcraft_geom::Point::new(x, y));
+    let path = vectorcraft_geom::PathData::single(vectorcraft_geom::path::SubPath::polyline(&points, true));
+    d.insert(Some(layer), 0, Node::path(id, path, look(BLUE))).unwrap();
+    write(&src, &vectorcraft_format::save_file(&d));
+    let mut s = session();
+    place(&mut s, &src);
+    let shown = crate::cmd::fileio::preview_png(&s.doc().unwrap().doc).unwrap();
+    for version in vectorcraft_format::PLACED_SINCE..=vectorcraft_format::VERSION {
+        let file = decode(&s.execute("file.saveCopy", &json!({"version": version, "precision": 0, "preview": true})).unwrap());
+        assert!(vectorcraft_format::load(&file).unwrap().has_placed(), "version {version}");
+        assert_eq!(vectorcraft_format::preview(&file), shown, "version {version}");
+    }
+}
+
 #[test]
 fn break_link_gives_the_editable_copy_placing_without_link_gives() {
     let dir = Folder::new("placed-break");

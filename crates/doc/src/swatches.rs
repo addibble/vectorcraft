@@ -228,6 +228,202 @@ impl Document {
     }
 }
 
+impl Document {
+    /// Each global swatch's name and the colour a paint linked to it at 100% holds, for writing
+    /// such paints by name ([`vectorcraft_color::saved_links`]). Only swatches whose colour is their
+    /// own: a Lab spot colour shown through the colour settings may show otherwise elsewhere.
+    pub(crate) fn saved_links(&self) -> std::collections::BTreeMap<String, Color> {
+        // The first swatch of a name, as [`Document::swatch`] finds it, whatever it is.
+        let mut first: std::collections::BTreeMap<String, Option<Color>> = std::collections::BTreeMap::new();
+        for w in self.swatches_iter() {
+            if first.contains_key(&w.name) {
+                continue;
+            }
+            let own = match &w.paint {
+                Paint::Solid { color, swatch: None, .. } if w.global && self.linked_color(*color, w.spot) == *color => Some(*color),
+                _ => None,
+            };
+            first.insert(w.name.clone(), own);
+        }
+        first.into_iter().filter_map(|(name, color)| Some((name, color?))).collect()
+    }
+
+    /// Fill in every linked colour read without its value ([`Color::UNRESOLVED`]) from its
+    /// swatch, as linking does ([`Document::global_color`]: a spot colour through the colour
+    /// settings, Registration included), wherever the document holds paints, character styles'
+    /// included. Run it as the document is read ([`vectorcraft_color::saved_links::reading`]),
+    /// since character styles' paints are read here. Every paint is reached by that walk
+    /// ([`Document::map_solid_paints`]), so none is left without its value.
+    ///
+    /// A file being opened ([`noting_recreated_swatches`]) opens whatever its links name, as
+    /// Illustrator's Deleted Global Color does: a black global process swatch is made for each
+    /// name the document lacks, every paint linked to it stays linked (redefine the swatch to fix
+    /// them all), and a link to a swatch of the name that is not a global colour shows black; the
+    /// note says which. Any other read refuses either, naming the swatches and the fix.
+    pub(crate) fn resolve_saved_links(&mut self) -> Result<(), String> {
+        let mut names = std::collections::BTreeSet::new();
+        self.map_solid_paints(&mut |c: &mut Color, link: &mut Option<String>, _: &mut f32| {
+            if c.is_unresolved()
+                && let Some(name) = link
+            {
+                names.insert(name.clone());
+            }
+            false
+        });
+        let black = match self.color_mode {
+            crate::ColorMode::Cmyk => Color::Cmyk { c: 0.0, m: 0.0, y: 0.0, k: 1.0 },
+            crate::ColorMode::Rgb => Color::BLACK,
+        };
+        let missing: Vec<String> = names.iter().filter(|n| self.swatch(n).is_none()).cloned().collect();
+        let not_global: Vec<String> = names.iter().filter(|n| self.swatch(n).is_some() && self.global_color(n).is_none()).cloned().collect();
+        if !opening() {
+            if let Some(why) =
+                unresolvable(&missing, "a swatch the document lacks", "swatches the document lacks", "add", "as a global colour swatch")
+            {
+                return Err(why);
+            }
+            if let Some(why) = unresolvable(
+                &not_global,
+                "a swatch that isn't a global colour",
+                "swatches that aren't global colours",
+                "make",
+                "a global colour swatch",
+            ) {
+                return Err(why);
+            }
+        }
+        for name in &missing {
+            self.swatches.push(Swatch { name: name.clone(), paint: Paint::solid(black), global: true, spot: false });
+        }
+        let table: std::collections::BTreeMap<String, Color> = names
+            .into_iter()
+            .map(|name| {
+                let base = self.global_color(&name).unwrap_or(black);
+                (name, base)
+            })
+            .collect();
+        self.map_solid_paints(&mut |c: &mut Color, link: &mut Option<String>, tint: &mut f32| match link.as_deref().and_then(|n| table.get(n)) {
+            Some(base) if c.is_unresolved() => {
+                *c = base.tinted(*tint);
+                true
+            }
+            _ => false,
+        });
+        note_unresolvable(missing, not_global);
+        Ok(())
+    }
+
+    /// Whether a character style's fill or stroke leaves its colour to a swatch (a swatch's name,
+    /// or a linked colour without its value): its attributes are JSON, read as paints only here.
+    pub(crate) fn char_styles_leave_colours_to_swatches(&self) -> bool {
+        self.char_styles.iter().any(|def| {
+            ["fill", "stroke"].iter().filter_map(|k| def.attrs.get(*k)).any(|v| match v {
+                serde_json::Value::String(_) => true,
+                serde_json::Value::Object(o) => o.get("type").and_then(|t| t.as_str()) == Some("solid") && !o.contains_key("color"),
+                _ => false,
+            })
+        })
+    }
+}
+
+/// Most names a note of recreated swatches, or a refusal, lists ([`noting_recreated_swatches`]).
+const RECREATED_NOTE_MAX: usize = 10;
+
+/// What reading documents found their links name and couldn't take as global colours, while
+/// [`noting_recreated_swatches`] runs.
+#[derive(Default)]
+struct Unresolvable {
+    /// Swatches the documents lacked, recreated as black global swatches.
+    missing: Vec<String>,
+    /// Swatches that aren't global colours: paints linked to them show black.
+    not_global: Vec<String>,
+}
+
+std::thread_local! {
+    /// What documents read on this thread couldn't take, while [`noting_recreated_swatches`] runs:
+    /// only then is a file being opened, which recreates what it lacks.
+    static UNRESOLVABLE: std::cell::RefCell<Option<Unresolvable>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Whether documents are read as a file is opened ([`noting_recreated_swatches`]).
+fn opening() -> bool {
+    UNRESOLVABLE.with(|r| r.borrow().is_some())
+}
+
+/// Note what a document being opened couldn't take, for [`noting_recreated_swatches`].
+fn note_unresolvable(missing: Vec<String>, not_global: Vec<String>) {
+    UNRESOLVABLE.with(|r| {
+        if let Some(all) = r.borrow_mut().as_mut() {
+            all.missing.extend(missing);
+            all.not_global.extend(not_global);
+        }
+    });
+}
+
+/// `names`, quoted with `quote`, at most [`RECREATED_NOTE_MAX`] of them and how many more.
+fn listed(names: &[String], quote: (&str, &str)) -> String {
+    let shown: Vec<String> = names.iter().take(RECREATED_NOTE_MAX).map(|n| format!("{}{n}{}", quote.0, quote.1)).collect();
+    let more = names.len() - shown.len();
+    let tail = if more > 0 { format!(" and {more} more") } else { String::new() };
+    format!("{}{tail}", shown.join(", "))
+}
+
+/// Why a document read outside a file opened is refused for paints linked by name to `names`,
+/// swatches that give no colour (`what`, `whats` for several), and the fix: `verb` each `how`, or
+/// give the paints their colours. `None` without names. Plain quotes, as the JSON names them.
+fn unresolvable(names: &[String], what: &str, whats: &str, verb: &str, how: &str) -> Option<String> {
+    let first = names.first()?;
+    let none = if names.iter().any(|n| n == "none") { "; for no paint, write {\"type\": \"none\"}" } else { "" };
+    let colour = r#"{"type": "solid", "color": {"model": "rgb", "r": 0.2, "g": 0.4, "b": 0.6}}"#;
+    Some(if names.len() == 1 {
+        format!("a paint is linked by name to \"{first}\", {what}: {verb} \"{first}\" {how}, or give the paint its colour ({colour}){none}")
+    } else {
+        format!(
+            "paints are linked by name to {}, {whats}: {verb} each {how}, or give the paints their colours ({colour}){none}",
+            listed(names, ("\"", "\""))
+        )
+    })
+}
+
+/// `f`, which opens files' documents, and a note naming the swatches the documents' colours were
+/// linked to that they lacked, which reading recreated as black global swatches, and those that
+/// aren't global colours, whose paints show black ([`Document::resolve_saved_links`]), at most
+/// [`RECREATED_NOTE_MAX`] of each by name; `None` when there were none. Only inside it does a
+/// document read take such links: elsewhere they are refused.
+pub fn noting_recreated_swatches<R>(f: impl FnOnce() -> R) -> (R, Option<String>) {
+    struct Back(Option<Unresolvable>);
+    impl Drop for Back {
+        fn drop(&mut self) {
+            let prev = self.0.take();
+            UNRESOLVABLE.with(|r| *r.borrow_mut() = prev);
+        }
+    }
+    let back = Back(UNRESOLVABLE.with(|r| r.borrow_mut().replace(Unresolvable::default())));
+    let out = f();
+    let Unresolvable { mut missing, mut not_global } = UNRESOLVABLE.with(|r| r.borrow_mut().take()).unwrap_or_default();
+    drop(back);
+    for names in [&mut missing, &mut not_global] {
+        names.sort();
+        names.dedup();
+    }
+    let mut notes = vec![];
+    if !missing.is_empty() {
+        let one = missing.len() == 1;
+        notes.push(format!(
+            "{} swatch{} that colours are linked to {} missing and {} recreated as black global swatches: {}. Redefine each to fix every colour linked to it.",
+            missing.len(),
+            if one { "" } else { "es" },
+            if one { "was" } else { "were" },
+            if one { "is" } else { "are" },
+            listed(&missing, ("“", "”")),
+        ));
+    }
+    if !not_global.is_empty() {
+        notes.push(format!("Colours linked to swatches that aren't global colours show black: {}. Recolour them.", listed(&not_global, ("“", "”")),));
+    }
+    (out, (!notes.is_empty()).then(|| notes.join(" ")))
+}
+
 /// The default name of a solid swatch: its values in its own colour model ("C=10 M=20 Y=30 K=0",
 /// "R=255 G=128 B=0", "Gray K=40", "L=52 a=70 b=-30").
 pub fn color_name(c: Color) -> String {

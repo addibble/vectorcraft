@@ -720,10 +720,15 @@ fn encode_all_of(doc: &Document, format: &str, p: &Value) -> Result<Encoded> {
 /// ([`vectorcraft_format::json_part`]) and `p`'s `params`, for the file `p`'s `path` names (else
 /// one named after the document) with that path's extension when the plug-in lists it, else its
 /// first. Its warnings come back with the file, as losses (the plug-in gives them no kind).
+/// The file is the one VectorCraft's releases write ([`vectorcraft_format::RELEASED_VERSION`]),
+/// as plug-ins have always read it: colours linked to swatches whole, not by the swatch's name
+/// ([`vectorcraft_doc::color::saved_links`]), and geometry structured, a path's anchors and a
+/// transform's matrix, not SVG's notation ([`vectorcraft_doc::geom::notation`]).
 fn plugin_file(doc: &Document, plugin: &vectorcraft_plugins::Plugin, f: &Format, p: &Value) -> Result<Encoded> {
     use vectorcraft_plugins::{Error, export};
     let doc = &*doc.without_edit_modes();
-    let file = vectorcraft_format::save_with(doc, &vectorcraft_format::SaveOptions::default()).map_err(|e| EngineError::Other(e.to_string()))?;
+    let released = vectorcraft_format::SaveOptions { version: vectorcraft_format::RELEASED_VERSION, ..vectorcraft_format::SaveOptions::default() };
+    let file = vectorcraft_format::save_with(doc, &released).map_err(|e| EngineError::Other(e.to_string()))?;
     let path = p.get("path").and_then(Value::as_str);
     let listed = path.map(super::extension).and_then(|e| f.extensions.iter().copied().find(|x| *x == e));
     let extension = listed.or(f.extensions.first().copied()).unwrap_or_default();
