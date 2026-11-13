@@ -575,3 +575,187 @@ fn home_welcome_and_community_are_centred() {
     let right = open_x + width("Open") / 2.0;
     assert!((centre - left - (right - centre)).abs() < 6.0, "New / Open row is centred: {left}..{right} about {centre}");
 }
+
+/// An embedding page (`vectorcraft:configure`, docs/web-embed.md) hides commands from the user and
+/// says what the window shows with no document open: the message stands in for the Home screen,
+/// the Home button and the hidden commands' menu items, shortcuts and runs from the UI are gone,
+/// and the page's own control requests still run them.
+#[test]
+fn an_embedding_page_hides_commands_and_says_what_the_empty_window_shows() {
+    fn press(app: &mut VectorcraftApp, key: egui::Key, modifiers: egui::Modifiers) {
+        let ctx = egui::Context::default();
+        let ev = egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers };
+        let mut out = ctx.run_ui(egui::RawInput { events: vec![ev], ..Default::default() }, |ui| crate::shortcuts::handle(app, ui.ctx()));
+        out.textures_delta.clear();
+    }
+    fn control(app: &mut VectorcraftApp, method: &str, params: serde_json::Value) -> serde_json::Value {
+        let (req, _rx) = crate::control::ControlRequest::new(method, params);
+        let crate::control::Outcome::Done(r) = crate::control::handle(app, &egui::Context::default(), &req) else { panic!("not done") };
+        r
+    }
+    let mut app = VectorcraftApp::new(vectorcraft_engine::Session::new(), crate::Services::default());
+    app.ui.host_hidden = vec!["file.newWithoutDialog".into(), "file.newDialog".into(), "file.openRecent*".into(), "app.home".into()];
+    app.ui.host_empty_message = Some("No project open. Open one from the Projects tab".into());
+
+    // The message stands in for the Home screen, whatever its preference says.
+    assert!(!crate::menus::home_showing(&app));
+    assert!(draws_text(&mut app), "the empty window says the page's message");
+    assert!(!shows_document(&mut app));
+
+    // Hidden ids, and ids under a hidden prefix, leave the menus; the rest stay.
+    assert!(crate::menus::shown_state(&app, "file.newDialog", &json!(null)).is_none());
+    assert!(crate::menus::shown_state(&app, "file.openRecent3", &json!(null)).is_none());
+    assert!(crate::menus::shown_state(&app, "file.save", &json!(null)).is_some());
+    let listed = control(&mut app, "ui.menu.list", json!({})).to_string();
+    assert!(!listed.contains("file.newDialog") && listed.contains("file.save"), "the menus the control channel lists follow");
+
+    // Its shortcut and a run from the UI (menus, palette, buttons: `invoke`) do nothing.
+    press(&mut app, egui::Key::N, egui::Modifiers::COMMAND | egui::Modifiers::ALT);
+    assert!(app.session.active().is_none(), "Cmd+Alt+N made no document");
+    crate::menus::invoke(&mut app, "file.newDialog", json!({}));
+    assert!(app.ui.dialog.is_none(), "New Document did not open");
+    crate::menus::invoke(&mut app, "app.home", json!({}));
+    assert!(app.ui.home.is_none());
+
+    // The page's own control requests still run them.
+    control(&mut app, "engine.execute", json!({"command": "file.newWithoutDialog"}));
+    assert_eq!(app.session.documents().len(), 1);
+    assert!(shows_document(&mut app));
+
+    // A page that clears them gives the user everything back.
+    app.ui.host_hidden.clear();
+    app.ui.host_empty_message = None;
+    app.run("file.close", json!({})).unwrap();
+    assert!(crate::menus::home_showing(&app), "Home again with no document");
+    crate::menus::invoke(&mut app, "file.newDialog", json!({}));
+    assert_eq!(app.ui.dialog.as_ref().map(|d| d.kind.as_str()), Some("newDocument"));
+}
+
+/// An embedding page (`vectorcraft:configure`) leaves menus out of the bar while their commands
+/// still run, hides the brand mark and, with `help.discord` hidden, the Discord button; the empty
+/// window's link only notes a click for the page to hear (`vectorcraft:emptyLink`).
+#[test]
+fn an_embedding_page_hides_menus_and_the_mark_and_hears_the_empty_windows_link() {
+    fn bar(app: &mut VectorcraftApp) -> (Vec<String>, bool) {
+        fn walk(s: &egui::Shape, texts: &mut Vec<String>, meshes: &mut Vec<egui::TextureId>) {
+            match s {
+                egui::Shape::Text(t) => texts.push(t.galley.text().to_string()),
+                egui::Shape::Mesh(m) => meshes.push(m.texture_id),
+                egui::Shape::Vec(v) => v.iter().for_each(|s| walk(s, texts, meshes)),
+                _ => {}
+            }
+        }
+        let ctx = egui::Context::default();
+        crate::theme::install_fonts(&ctx);
+        let raw = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1440.0, 600.0))), ..Default::default() };
+        let mut out = ctx.run_ui(raw, |ui| crate::chrome::app_bar(app, ui));
+        out.textures_delta.clear();
+        let (mut texts, mut meshes) = (vec![], vec![]);
+        out.shapes.iter().for_each(|c| walk(&c.shape, &mut texts, &mut meshes));
+        (texts, meshes.contains(&crate::brand::texture_id(&ctx)))
+    }
+    let mut app = VectorcraftApp::new(vectorcraft_engine::Session::new(), crate::Services::default());
+    let (texts, mark) = bar(&mut app);
+    assert!(mark && ["File", "Edit", "Help", "Discord"].iter().all(|t| texts.iter().any(|s| s == t)), "{texts:?}");
+
+    app.ui.host_hidden_menus = vec!["File".into(), "Help".into()];
+    app.ui.host_hide_mark = true;
+    app.ui.host_hidden = vec!["help.discord".into()];
+    let (texts, mark) = bar(&mut app);
+    assert!(!mark, "no brand mark");
+    assert!(!["File", "Help", "Discord"].iter().any(|t| texts.iter().any(|s| s == t)), "{texts:?}");
+    assert!(texts.iter().any(|s| s == "Edit"), "the other menus stay: {texts:?}");
+    // A hidden menu's commands still run from the UI: File › New's dialog opens.
+    crate::menus::invoke(&mut app, "file.newDialog", json!({}));
+    assert_eq!(app.ui.dialog.as_ref().map(|d| d.kind.as_str()), Some("newDocument"));
+    app.ui.dialog = None;
+
+    // The empty window's link: drawn after the message, a click only noted for the page.
+    app.ui.host_empty_message = Some("No project open.".into());
+    app.ui.host_empty_link = Some("Open one from the Projects tab".into());
+    let ctx = egui::Context::default();
+    crate::theme::install_fonts(&ctx);
+    fn find(s: &egui::Shape, text: &str) -> Option<egui::Pos2> {
+        match s {
+            egui::Shape::Text(t) if t.galley.text() == text => Some(t.pos + t.galley.size() / 2.0),
+            egui::Shape::Vec(v) => v.iter().find_map(|s| find(s, text)),
+            _ => None,
+        }
+    }
+    let frame = |app: &mut VectorcraftApp, events: Vec<egui::Event>| {
+        let raw =
+            egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 600.0))), events, ..Default::default() };
+        let mut out = ctx.run_ui(raw, |ui| canvas::show(app, ui));
+        out.textures_delta.clear();
+        let message = out.shapes.iter().find_map(|c| find(&c.shape, "No project open."));
+        let link = out.shapes.iter().find_map(|c| find(&c.shape, "Open one from the Projects tab"));
+        assert!(message.zip(link).is_some_and(|(m, l)| m.x < l.x), "the link follows the message: {message:?} {link:?}");
+        link.unwrap()
+    };
+    let at = frame(&mut app, vec![]);
+    let button = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+    frame(&mut app, vec![egui::Event::PointerMoved(at)]);
+    assert!(!app.ui.host_empty_link_clicked, "hovering is no click");
+    frame(&mut app, vec![button(true)]);
+    frame(&mut app, vec![button(false)]);
+    assert!(app.ui.host_empty_link_clicked, "the click is noted for the page");
+    assert!(app.session.active().is_none() && app.ui.dialog.is_none(), "and does nothing else");
+}
+
+/// The empty window's link stands in for the Home screen alone too, and a long message wraps to a
+/// narrow window, above its link, rather than running off it.
+#[test]
+fn the_empty_windows_link_shows_alone_and_a_long_message_wraps() {
+    fn texts(app: &mut VectorcraftApp, width: f32) -> Vec<(String, egui::Rect)> {
+        fn walk(s: &egui::Shape, out: &mut Vec<(String, egui::Rect)>) {
+            match s {
+                egui::Shape::Text(t) => out.push((t.galley.text().to_string(), egui::Rect::from_min_size(t.pos, t.galley.size()))),
+                egui::Shape::Vec(v) => v.iter().for_each(|s| walk(s, out)),
+                _ => {}
+            }
+        }
+        let ctx = egui::Context::default();
+        crate::theme::install_fonts(&ctx);
+        let raw = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(width, 600.0))), ..Default::default() };
+        let mut out = ctx.run_ui(raw.clone(), |ui| canvas::show(app, ui));
+        out.textures_delta.clear();
+        let mut out = ctx.run_ui(raw, |ui| canvas::show(app, ui));
+        out.textures_delta.clear();
+        let mut found = vec![];
+        out.shapes.iter().for_each(|c| walk(&c.shape, &mut found));
+        found
+    }
+    let mut app = VectorcraftApp::new(vectorcraft_engine::Session::new(), crate::Services::default());
+    app.ui.host_empty_link = Some("Open one from the Projects tab".into());
+    assert!(!crate::menus::home_showing(&app), "the link stands in for the Home screen");
+    assert!(texts(&mut app, 800.0).iter().any(|(t, _)| t == "Open one from the Projects tab"));
+
+    let long = "No project open in Bowerjack Studio. Projects open from the Projects tab, where each deck is listed with its cards.";
+    app.ui.host_empty_message = Some(long.into());
+    let shown = texts(&mut app, 320.0);
+    let message = shown.iter().find(|(t, _)| t == long).expect("the message shows").1;
+    let link = shown.iter().find(|(t, _)| t == "Open one from the Projects tab").expect("the link shows").1;
+    assert!(message.left() >= 0.0 && message.right() <= 320.0, "the message wraps inside the window: {message:?}");
+    assert!(link.top() >= message.bottom(), "the link goes below a message too long to share its line: {message:?} {link:?}");
+}
+
+/// A link wrapped to two rows is underlined under each row, each line as wide as its own text, not
+/// once under the whole block.
+#[test]
+fn a_wrapped_link_is_underlined_under_each_row() {
+    let ctx = egui::Context::default();
+    crate::theme::install_fonts(&ctx);
+    ctx.run_ui(egui::RawInput::default(), |_| {}).textures_delta.clear();
+    let text = "Open one from the Projects tab, where each deck is listed with its cards";
+    let g = ctx.fonts_mut(|f| f.layout(text.into(), egui::FontId::proportional(16.0), egui::Color32::WHITE, 160.0));
+    assert!(g.rows.len() > 1, "wrapped");
+    let at = egui::pos2(10.0, 20.0);
+    let lines = canvas::underlines(&g, at);
+    assert_eq!(lines.len(), g.rows.len(), "one line a row");
+    for (line, row) in lines.iter().zip(&g.rows) {
+        let r = row.rect().translate(at.to_vec2());
+        assert!((line.0.min - r.left()).abs() < 0.01 && (line.0.max - r.right()).abs() < 0.01, "as wide as its row: {line:?} {r:?}");
+        assert!((line.1 - r.bottom()).abs() < 0.01, "under its row: {line:?} {r:?}");
+    }
+    assert!(lines[0].1 < lines[1].1, "the rows' lines one under another");
+}
