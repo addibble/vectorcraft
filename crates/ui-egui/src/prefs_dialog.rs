@@ -251,11 +251,12 @@ pub fn restore(app: &mut VectorcraftApp) {
         p.ui_brightness = app.ui.brightness.id().into();
     }
     // Older preference files kept the interface language with the UI state; English was the
-    // default there, so only another language is carried over (onto an unset preference).
+    // default there, so only another language is carried over (onto an unset preference), also
+    // one this build leaves out, which the preference keeps for a build that has it.
     if let Some(code) = app.ui.legacy_language.take()
         && p.interface_language == "auto"
         && code != "en"
-        && crate::i18n::Lang::from_code(&code).is_some()
+        && crate::i18n::Lang::is_registered(&code)
     {
         p.interface_language = code;
     }
@@ -741,9 +742,10 @@ fn category_fields(ui: &mut egui::Ui, app: &mut VectorcraftApp, d: &mut Dialog, 
                 });
             }
             PrefKind::Text if sp.key == "interfaceLanguage" => {
-                // `auto` plus every registered language, by its own name.
+                // `auto` plus every language compiled in, by its own name. A saved language this
+                // build leaves out reads as Auto, and is kept unless another is chosen.
                 labeled(ui, sp.label, |ui, _| {
-                    let cur = v.as_str().unwrap_or("auto");
+                    let cur = v.as_str().filter(|c| crate::i18n::Lang::from_code(c).is_some()).unwrap_or("auto");
                     let codes: Vec<&str> = std::iter::once("auto").chain(crate::i18n::Lang::for_picker().into_iter().map(|l| l.code())).collect();
                     let labels: Vec<&str> =
                         std::iter::once(tl!("Auto")).chain(crate::i18n::Lang::for_picker().into_iter().map(|l| l.name())).collect();

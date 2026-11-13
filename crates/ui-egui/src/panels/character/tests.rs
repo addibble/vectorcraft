@@ -228,6 +228,10 @@ fn kerning_at_a_caret_sets_the_pair_not_the_whole_text() {
 
 #[test]
 fn character_kerning_setter_and_automatic_pair_value() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let german = crate::i18n::Lang::from_code("de").unwrap();
     assert!(crate::i18n::has(german, "Optical"));
     let mut app = VectorcraftApp::new(Session::new(), Default::default());
@@ -396,6 +400,8 @@ fn highlight_font_size_focuses_the_font_size_field() {
 
 /// A variable font gets the Variable Font button, which opens one slider per axis named as the
 /// font names it; a drag along one sets that axis of the selected type in one undo step.
+// Reads catalogs other than English.
+#[cfg(feature = "translations")]
 #[test]
 fn variable_fonts_get_a_slider_per_axis() {
     use vectorcraft_text::test_fonts::{TWO_AXIS_FAMILY, two_axis_font};
@@ -752,6 +758,10 @@ fn the_sharp_method_takes_its_own_translation() {
     let mut app = VectorcraftApp::new(Session::new(), Default::default());
     app.run("file.new", json!({"width": 300, "height": 200})).unwrap();
     app.run("text.create", json!({"x": 20, "y": 50, "text": "Hamburg", "size": 12})).unwrap();
+    // The rest reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let de = crate::i18n::Lang::from_code("de").unwrap();
     let (method, corner) = (crate::i18n::tr_ctx(de, "antiAlias", "Sharp"), crate::i18n::tr(de, "Sharp"));
     assert_ne!(method, corner, "the catalog names the two differently");

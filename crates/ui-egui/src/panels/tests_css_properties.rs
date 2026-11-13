@@ -65,6 +65,10 @@ fn generate_css_shows_the_document_while_nothing_is_selected() {
 /// count.
 #[test]
 fn the_unnamed_objects_note_uses_each_count_form() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let note = |code: &str, n: u64| {
         let (mut app, _) = app();
         for i in 1..n {

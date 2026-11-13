@@ -291,6 +291,10 @@ mod tests {
     /// one and the command id.
     #[test]
     fn rows_show_the_translated_path_and_match_english_shown_text_and_ids() {
+        // Reads catalogs other than English, compiled in with `translations`.
+        if !cfg!(feature = "translations") {
+            return;
+        }
         let de = Lang::from_code("de").unwrap();
         let rows = build(de, true);
         let group = rows.iter().find(|r| r.command == "object.group").unwrap();
