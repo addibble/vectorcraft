@@ -737,7 +737,7 @@ fn type_on_an_open_path_starts_before_the_path() {
 /// `justify_auto`); this build reads Auto back.
 #[test]
 fn auto_alignment_saves_readable_by_older_builds() {
-    #[derive(Deserialize, Debug, PartialEq)]
+    #[derive(Deserialize, Debug, PartialEq, schemars::JsonSchema)]
     enum OldJustify {
         Left,
         Center,
@@ -747,11 +747,11 @@ fn auto_alignment_saves_readable_by_older_builds() {
         JustifyRight,
         JustifyAll,
     }
-    #[derive(Deserialize)]
+    #[derive(Deserialize, schemars::JsonSchema)]
     struct OldPara {
         justify: OldJustify,
     }
-    #[derive(Deserialize)]
+    #[derive(Deserialize, schemars::JsonSchema)]
     struct OldText {
         para: OldPara,
     }

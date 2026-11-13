@@ -3,13 +3,13 @@ use super::stroke_style::{ArrowAlign, Arrowhead, Dash, LineCap, LineJoin, Stroke
 use super::{BlendMode, Deserialize, Paint, Serialize};
 
 /// A live effect in an appearance stack. Parameters are interpreted by `vectorcraft-effects`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Effect {
     /// Stable id, e.g. `stylize.dropShadow`, `distort.roughen`, `path.offsetPath`, `warp.arc`.
     pub id: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub params: serde_json::Value,
-    #[serde(default = "yes")]
+    #[serde(default = "yes", skip_serializing_if = "crate::skip::true_left_out")]
     pub visible: bool,
 }
 
@@ -21,7 +21,7 @@ fn one() -> f32 {
     1.0
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct FillLayer {
     pub paint: Paint,
     #[serde(default = "one", skip_serializing_if = "crate::skip::is_one")]
@@ -44,7 +44,7 @@ impl FillLayer {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct StrokeLayer {
     pub paint: Paint,
     /// Weight in points.
@@ -122,7 +122,7 @@ pub struct StrokeLayer {
 
 /// How a gradient on a stroke is laid out (the Gradient panel's Stroke buttons). Saved by variant
 /// name: new modes are appended, never renamed.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 pub enum StrokeGradientMode {
     /// Placed on the page like a fill's gradient and seen through the stroke.
     #[default]

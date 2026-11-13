@@ -23,7 +23,7 @@ pub const KINSOKU_BUILT_IN: [&str; 3] = ["None", "Hard", "Soft"];
 
 /// A custom Kinsoku Shori set. Each list of characters is sorted and holds each character once;
 /// the inseparable sequences are sorted and unique.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(from = "KinsokuSetFile", into = "KinsokuSetFile")]
 pub struct KinsokuSet {
     pub name: String,

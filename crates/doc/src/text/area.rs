@@ -2,7 +2,7 @@ use super::para_style::FirstBaseline;
 use super::{Deserialize, PathData, Serialize};
 
 /// Area Type Options "Align" (vertical): where the lines of each row/column sit in it.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum VerticalAlign {
     /// Lines start at the top of the cell (the default).
@@ -31,7 +31,7 @@ impl VerticalAlign {
 
 /// Area Type Options › Text Flow: the order text fills the cells of area type with several rows
 /// and columns.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum TextFlow {
     /// Down each column's rows, then on to the next column (the default, and what a document
@@ -43,12 +43,14 @@ pub enum TextFlow {
 }
 
 /// Text Wrap Options of a wrap object (Object → Text Wrap).
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default)]
 pub struct TextWrap {
     /// Distance kept between the text and the object, in points (Illustrator's default 6 pt).
+    #[serde(skip_serializing_if = "text_wrap_defaults::offset")]
     pub offset: f64,
     /// Invert Wrap: text flows inside the object instead of around it.
+    #[serde(skip_serializing_if = "text_wrap_defaults::invert")]
     pub invert: bool,
 }
 
@@ -59,7 +61,7 @@ impl Default for TextWrap {
 }
 
 /// A resolved wrap shape on an area text object: the outline of a wrap object in text space.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct WrapShape {
     pub path: PathData,
     #[serde(flatten)]
@@ -67,7 +69,7 @@ pub struct WrapShape {
 }
 
 /// Type on a Path effect: how each glyph is oriented on the path (Type → Type on a Path).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum PathEffect {
     /// Glyphs rotate with the path (the default).
@@ -105,7 +107,7 @@ impl PathEffect {
 /// character is measured by its own font, size and vertical scale, and in vertical type by its own
 /// size and horizontal scale. An inline graphic moves as a character of its run would, by its
 /// run's vertical scale in vertical type too. These distances are VectorCraft's own values.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum PathAlign {
     /// The top of the font's em box: the type hangs below the path. The em box is the font's
@@ -141,25 +143,30 @@ impl PathAlign {
 }
 
 /// Area Type Options: rows and columns, gutters, inset and first baseline of area type.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct AreaOptions {
-    #[serde(deserialize_with = "de_rows_or_columns")]
+    #[serde(deserialize_with = "de_rows_or_columns", skip_serializing_if = "area_options_defaults::rows")]
     pub rows: usize,
-    #[serde(deserialize_with = "de_rows_or_columns")]
+    #[serde(deserialize_with = "de_rows_or_columns", skip_serializing_if = "area_options_defaults::columns")]
     pub columns: usize,
     /// Gutter between rows/columns in points.
+    #[serde(skip_serializing_if = "area_options_defaults::gutter")]
     pub gutter: f64,
     /// Gutter between rows in points when it differs from [`Self::gutter`], which is then the
     /// gutter between columns (left out when saved while unset).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub row_gutter: Option<f64>,
     /// Inset from the frame edges in points.
+    #[serde(skip_serializing_if = "area_options_defaults::inset")]
     pub inset: f64,
+    #[serde(skip_serializing_if = "area_options_defaults::first_baseline")]
     pub first_baseline: FirstBaseline,
     /// Minimum first-baseline offset in points.
+    #[serde(skip_serializing_if = "area_options_defaults::first_baseline_min")]
     pub first_baseline_min: f64,
     /// Vertical alignment of the lines in each row/column.
+    #[serde(skip_serializing_if = "area_options_defaults::vertical_align")]
     pub vertical_align: VerticalAlign,
     /// Text Flow: by columns (the default, left out when saved) or by rows.
     #[serde(skip_serializing_if = "crate::skip::is_default")]
@@ -226,7 +233,7 @@ fn de_rows_or_columns<'de, D: serde::Deserializer<'de>>(d: D) -> Result<usize, D
 
 /// How area type and its frame fit each other. Serialized as `"none"`, `"autoHeight"` or
 /// `{"shrinkText": {"minPercent": 50}}`.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum AreaFit {
     /// The frame keeps its size; text that doesn't fit overflows.
@@ -238,7 +245,7 @@ pub enum AreaFit {
     /// Text that overflows is scaled down (size, leading and baseline shift; not paragraph
     /// spacing) by the largest factor down to `min_percent` % that makes it fit, at layout time.
     ShrinkText {
-        #[serde(rename = "minPercent", default = "AreaFit::default_min_percent")]
+        #[serde(rename = "minPercent", default = "AreaFit::default_min_percent", skip_serializing_if = "AreaFit::is_default_min_percent")]
         min_percent: f64,
     },
 }
@@ -250,6 +257,9 @@ impl AreaFit {
     pub const DEFAULT_MIN_PERCENT: f64 = 50.0;
     fn default_min_percent() -> f64 {
         Self::DEFAULT_MIN_PERCENT
+    }
+    fn is_default_min_percent(v: &f64) -> bool {
+        crate::skip::saved_as(v, &Self::DEFAULT_MIN_PERCENT)
     }
     /// Its id: `none`, `autoHeight` or `shrinkText`.
     pub fn id(self) -> &'static str {
@@ -282,4 +292,24 @@ impl AreaFit {
             _ => None,
         }
     }
+}
+
+/// What a reader fills in for each field of [`TextWrap`] left out (see `crate::skip::container_defaults`).
+mod text_wrap_defaults {
+    use super::TextWrap;
+    crate::skip::container_defaults!(TextWrap { offset: f64, invert: bool });
+}
+
+/// What a reader fills in for each field of [`AreaOptions`] left out (see `crate::skip::container_defaults`).
+mod area_options_defaults {
+    use super::{AreaOptions, FirstBaseline, VerticalAlign};
+    crate::skip::container_defaults!(AreaOptions {
+        rows: usize,
+        columns: usize,
+        gutter: f64,
+        inset: f64,
+        first_baseline: FirstBaseline,
+        first_baseline_min: f64,
+        vertical_align: VerticalAlign,
+    });
 }
