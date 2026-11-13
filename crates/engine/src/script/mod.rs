@@ -134,6 +134,10 @@ pub fn refused_to_scripts(id: &str) -> bool {
     ];
     const IDS: &[&str] = &[
         "text.addFontFiles",
+        // The fonts a host supplies change what the whole app knows, with no undo, and a source
+        // makes the host fetch its file.
+        "text.addFont",
+        "text.addFontSources",
         "text.findFontFiles",
         "text.rescanFonts",
         "links.findFiles",

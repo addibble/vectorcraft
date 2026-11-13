@@ -158,7 +158,8 @@ fn rows_json(rows: &[Row]) -> Value {
 /// Can the replacement name that very face: `family` and `style` both exist, no stand-in. A row of
 /// an unavailable style stays listed, but only a font with that style is chosen as the replacement.
 fn exact(family: &str, style: &str) -> bool {
-    !family.is_empty() && vectorcraft_text::FontDb::global().resolve(family, style).is_some_and(|(_, m)| m == vectorcraft_text::FontMatch::Exact)
+    !family.is_empty()
+        && vectorcraft_text::FontDb::global().resolve_without_request(family, style).is_some_and(|(_, m)| m == vectorcraft_text::FontMatch::Exact)
 }
 
 /// Can a row be chosen as the replacement: its family is installed and the style is the font's own
@@ -170,7 +171,9 @@ fn listed(row: &Row) -> bool {
 /// Is `family` installed: it resolves to a face of its own, as `text.replaceFont` requires.
 fn installed(family: &str) -> bool {
     !family.is_empty()
-        && vectorcraft_text::FontDb::global().resolve(family, "Regular").is_some_and(|(_, m)| m != vectorcraft_text::FontMatch::Missing)
+        && vectorcraft_text::FontDb::global()
+            .resolve_without_request(family, "Regular")
+            .is_some_and(|(_, m)| m != vectorcraft_text::FontMatch::Missing)
 }
 
 /// Can Change and Change All replace with the dialog's font: a family is chosen, it is installed,
@@ -457,6 +460,23 @@ pub(crate) fn font_note(f: &Value) -> (String, Option<egui::Color32>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Find Font's checks of a replacement (installed, the style its own) ask for no font source:
+    /// they run on every selection and frame, and only type set in a source fetches it.
+    #[test]
+    fn checking_a_replacement_asks_for_no_source() {
+        // Adds to the shared font database: other tests' font lists hold still meanwhile.
+        let _fonts = crate::adding_fonts();
+        const FAMILY: &str = "Find Check Src1";
+        let _sources = vectorcraft_text::test_fonts::SourcesRemoved::of(&[FAMILY]);
+        let db = vectorcraft_text::FontDb::global();
+        let integrity = format!("sha256-{}", vectorcraft_format::base64_encode(&[0x6c; 32]));
+        db.add_sources(vec![vectorcraft_text::FontSource { family: FAMILY.into(), style: "Regular".into(), url: "f.ttf".into(), integrity }]);
+        db.take_source_requests();
+        assert!(!installed(FAMILY), "a source not loaded yet is not installed");
+        assert!(!exact(FAMILY, "Regular"));
+        assert!(db.take_source_requests().iter().all(|r| r.family != FAMILY), "and checking it fetches nothing");
+    }
 
     #[test]
     fn dialog_draws_and_changes_all() {

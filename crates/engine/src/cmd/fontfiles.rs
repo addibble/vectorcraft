@@ -128,6 +128,14 @@ pub fn missing_fonts(d: &Document) -> Vec<MissingFont> {
         .collect()
 }
 
+/// The type of every open document laid out again in the fonts available now, as `text.addFont`
+/// lays it out once it added a face: for a host that adds font files itself
+/// (`FontDb::add_font_reporting`), several at once, and lays the type out once for them all. Not an
+/// edit: nothing is saved, journaled or undone.
+pub fn relayout_type(s: &mut Session) {
+    super::fonts::relayout_text(s);
+}
+
 /// `text.missingFonts`'s answer for the open document `st`, where searches go by `rules` (this
 /// computer's when `None`).
 pub fn missing_fonts_of(st: &DocState, rules: Option<&findfiles::Rules>) -> Value {

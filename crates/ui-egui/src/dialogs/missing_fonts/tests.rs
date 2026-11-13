@@ -390,3 +390,162 @@ fn the_web_says_how_many_fonts_are_missing() {
     after_open_for(&mut app, &json!({"warnings": ["fonts"]}), true);
     assert_eq!(app.ui.status, "Opened with 1 note: fonts");
 }
+
+/// A font a font source supplies isn't counted missing when a document opens on the web: it is
+/// on its way. One that fails to load says so then.
+#[test]
+fn the_web_leaves_out_a_font_a_source_is_fetching() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
+    const FAMILY: &str = "On Its Way 01";
+    let _sources = vectorcraft_text::test_fonts::SourcesRemoved::of(&[FAMILY]);
+    let integrity = format!("sha256-{}", vectorcraft_format::base64_encode(&[0xef; 32]));
+    vectorcraft_text::FontDb::global().add_sources(vec![vectorcraft_text::FontSource {
+        family: FAMILY.into(),
+        style: "Regular".into(),
+        url: "fonts/on-its-way.ttf".into(),
+        integrity,
+    }]);
+    let mut app = VectorcraftApp::new(Session::new(), Default::default());
+    app.run("file.new", json!({"width": 400, "height": 300})).unwrap();
+    app.run("text.create", json!({"x": 10, "y": 40, "text": "Coming", "font": FAMILY})).unwrap();
+    app.ui.status.clear();
+    after_open_for(&mut app, &json!({}), true);
+    assert_eq!(app.ui.status, "", "nothing missing while the source is fetched");
+    app.font_source_failed(FAMILY, "HTTP 404");
+    assert_eq!(app.ui.status, "On Its Way 01 couldn't be loaded (HTTP 404): its text shows in another font");
+}
+
+/// On the web a style no font source supplies is counted missing when a document opens, though the
+/// family's Regular is on its way: once that arrives, the Bold type draws in another style.
+#[test]
+fn the_web_counts_a_style_no_source_supplies() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
+    const FAMILY: &str = "Regular Only 01";
+    let _sources = vectorcraft_text::test_fonts::SourcesRemoved::of(&[FAMILY]);
+    let integrity = format!("sha256-{}", vectorcraft_format::base64_encode(&[0xe1; 32]));
+    vectorcraft_text::FontDb::global().add_sources(vec![vectorcraft_text::FontSource {
+        family: FAMILY.into(),
+        style: "Regular".into(),
+        url: "fonts/regular-only.ttf".into(),
+        integrity,
+    }]);
+    let mut app = VectorcraftApp::new(Session::new(), Default::default());
+    app.run("file.new", json!({"width": 400, "height": 300})).unwrap();
+    app.run("text.create", json!({"x": 10, "y": 40, "text": "Coming", "font": FAMILY})).unwrap();
+    app.run("text.create", json!({"x": 10, "y": 80, "text": "Never", "font": FAMILY, "style": "Bold"})).unwrap();
+    app.ui.status.clear();
+    after_open_for(&mut app, &json!({}), true);
+    assert_eq!(app.ui.status, "1 font isn't available here: its text shows in another font");
+}
+
+/// Missing Fonts and font sources, as Illustrator's Adobe Fonts: a font on its way is listed as
+/// activating; one that couldn't be loaded opens its document's dialog with Activate, which gives
+/// the source again, and it is asked for again at once.
+#[test]
+fn a_failed_font_source_is_listed_with_activate() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
+    // Sorting last: other tests' menus list it, and a source not loaded yet is not previewed.
+    const FAMILY: &str = "Zz Pending Src";
+    let _sources = vectorcraft_text::test_fonts::SourcesRemoved::of(&[FAMILY]);
+    let db = vectorcraft_text::FontDb::global();
+    let src = vectorcraft_text::FontSource {
+        family: FAMILY.into(),
+        style: "Regular".into(),
+        url: "fonts/activate.ttf".into(),
+        integrity: format!("sha256-{}", vectorcraft_format::base64_encode(&[0xa7; 32])),
+    };
+    db.add_sources(vec![src.clone()]);
+    let mut app = VectorcraftApp::new(Session::new(), Default::default());
+    // The web build's shell: it fetches what type asks for.
+    app.services.fetches_font_sources = true;
+    app.run("file.new", json!({"width": 400, "height": 300})).unwrap();
+    app.run("text.create", json!({"x": 10, "y": 40, "text": "Coming", "font": FAMILY})).unwrap();
+    assert!(db.take_source_requests().contains(&src), "type asked for it");
+    app.run("ui.missingFontsDialog", json!({})).unwrap();
+    let shown = frame(&mut app);
+    assert!(shown.contains(&format!("{FAMILY} Regular")) && shown.contains("Activating…"), "{shown}");
+    assert!(!shown.contains("Activate"), "no Activate while it is on its way: {shown}");
+    app.ui.dialog = None;
+
+    db.source_settled(&src, None);
+    app.font_source_failed(FAMILY, "HTTP 404");
+    open_next(&mut app);
+    let shown = frame(&mut app);
+    assert!(app.ui.dialog.as_ref().is_some_and(|d| d.kind == KIND), "the dialog opens for the document set in it");
+    assert!(shown.contains("Activate") && !shown.contains("Activating…"), "{shown}");
+
+    // Activate: the source given again.
+    let again = failed_source(FAMILY, "Regular").expect("the failed source");
+    assert_eq!(again["sha256"], "a7".repeat(32));
+    app.run("text.addFontSources", json!({ "fonts": [again] })).unwrap();
+    assert!(db.take_source_requests().contains(&src), "asked for again at once");
+    assert!(failed_source(FAMILY, "Regular").is_none());
+    assert!(frame(&mut app).contains("Activating…"));
+}
+
+/// A font source that fails brings its document's Missing Fonts dialog once: closed, it doesn't
+/// come back when the same font fails again, only when another font fails.
+#[test]
+fn a_failed_font_source_brings_its_dialog_once() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
+    let _sources = vectorcraft_text::test_fonts::SourcesRemoved::of(&["Fails Once 01", "Fails Next 01"]);
+    let db = vectorcraft_text::FontDb::global();
+    let source = |family: &str| vectorcraft_text::FontSource {
+        family: family.into(),
+        style: "Regular".into(),
+        url: format!("fonts/{family}.ttf"),
+        integrity: format!("sha256-{}", vectorcraft_format::base64_encode(&[0xa8; 32])),
+    };
+    let (first, second) = (source("Fails Once 01"), source("Fails Next 01"));
+    db.add_sources(vec![first.clone(), second.clone()]);
+    let mut app = VectorcraftApp::new(Session::new(), Default::default());
+    app.services.fetches_font_sources = true;
+    app.run("file.new", json!({"width": 400, "height": 300})).unwrap();
+    app.run("text.create", json!({"x": 10, "y": 40, "text": "One", "font": first.family})).unwrap();
+    app.run("text.create", json!({"x": 10, "y": 80, "text": "Two", "font": second.family})).unwrap();
+    db.take_source_requests();
+    db.source_settled(&first, None);
+    app.font_source_failed(&first.family, "HTTP 404");
+    app.font_source_failed(&first.family, "HTTP 404");
+    assert_eq!(app.ui.pending_fonts.len(), 1, "one dialog for the document");
+    open_next(&mut app);
+    assert!(app.ui.dialog.as_ref().is_some_and(|d| d.kind == KIND));
+    app.ui.dialog = None;
+    app.ui.fonts_dialog = None;
+    // The same font failing again (given again by the host, and failing) brings no dialog.
+    app.run("text.addFontSources", json!({"fonts": [{"family": first.family, "url": "fonts/again.ttf", "sha256": "a8".repeat(32)}]})).unwrap();
+    db.source_settled(&first, None);
+    app.font_source_failed(&first.family, "HTTP 404");
+    assert!(app.ui.pending_fonts.is_empty(), "closed, it stays closed for the same font");
+    // Another font failing does.
+    db.source_settled(&second, None);
+    app.font_source_failed(&second.family, "HTTP 404");
+    assert_eq!(app.ui.pending_fonts.len(), 1, "a new font that fails brings it again");
+}
+
+/// Without a host that fetches font sources (the desktop app), a source's font is listed as missing
+/// with neither Activating… (nothing will arrive) nor Activate.
+#[test]
+fn without_a_host_that_fetches_a_source_is_only_missing() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
+    const FAMILY: &str = "Zz Desk Src 01";
+    let _sources = vectorcraft_text::test_fonts::SourcesRemoved::of(&[FAMILY]);
+    let db = vectorcraft_text::FontDb::global();
+    let integrity = format!("sha256-{}", vectorcraft_format::base64_encode(&[0xa9; 32]));
+    let src = vectorcraft_text::FontSource { family: FAMILY.into(), style: "Regular".into(), url: "fonts/desk.ttf".into(), integrity };
+    db.add_sources(vec![src.clone()]);
+    let mut app = VectorcraftApp::new(Session::new(), Default::default());
+    app.run("file.new", json!({"width": 400, "height": 300})).unwrap();
+    app.run("text.create", json!({"x": 10, "y": 40, "text": "Here", "font": FAMILY})).unwrap();
+    app.run("ui.missingFontsDialog", json!({})).unwrap();
+    let shown = frame(&mut app);
+    assert!(shown.contains(&format!("{FAMILY} Regular")), "{shown}");
+    assert!(!shown.contains("Activat"), "no Activating… or Activate on the desktop: {shown}");
+    db.source_settled(&src, None);
+    assert!(!frame(&mut app).contains("Activat"), "nor once it failed");
+}

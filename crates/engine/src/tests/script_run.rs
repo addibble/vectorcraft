@@ -520,6 +520,9 @@ fn commands_outside_the_documents_are_refused_in_a_batch_too() {
         "vc.run('view.overprintPreview', {on: true});",
         "vc.run('view.separationsPreview', {});",
         "vc.run('command.batch', {commands: [{command: 'prefs.reset', params: {}}]});",
+        // The fonts a host supplies change what the whole app knows, with no undo.
+        "vc.run('text.addFont', {dataBase64: 'AAAA'});",
+        "vc.run('text.addFontSources', {fonts: [{family: 'F', url: 'f.ttf', sha256: 'ab'}]});",
     ] {
         let e = run(&mut s, source).unwrap_err().to_string();
         assert!(e.contains("cannot run"), "{source}: {e}");

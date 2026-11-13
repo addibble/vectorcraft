@@ -1428,6 +1428,9 @@ fn rows(ui: &mut Ui, range: std::ops::Range<usize>, h: Listed<'_>, sample: Optio
     let lit = st.highlight.and_then(|i| rows.get(i)).and_then(Row::pick);
     match lit {
         Some((f, None)) if f == current => st.previewed.take().map(|_| FontPick::EndPreview),
+        // A font source not loaded yet isn't previewed: that would fetch every family the
+        // highlight passes over. Choosing it fetches it.
+        Some((f, s)) if previews_pending(&f, s.as_deref()) => st.previewed.take().map(|_| FontPick::EndPreview),
         Some(pick) if st.previewed.as_ref() != Some(&pick) => {
             st.previewed = Some(pick.clone());
             Some(FontPick::Preview(pick.0, pick.1))
@@ -1515,9 +1518,14 @@ const MAX_SAMPLES: usize = 256;
 
 #[derive(Default)]
 struct Samples {
-    ready: HashMap<Key, Option<egui::TextureHandle>>,
+    /// Each sample with the generation of the font files given as bytes it was drawn in
+    /// ([`vectorcraft_text::FontDb::supplied_generation`]): one drawn before such a file was added
+    /// (a font source's) may be in the fallback face, so it is drawn again, and shown meanwhile.
+    /// A family the menu loads from the installed fonts changes nothing it drew.
+    ready: HashMap<Key, (u64, Option<egui::TextureHandle>)>,
+    /// The samples being drawn, with the generation each was started in.
     #[cfg(not(target_arch = "wasm32"))]
-    pending: HashMap<Key, std::sync::mpsc::Receiver<Option<egui::ColorImage>>>,
+    pending: HashMap<Key, (u64, std::sync::mpsc::Receiver<Option<egui::ColorImage>>)>,
     /// The pass the budget is for, and the samples started in it.
     pass: u64,
     started: usize,
@@ -1549,33 +1557,42 @@ thread_local! {
 /// on native (the worker asks for a frame when it is done), a few per frame; `None` until it is
 /// ready.
 fn sample_texture(ctx: &egui::Context, family: &str, style: Option<&str>, sample: Option<&str>, height: f32) -> Option<egui::TextureHandle> {
+    // Not cached while the font is on its way: its sample draws once it arrives.
+    if is_pending(family, style) {
+        return None;
+    }
     let px = (height * ctx.pixels_per_point()).round().clamp(8.0, 96.0) as u32;
     let key: Key = (family.to_string(), style.unwrap_or("Regular").to_string(), sample.unwrap_or_default().to_string(), px);
     let texture = |img: egui::ColorImage| ctx.load_texture(format!("font-sample-{family}-{px}"), img, egui::TextureOptions::LINEAR);
+    let generation = vectorcraft_text::FontDb::global().supplied_generation();
     SAMPLES.with(|s| {
         let mut s = s.borrow_mut();
-        if let Some(t) = s.ready.get(&key) {
-            return t.clone();
-        }
+        // Drawn before the fonts last changed: shown until it is drawn again.
+        let stale = match s.ready.get(&key) {
+            Some((g, t)) if *g == generation => return t.clone(),
+            Some((_, t)) => t.clone(),
+            None => None,
+        };
         // Up to ~370 KB of texture each (96 px high, 10:1): keep a few screens' worth.
         if s.ready.len() > MAX_SAMPLES {
             s.ready.clear();
         }
         #[cfg(not(target_arch = "wasm32"))]
         {
-            if let Some(rx) = s.pending.get(&key) {
+            if let Some((started, rx)) = s.pending.get(&key) {
+                let started = *started;
                 let img = match rx.try_recv() {
                     Ok(img) => img,
-                    Err(std::sync::mpsc::TryRecvError::Empty) => return None,
+                    Err(std::sync::mpsc::TryRecvError::Empty) => return stale,
                     Err(std::sync::mpsc::TryRecvError::Disconnected) => None,
                 };
                 s.pending.remove(&key);
                 let tex = img.map(texture);
-                s.ready.insert(key, tex.clone());
+                s.ready.insert(key, (started, tex.clone()));
                 return tex;
             }
             if s.pending.len() >= MAX_PENDING || !s.take_budget(ctx) {
-                return None;
+                return stale;
             }
             let (tx, rx) = std::sync::mpsc::channel();
             let (f, style, text) = (key.0.clone(), key.1.clone(), key.2.clone());
@@ -1586,23 +1603,41 @@ fn sample_texture(ctx: &egui::Context, family: &str, style: Option<&str>, sample
                 repaint.request_repaint();
             });
             if spawned.is_ok() {
-                s.pending.insert(key, rx);
+                s.pending.insert(key, (generation, rx));
             } else {
-                s.ready.insert(key, None);
+                s.ready.insert(key, (generation, None));
             }
-            None
+            stale
         }
         // The web has no threads: a few samples per frame, on this one.
         #[cfg(target_arch = "wasm32")]
         {
             if !s.take_budget(ctx) {
-                return None;
+                return stale;
             }
             let tex = render_sample(&key.0, &key.1, &key.2, px).map(texture);
-            s.ready.insert(key, tex.clone());
+            s.ready.insert(key, (generation, tex.clone()));
             tex
         }
     })
+}
+
+/// Whether `family` in `style` (a family's row: Regular) is a font source not loaded yet, which the
+/// menu doesn't sample ([`vectorcraft_text::FontDb::is_pending_source`]).
+fn is_pending(family: &str, style: Option<&str>) -> bool {
+    vectorcraft_text::FontDb::global().is_pending_source(family, style.unwrap_or("Regular"))
+}
+
+/// Whether previewing the row of `family` (in `style`, or a family's row) would ask for a font
+/// source not loaded yet. A family's row previews the family in the selected type's own style (or
+/// the closest), so any style of the family still to come counts: its Regular may be loaded while
+/// the Bold the type is set in is on its way.
+fn previews_pending(family: &str, style: Option<&str>) -> bool {
+    let db = vectorcraft_text::FontDb::global();
+    match style {
+        Some(style) => db.is_pending_source(family, style),
+        None => db.is_source(family) && db.styles(family).iter().any(|s| db.is_pending_source(family, s)),
+    }
 }
 
 /// Longest sample, in pixels per pixel of height (wider samples are cut).
@@ -1612,6 +1647,11 @@ const MAX_ASPECT: f32 = 10.0;
 /// `px` pixels high: a coverage mask as white with alpha.
 fn render_sample(family: &str, style: &str, text: &str, px: u32) -> Option<egui::ColorImage> {
     let db = vectorcraft_text::FontDb::global();
+    // A font source not loaded yet has no sample: drawing one would fetch every family the menu
+    // shows. Choosing it sets type in it, which fetches it.
+    if db.is_pending_source(family, style) {
+        return None;
+    }
     let face: Arc<vectorcraft_text::FontFace> = db.face(family, style)?;
     let covers = |s: &str| !s.trim().is_empty() && s.chars().filter(|c| !c.is_whitespace()).all(|c| face.covers(c));
     let text = if covers(text) { text } else { FALLBACK_SAMPLE };
@@ -1649,10 +1689,10 @@ pub(crate) fn wait_for_samples(ctx: &egui::Context) -> bool {
         let mut s = s.borrow_mut();
         let pending: Vec<_> = s.pending.drain().collect();
         let waited = !pending.is_empty();
-        for (key, rx) in pending {
+        for (key, (started, rx)) in pending {
             let tex =
                 rx.recv().ok().flatten().map(|img| ctx.load_texture(format!("font-sample-{}-{}", key.0, key.3), img, egui::TextureOptions::LINEAR));
-            s.ready.insert(key, tex);
+            s.ready.insert(key, (started, tex));
         }
         waited
     })
@@ -1724,8 +1764,13 @@ pub(crate) fn apply(app: &mut VectorcraftApp, ctx: &egui::Context, pick: FontPic
             }
             crate::panels::character::end_typing(app);
             // Each family is its own step, keeping the style when the family has it, else the
-            // closest it has.
-            for f in families {
+            // closest it has. A font source not loaded yet that the wheel passes is skipped: setting
+            // type in it for a moment would fetch it. The family it stops on is set, and fetched.
+            let last = families.len().saturating_sub(1);
+            for (i, f) in families.into_iter().enumerate() {
+                if i < last && previews_pending(&f, None) {
+                    continue;
+                }
                 let (cmd, params) = font_command(app, &f, None);
                 if app.run(cmd, params).is_err() {
                     break;

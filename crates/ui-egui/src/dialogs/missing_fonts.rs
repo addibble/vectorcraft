@@ -14,6 +14,12 @@
 //! font's first file is chosen when it is found), `searchFolder` (set it and confirm to search that
 //! folder) and `discard` (set it and confirm for Find Fonts; confirming without either adds the
 //! chosen files).
+//!
+//! A font a font source supplies (`text.addFontSources`) activates by itself, as Illustrator's
+//! Adobe Fonts do: while its file is on its way the row says so, and when it couldn't be loaded the
+//! row's Activate asks for it again (`text.addFontSources`, the source given again). On the web a
+//! source that fails brings its documents' dialogs, as the fonts a document opened without do on
+//! the desktop ([`source_failed`]).
 
 use std::time::Duration;
 
@@ -43,16 +49,22 @@ pub(super) const SPEC: DialogSpec = DialogSpec {
 
 /// After a document opened (`document.open`'s result `r`): its Missing Fonts dialog waits for the
 /// dialog slot. On the web the status line shows how many fonts are missing instead, unless it
-/// shows the open's notes.
+/// shows the open's notes; a font a font source supplies is not counted, since the web build is
+/// fetching it (`text.addFontSources`): one that fails to load says so when it does
+/// ([`VectorcraftApp::font_source_failed`]). A style no source supplies is counted, though the
+/// family's other styles are on their way.
 pub fn after_open(app: &mut VectorcraftApp, r: &Value) {
     after_open_for(app, r, cfg!(target_arch = "wasm32"));
 }
 
+/// [`after_open`], on the web (`web`: the status line, leaving out fonts a source is fetching) or
+/// on the desktop (the Missing Fonts dialog).
 fn after_open_for(app: &mut VectorcraftApp, r: &Value, web: bool) {
     let Some(st) = app.session.active() else { return };
     let uid = st.uid;
     if web {
-        let n = vectorcraft_engine::cmd::fontfiles::missing_fonts(&st.doc).len();
+        let db = vectorcraft_text::FontDb::global();
+        let n = vectorcraft_engine::cmd::fontfiles::missing_fonts(&st.doc).iter().filter(|f| !db.is_activating(&f.family, &f.style)).count();
         if n > 0 && r["warnings"].as_array().is_none_or(Vec::is_empty) {
             app.status(crate::i18n::msg_n(
                 n as u64,
@@ -66,6 +78,47 @@ fn after_open_for(app: &mut VectorcraftApp, r: &Value, web: bool) {
     if !app.ui.pending_fonts.contains(&uid) {
         app.ui.pending_fonts.push(uid);
     }
+}
+
+/// The font source `family` couldn't be loaded ([`VectorcraftApp::font_source_failed`]): each open
+/// document whose type is set in it gets its Missing Fonts dialog, where Activate asks for it again,
+/// as Illustrator lists a font it couldn't activate. A dialog on show takes the font's row. A
+/// document is shown the dialog once for a font: the failures of one frame bring one dialog, and
+/// once it is closed the same font failing again (Activate, or the host giving it again) doesn't
+/// bring it back; another font that fails does.
+pub(crate) fn source_failed(app: &mut VectorcraftApp, family: &str) {
+    let uses = |d: &vectorcraft_engine::DocState| {
+        vectorcraft_engine::cmd::fontfiles::missing_fonts(&d.doc).iter().any(|f| f.family.eq_ignore_ascii_case(family))
+    };
+    let open: Vec<u64> = app.session.documents().iter().map(|d| d.uid).collect();
+    let uids: Vec<u64> = app.session.documents().iter().filter(|d| uses(d)).map(|d| d.uid).collect();
+    // What closed documents were shown goes with them.
+    app.ui.failed_sources_shown.retain(|(uid, _)| open.contains(uid));
+    let key = family.to_ascii_lowercase();
+    for uid in uids {
+        let shown = app.ui.dialog.as_ref().is_some_and(|d| d.kind == KIND && d.fields.get("document").and_then(Value::as_u64) == Some(uid));
+        let new = !app.ui.failed_sources_shown.iter().any(|(u, f)| *u == uid && *f == key);
+        if new {
+            app.ui.failed_sources_shown.push((uid, key.clone()));
+        }
+        if shown {
+            let fonts = dialog_for(app, uid).and_then(|d| d.fields.get("fonts").cloned());
+            if let (Some(d), Some(fonts)) = (app.ui.dialog.as_mut(), fonts) {
+                d.fields.insert("fonts".into(), fonts);
+            }
+        } else if new && !app.ui.pending_fonts.contains(&uid) {
+            app.ui.pending_fonts.push(uid);
+        }
+    }
+}
+
+/// The font source that would supply `family` in `style` and couldn't be loaded: what Activate
+/// gives again (`text.addFontSources`), with its SHA-256 in hex.
+fn failed_source(family: &str, style: &str) -> Option<Value> {
+    let src = vectorcraft_text::FontDb::global().failed_source(family, style)?;
+    let digest = src.integrity.strip_prefix("sha256-").and_then(vectorcraft_format::base64_decode)?;
+    let sha256: String = digest.iter().map(|b| format!("{b:02x}")).collect();
+    Some(json!({ "family": src.family, "style": src.style, "url": src.url, "sha256": sha256 }))
 }
 
 /// The Missing Fonts dialog of the open document `uid`, when fonts it uses aren't available.
@@ -230,6 +283,8 @@ enum Act {
     Pick,
     Stop,
     Add,
+    /// Ask for a font source again (`text.addFontSources`'s font).
+    Activate(Value),
 }
 
 fn body(app: &mut VectorcraftApp, ui: &mut egui::Ui, d: &mut Dialog) -> bool {
@@ -245,6 +300,9 @@ fn body(app: &mut VectorcraftApp, ui: &mut egui::Ui, d: &mut Dialog) -> bool {
     let fonts = d.fields.get("fonts").and_then(Value::as_array).cloned().unwrap_or_default();
     let found = d.fields.get("found").and_then(Value::as_array).cloned().unwrap_or_default();
     let mut chosen = d.fields.get("chosen").and_then(Value::as_array).cloned().unwrap_or_default();
+    let db = vectorcraft_text::FontDb::global();
+    let fetches = app.services.fetches_font_sources;
+    let mut act = None;
     widgets::list_box(ui, |ui| {
         egui::ScrollArea::vertical().max_height(220.0).show(ui, |ui| {
             ui.set_width(ui.available_width());
@@ -256,6 +314,19 @@ fn body(app: &mut VectorcraftApp, ui: &mut egui::Ui, d: &mut Dialog) -> bool {
                         let (note, color) = crate::find_font::font_note(f);
                         let name = format!("{} {}{note}", f["family"].as_str().unwrap_or_default(), f["style"].as_str().unwrap_or_default());
                         ui.label(egui::RichText::new(name).font(theme::semibold(12.0)).color(color.unwrap_or(t.text_strong)));
+                        // A font source: on its way, or Activate to ask for it again.
+                        let (family, style) = (f["family"].as_str().unwrap_or_default(), f["style"].as_str().unwrap_or_default());
+                        // Only where the host fetches sources (the web build): elsewhere nothing
+                        // is on its way, and Activate would ask for what no one fetches.
+                        if fetches && db.is_activating(family, style) {
+                            widgets::dim_label(ui, tl!("Activating…"));
+                            ui.ctx().request_repaint_after(Duration::from_millis(250));
+                        } else if fetches
+                            && let Some(src) = failed_source(family, style)
+                            && ui.button(tl!("Activate")).clicked()
+                        {
+                            act = Some(Act::Activate(src));
+                        }
                         let files = files_for(&found, f);
                         for file in files {
                             let path = file.as_str().unwrap_or_default();
@@ -282,7 +353,6 @@ fn body(app: &mut VectorcraftApp, ui: &mut egui::Ui, d: &mut Dialog) -> bool {
     });
     d.fields.insert("chosen".into(), json!(chosen));
     ui.add_space(10.0);
-    let mut act = None;
     let can_pick = crate::picks::can(app, &PickRequest::Folder);
     ui.horizontal(|ui| {
         let next = d.str("fontsNextToDocument");
@@ -324,6 +394,7 @@ fn body(app: &mut VectorcraftApp, ui: &mut egui::Ui, d: &mut Dialog) -> bool {
             Ok(_) => return true,
             Err(e) => Err(e),
         },
+        Some(Act::Activate(src)) => app.run("text.addFontSources", json!({ "fonts": [src] })).map(|_| ()),
         None => Ok(()),
     };
     if let Err(e) = r {

@@ -1,6 +1,6 @@
 # Control protocol
 
-> **Last updated:** 2026-11-07 · **Change:** text style commands take a feature with a value (`"features": ["salt=2"]`), the font's alternate number, and shape runs that differ only in features as one piece of text; previously: Confining file access refuses a `:` in a name after the drive on Windows, an NTFS alternate data stream such as `x.svg:evil` (#3604); previously: Object → Expand… dimmed while the selection has an appearance Expand Appearance expands (`object.expand.info`'s `appearance`, #3089); previously: brush library panels (`window.brushLibrary`, `window.brushLibrary.other`, `ui.saveBrushLibrary`); previously: Transform Each opens on the values it was last confirmed with; its Copy button confirms with `copy: true` (#1732); previously: panel docking on craft-ui's layout: `ui.docking`, the parameters of `window.panel.float` and `window.panel.dock`; previously: `ui.screenshot`'s 64 MiB inline-PNG cap and its path-plus-data downgrade; symbol library panels (`window.symbolLibrary`, `window.symbolLibrary.other`, `ui.saveSymbolLibrary`); synthetic input budgets (#1709); bounded transport waits (#1726).
+> **Last updated:** 2026-11-13 · **Change:** Missing Fonts lists a font source's font as activating, or with Activate when it couldn't be loaded; previously: text style commands take a feature with a value (`"features": ["salt=2"]`), the font's alternate number, and shape runs that differ only in features as one piece of text; previously: Confining file access refuses a `:` in a name after the drive on Windows, an NTFS alternate data stream such as `x.svg:evil` (#3604); previously: Object → Expand… dimmed while the selection has an appearance Expand Appearance expands (`object.expand.info`'s `appearance`, #3089); previously: brush library panels (`window.brushLibrary`, `window.brushLibrary.other`, `ui.saveBrushLibrary`); previously: Transform Each opens on the values it was last confirmed with; its Copy button confirms with `copy: true` (#1732); previously: panel docking on craft-ui's layout: `ui.docking`, the parameters of `window.panel.float` and `window.panel.dock`; previously: `ui.screenshot`'s 64 MiB inline-PNG cap and its path-plus-data downgrade; symbol library panels (`window.symbolLibrary`, `window.symbolLibrary.other`, `ui.saveSymbolLibrary`); synthetic input budgets (#1709); bounded transport waits (#1726).
 
 `vectorcraft --control <port>` listens on `127.0.0.1:<port>` (loopback only). The port must be a number
 from 1 to 65535 (`--control=<port>` works too), given once; otherwise the app prints an error and exits
@@ -713,7 +713,11 @@ search. After Find Fonts or Close, the dialog doesn't open again for that open.
 `ui.missingFontsDialog {folder?}` opens the dialog for the active document, searching `folder` when given.
 `ui.findFontsInFolder {folder?}` (Find in Folder… in Type › Find Font…, shown when the document misses fonts) asks for a
 folder, then opens the dialog searching it. The web shows a status line instead of the dialog, and both commands are
-disabled there.
+disabled there. A font a font source supplies (`text.addFontSources`) activates by itself, as Illustrator's Adobe Fonts
+do: where the host fetches sources (the web build), its row shows Activating… while its file is on its way, and
+Activate when it couldn't be loaded, which gives the source again (`text.addFontSources`); elsewhere it is listed as
+missing. On the web a source that fails opens the dialog of each document set in it once: closed, it opens again only
+when another font fails. `ui.missingFontsDialog` is enabled there once the host gave font sources.
 
 Text Import Options: placing a `.txt` file through the app (`file.place` with a file and no `text` options, the Place
 dialog, a drop) opens the `textImport` dialog (fields `platform`: `windows`/`mac`, `characterSet`: `unicode`/`ansi`,
@@ -1130,10 +1134,16 @@ hidden tab (whose frames the browser pauses) answers when it is shown again.
 
 `request`, `execute`, `commands`, `docInspect`, `uiInspect` and `screenshot` come from [`craft-web-api`](https://github.com/storytold/craft-libs/tree/main/crates/web-api) (storytold/craft-libs#413), the same shape in every Craft app. A call the app does not answer within 30 seconds rejects, and the app drops it unrun if it had not started it. `openFile`, `captureDownloads`, `files`, `readFile` and `inspect` are VectorCraft's own.
 
+The browser has no installed fonts, so a host page supplies the fonts its documents use:
+`vectorcraft.execute("text.addFont", {dataBase64})` gives the session a font file's faces, and type set in them redraws;
+`vectorcraft.execute("text.addFontSources", {fonts: [{family, style, url, sha256}]})` lists a whole collection in the
+font menus and lets the app fetch each face itself when type uses it (`docs/mcp.md`, fonts).
+
 ## Revision history
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-13 | minor | Missing Fonts: a font source's row shows Activating… or Activate; on the web a source that fails opens the dialog. |
 | 2026-11-07 | minor | Documented OpenType feature values in text commands (`"salt=2"`, the font's alternate number) and that runs differing only in features shape as one piece of text. |
 | 2026-10-31 | minor | Confining file access: on Windows a `:` in a name after the drive (an NTFS alternate data stream) is refused with the device names (#3604). |
 | 2026-10-25 | minor | Panel docking on craft-ui's layout: `ui.docking`, the floating and dock parameters, native floating windows. |
@@ -1142,6 +1152,8 @@ hidden tab (whose frames the browser pauses) answers when it is shown again.
 | 2026-10-24 | minor | Documented the brush library panel commands (`window.brushLibrary`, `.other`, `ui.saveBrushLibrary`, `window.userBrushLibrary1`…`10`). |
 | 2026-10-24 | minor | Documented `ui.screenshot`'s 64 MiB inline-PNG reply cap: with `path` the file is still written and `pngBase64` is omitted when over the cap; a path-less `data: true` request fails before encoding. |
 | 2026-10-23 | minor | Documented the symbol library panel commands (`window.symbolLibrary`, `.other`, `ui.saveSymbolLibrary`, `window.userSymbolLibrary1`…`10`). |
+| 2026-10-22 | minor | A host page supplies fonts with `text.addFont`. |
+| 2026-10-22 | minor | A host page lists the fonts it can supply with `text.addFontSources`. |
 | 2026-10-18 | minor | Documented `window.vectorcraft`, the web build's control channel. |
 | 2026-10-13 | minor | Documented count, pending-event and per-frame request budgets (#1709). |
 | 2026-10-13 | minor | Documented transport deadlines and connection-slot recovery (#1726). |

@@ -939,6 +939,8 @@ fn the_variable_filter_is_named_as_fonts_are() {
 /// filters; clicked again, every family is back.
 #[test]
 fn the_variable_filter_lists_only_variable_families() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
     use vectorcraft_text::FontClass;
     use vectorcraft_text::test_fonts::{TWO_AXIS_FAMILY, two_axis_font};
     let db = vectorcraft_text::FontDb::global();
@@ -1062,4 +1064,54 @@ fn a_menu_items_sample_follows_show_samples_on_white() {
     super::wait_for_samples(&ctx);
     assert!(!shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Mesh(m) if m.texture_id != egui::TextureId::default())), "no sample");
     assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.fill == super::SAMPLE_PAPER && r.rect == slot)), "the slot is white");
+}
+
+/// A sample drawn while its family wasn't available (in the fallback face: a font source that
+/// failed, or a font not added yet) is drawn again once a font is added, in the family's own face.
+#[test]
+fn a_sample_drawn_before_its_font_arrived_is_drawn_again() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
+    const FAMILY: &str = "Late Sample 1";
+    let ctx = egui::Context::default();
+    // Each call takes a frame of its own: the samples started in one frame are budgeted. A sample
+    // drawn on another thread is waited for (`wait_for_samples`).
+    let sample = || {
+        ctx.run_ui(egui::RawInput::default(), |_| {}).textures_delta.clear();
+        let t = super::sample_texture(&ctx, FAMILY, None, Some("Late"), 20.0);
+        super::wait_for_samples(&ctx);
+        t.or_else(|| super::sample_texture(&ctx, FAMILY, None, Some("Late"), 20.0))
+    };
+    let before = sample().expect("drawn in the fallback face").id();
+    let db = vectorcraft_text::FontDb::global();
+    assert!(db.add_font(vectorcraft_testkit::fonts::renamed(FAMILY)) > 0);
+    // The old sample shows until the new one is drawn: a frame starts it, the next shows it.
+    sample();
+    assert_ne!(sample().expect("drawn again").id(), before, "drawn again in the font added");
+}
+
+/// A drawn sample is kept while the fonts that draw it stay: font sources listed, which change the
+/// font database's generation (as a family the menu loads from the installed fonts does), draw no
+/// sample again; a font file a host adds, which may draw a family that was in the fallback face,
+/// does.
+#[test]
+fn a_sample_is_drawn_again_only_when_a_font_file_is_added() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
+    let _sources = vectorcraft_text::test_fonts::SourcesRemoved::of(&["Gen Src Fam01"]);
+    let ctx = egui::Context::default();
+    let db = vectorcraft_text::FontDb::global();
+    let draw = || super::sample_texture(&ctx, "Source Sans 3", None, Some("Kept sample"), 20.0);
+    let drawing = || super::SAMPLES.with(|s| !s.borrow().pending.is_empty());
+    draw();
+    super::wait_for_samples(&ctx);
+    assert!(draw().is_some(), "drawn");
+    let integrity = format!("sha256-{}", vectorcraft_format::base64_encode(&[0x6a; 32]));
+    db.add_sources(vec![vectorcraft_text::FontSource { family: "Gen Src Fam01".into(), style: "Regular".into(), url: "f.ttf".into(), integrity }]);
+    assert!(draw().is_some());
+    assert!(!drawing(), "a source listed draws no sample again");
+    assert!(db.add_font(vectorcraft_testkit::fonts::renamed("Gen Add Fam01")) > 0);
+    assert!(draw().is_some(), "shown while it is drawn again");
+    assert!(drawing(), "a font file added draws it again");
+    super::wait_for_samples(&ctx);
 }

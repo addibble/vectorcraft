@@ -8904,3 +8904,17 @@ theme	Appearance	अपीयरेंस
 	Grommets	आईलेट
 	Grommet Inset	किनारे से आईलेट की दूरी
 	Diameter	व्यास
+	Activate	सक्रिय करें
+	Activating…	सक्रिय हो रहा है…
+@msg	a session holds at most {max} font sources	एक सत्र में अधिकतम {max} फ़ॉन्ट स्रोत हो सकते हैं
+	Add Font	फ़ॉन्ट जोड़ें
+	Add Font Sources	फ़ॉन्ट स्रोत जोड़ें
+@msg	give the font file as dataBase64	फ़ॉन्ट फ़ाइल dataBase64 के रूप में दें
+@msg	{name} is larger than {_1} MB	{name} {_1} MB से बड़ा है
+@msg	{name} is not a TrueType, OpenType or collection font	{name} TrueType, OpenType या संग्रह फ़ॉन्ट नहीं है
+@msg	{name}: dataBase64 is not base64	{name}: dataBase64, base64 नहीं है
+@msg	fonts[{i}].sha256 is 64 hexadecimal digits	fonts[{i}].sha256 में 64 हेक्साडेसिमल अंक होते हैं
+@msg	fonts[{i}].{key} is 1 to {max} characters	fonts[{i}].{key} में 1 से {max} वर्ण होते हैं
+@msg	give 1 to {MAX_FONT_SOURCES} fonts	1 से {MAX_FONT_SOURCES} फ़ॉन्ट दें
+@msg	give fonts, a list of fonts each with a family, a url and a sha256	fonts दें, फ़ॉन्ट की एक सूची जिसमें हर एक का family, url और sha256 हो
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	{font} लोड नहीं हो सका ({reason}): इसका टेक्स्ट दूसरे फ़ॉन्ट में दिखता है

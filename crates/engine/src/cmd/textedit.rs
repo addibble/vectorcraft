@@ -409,15 +409,18 @@ fn get_story(s: &mut Session, p: &Value, id: NodeId) -> Result<Value> {
 
 /// Keep `st`'s font style when its family has it, else take the family's closest one: a family
 /// whose styles are numbered (W3, W6) has no Regular (#4128). A family that isn't installed keeps
-/// the style as it is.
+/// the style as it is. A font source's style not loaded yet is the nearest its sources supply, not
+/// the style of the fallback face that draws it meanwhile.
 pub(crate) fn fit_font_style(st: &mut CharStyle) {
     let db = vectorcraft_text::FontDb::global();
     let styles = db.styles(&st.font_family);
-    if !styles.is_empty()
-        && !styles.iter().any(|s| s.eq_ignore_ascii_case(&st.font_style))
-        && let Some(face) = db.face(&st.font_family, &st.font_style)
+    if styles.is_empty() || styles.iter().any(|s| s.eq_ignore_ascii_case(&st.font_style)) {
+        return;
+    }
+    if let Some(style) =
+        db.source_style(&st.font_family, &st.font_style).or_else(|| db.face(&st.font_family, &st.font_style).map(|f| f.style.clone()))
     {
-        st.font_style = face.style.clone();
+        st.font_style = style;
     }
 }
 

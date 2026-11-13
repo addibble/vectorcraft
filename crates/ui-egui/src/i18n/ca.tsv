@@ -7610,3 +7610,17 @@ breakText	Glyphs	Glifs
 @msg	{width} × {height} pixels is too large for JPEG (at most 65535 pixels a side): lower the resolution	{width} × {height} píxels és massa gran per a JPEG (com a màxim 65535 píxels per costat): reduïu la resolució
 @msg	{width} × {height} pixels is too large for Targa (at most 65535 pixels a side): lower the resolution	{width} × {height} píxels és massa gran per a Targa (com a màxim 65535 píxels per costat): reduïu la resolució
 @msg	{w} × {h} pixels is too large for PSD (at most {MAX_SIDE} pixels a side): lower the resolution	{w} × {h} píxels és massa gran per a PSD (com a màxim {MAX_SIDE} píxels per costat): reduïu la resolució
+	Activate	Activa
+	Activating…	S’està activant…
+@msg	a session holds at most {max} font sources	una sessió admet com a màxim {max} fonts de tipus de lletra
+	Add Font	Afegeix un tipus de lletra
+	Add Font Sources	Afegeix fonts de tipus de lletra
+@msg	give the font file as dataBase64	doneu el fitxer del tipus de lletra com a dataBase64
+@msg	{name} is larger than {_1} MB	{name} ocupa més de {_1} MB
+@msg	{name} is not a TrueType, OpenType or collection font	{name} no és un tipus de lletra TrueType, OpenType ni de col·lecció
+@msg	{name}: dataBase64 is not base64	{name}: dataBase64 no és base64
+@msg	fonts[{i}].sha256 is 64 hexadecimal digits	fonts[{i}].sha256 són 64 dígits hexadecimals
+@msg	fonts[{i}].{key} is 1 to {max} characters	fonts[{i}].{key} té d’1 a {max} caràcters
+@msg	give 1 to {MAX_FONT_SOURCES} fonts	doneu d’1 a {MAX_FONT_SOURCES} tipus de lletra
+@msg	give fonts, a list of fonts each with a family, a url and a sha256	doneu fonts, una llista de tipus de lletra, cadascun amb family, url i sha256
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	{font} no s’ha pogut carregar ({reason}): el seu text es mostra amb un altre tipus de lletra

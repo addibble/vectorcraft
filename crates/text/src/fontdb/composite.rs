@@ -234,7 +234,8 @@ impl FontDb {
         if let Some(f) = self.composite_font(family) {
             return Some(f.name.clone());
         }
-        match self.resolve(family, style) {
+        // A check: a font source of the family isn't asked for here, only by type set in it.
+        match self.resolve_without_request(family, style) {
             Some((face, m)) if m != FontMatch::Missing => Some(face.family.clone()),
             _ => None,
         }

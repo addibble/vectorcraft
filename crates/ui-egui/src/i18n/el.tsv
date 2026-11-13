@@ -3548,6 +3548,8 @@ digits	Malayalam	Μαλαγιάλαμ
 	Reflect X	Κατοπτρισμός X
 	Reflect Y	Κατοπτρισμός Y
 	Refresh	Ανανέωση
+	Add Font	Προσθήκη γραμματοσειράς
+	Add Font Sources	Προσθήκη πηγών γραμματοσειρών
 	Refresh Font List	Ανανέωση λίστας γραμματοσειρών
 	Missing Fonts	Γραμματοσειρές που λείπουν
 	Missing Fonts Dialog	Παράθυρο γραμματοσειρών που λείπουν
@@ -7587,3 +7589,15 @@ breakText	Glyphs	Γλύφοι
 @msg	{width} × {height} pixels is too large for JPEG (at most 65535 pixels a side): lower the resolution	τα {width} × {height} εικονοστοιχεία είναι υπερβολικό μέγεθος για JPEG (το πολύ 65535 εικονοστοιχεία ανά πλευρά): μειώστε την ανάλυση
 @msg	{width} × {height} pixels is too large for Targa (at most 65535 pixels a side): lower the resolution	τα {width} × {height} εικονοστοιχεία είναι υπερβολικό μέγεθος για Targa (το πολύ 65535 εικονοστοιχεία ανά πλευρά): μειώστε την ανάλυση
 @msg	{w} × {h} pixels is too large for PSD (at most {MAX_SIDE} pixels a side): lower the resolution	τα {w} × {h} εικονοστοιχεία είναι υπερβολικό μέγεθος για PSD (το πολύ {MAX_SIDE} εικονοστοιχεία ανά πλευρά): μειώστε την ανάλυση
+@msg	give the font file as dataBase64	δώστε το αρχείο γραμματοσειράς ως dataBase64
+@msg	{name} is larger than {_1} MB	το {name} είναι μεγαλύτερο από {_1} MB
+@msg	{name} is not a TrueType, OpenType or collection font	το {name} δεν είναι γραμματοσειρά TrueType, OpenType ή συλλογή γραμματοσειρών
+@msg	{name}: dataBase64 is not base64	{name}: το dataBase64 δεν είναι base64
+@msg	fonts[{i}].sha256 is 64 hexadecimal digits	το fonts[{i}].sha256 είναι 64 δεκαεξαδικά ψηφία
+@msg	fonts[{i}].{key} is 1 to {max} characters	το fonts[{i}].{key} έχει 1 έως {max} χαρακτήρες
+@msg	give 1 to {MAX_FONT_SOURCES} fonts	δώστε 1 έως {MAX_FONT_SOURCES} γραμματοσειρές
+@msg	give fonts, a list of fonts each with a family, a url and a sha256	δώστε fonts, μια λίστα γραμματοσειρών, καθεμία με family, url και sha256
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	η γραμματοσειρά {font} δεν φορτώθηκε ({reason}): το κείμενό της εμφανίζεται με άλλη γραμματοσειρά
+	Activate	Ενεργοποίηση
+	Activating…	Ενεργοποίηση…
+@msg	a session holds at most {max} font sources	μια περίοδος λειτουργίας έχει το πολύ {max} πηγές γραμματοσειρών

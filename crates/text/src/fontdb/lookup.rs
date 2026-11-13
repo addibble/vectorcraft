@@ -109,11 +109,22 @@ impl FontDb {
     /// [`face`](Self::face) by any of the family's names ([`canonical`](Self::canonical)), and how
     /// it matched. A composite font matches as its base font does ([`Self::composite_base`]).
     pub fn resolve(&self, family: &str, style: &str) -> Option<(Arc<FontFace>, FontMatch)> {
+        self.resolve_with(family, style, true)
+    }
+
+    /// [`FontDb::resolve`] for a check that sets no type in the font (is it installed, is this
+    /// style its own): a font source it meets is not asked for ([`FontDb::face_without_request`]).
+    pub fn resolve_without_request(&self, family: &str, style: &str) -> Option<(Arc<FontFace>, FontMatch)> {
+        self.resolve_with(family, style, false)
+    }
+
+    /// [`FontDb::resolve`], asking for a font source it meets when `request`.
+    fn resolve_with(&self, family: &str, style: &str, request: bool) -> Option<(Arc<FontFace>, FontMatch)> {
         if let Some((base, base_style)) = self.composite_base(family) {
-            return self.resolve(&base, &base_style);
+            return self.resolve_with(&base, &base_style, request);
         }
         let (family, style) = self.canonical(family, style);
-        let f = self.face(&family, &style)?;
+        let f = self.face_with(&family, &style, request)?;
         let m = if !f.family.eq_ignore_ascii_case(&family) {
             FontMatch::Missing
         } else if norm(&f.style) == norm(&style) || f.keys.styles.contains(&norm(&style)) {
@@ -189,7 +200,7 @@ impl FontDb {
         paths.sort();
         paths.dedup();
         let files = paths.into_iter().flat_map(|p| font_files(&p).into_iter().map(move |data| (data, Some(p.clone()))));
-        self.add_fonts(files) > 0 || self.is_loaded(family)
+        !self.add_fonts(files).added.is_empty() || self.is_loaded(family)
     }
 
     /// Resolve a family + style to a face, falling back to the closest style of the family, then to
@@ -198,8 +209,19 @@ impl FontDb {
     /// the `bundled-fonts` feature and none was added), in which case text has no glyphs. A
     /// composite font gives its base font's face ([`Self::composite_base`]).
     pub fn face(&self, family: &str, style: &str) -> Option<Arc<FontFace>> {
+        self.face_with(family, style, true)
+    }
+
+    /// [`FontDb::face`] for a check that draws no type in it: a font source of the family is not
+    /// asked for ([`FontDb::take_source_requests`]), so only type set in it fetches it.
+    pub fn face_without_request(&self, family: &str, style: &str) -> Option<Arc<FontFace>> {
+        self.face_with(family, style, false)
+    }
+
+    /// [`FontDb::face`], asking for a font source of the family when `request`.
+    fn face_with(&self, family: &str, style: &str, request: bool) -> Option<Arc<FontFace>> {
         if let Some((base, base_style)) = self.composite_base(family) {
-            return self.face(&base, &base_style);
+            return self.face_with(&base, &base_style, request);
         }
         let (family, style) = self.canonical(family, style);
         let (family, style) = (family.as_str(), style.as_str());
@@ -216,6 +238,10 @@ impl FontDb {
             if let Some(f) = self.find(family, style) {
                 return Some(f);
             }
+        }
+        // A host can supply it: asked for once, drawn in the fallback until the host adds it.
+        if request && found.as_ref().is_none_or(|f| norm(&f.style) != norm(style)) {
+            self.request_source(family, style);
         }
         found
             .or_else(|| self.find(FALLBACK_FAMILY, style))
@@ -400,10 +426,34 @@ impl FontDb {
         self.has_installed_family(family)
     }
 
-    /// Is `family` available as a loaded or installed font, excluding composite fonts?
+    /// Is `family` available as a loaded or installed font, excluding composite fonts? A font
+    /// source not loaded yet ([`FontDb::add_sources`]) is not: it is no font until its file
+    /// arrives, as a font provider's font isn't installed until it is activated.
     pub fn has_installed_family(&self, family: &str) -> bool {
         let (family, _) = self.canonical(family, "");
         self.is_loaded(&family) || self.read_catalog().contains_key(&family.to_ascii_lowercase())
+    }
+
+    /// Whether `family` in `style` is a font source not loaded yet: what draws it would request it
+    /// ([`FontDb::face`]), so a font menu's sample leaves it out and only type set in it asks. Each
+    /// style counts apart: a family with Regular loaded may still have Bold to come. A style no
+    /// source supplies asks for the family's nearest source while that one is on its way.
+    pub fn is_pending_source(&self, family: &str, style: &str) -> bool {
+        self.pending_source(family, style).is_some()
+    }
+
+    /// Whether `family` in `style` is on its way: a source of that style (or of one of the same
+    /// slant and weight, "Book" for "Regular") is pending ([`FontDb::is_pending_source`]). Type in
+    /// a style no source supplies is missing even while the family's other styles are on their
+    /// way: once they arrive it draws in another style.
+    pub fn is_activating(&self, family: &str, style: &str) -> bool {
+        self.pending_source(family, style)
+            .is_some_and(|s| style_italic(&s.style) == style_italic(style) && style_weight(&s.style) == style_weight(style))
+    }
+
+    /// Whether a host can supply `family` ([`FontDb::add_sources`]).
+    pub fn is_source(&self, family: &str) -> bool {
+        self.sources.read().unwrap_or_else(|e| e.into_inner()).by_family.contains_key(&family.to_ascii_lowercase())
     }
 
     pub(crate) fn is_loaded(&self, family: &str) -> bool {

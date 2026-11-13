@@ -29,7 +29,7 @@ mod scripts;
 mod shape_plans;
 mod snap;
 mod svg_glyphs;
-mod sysfonts;
+pub(crate) mod sysfonts;
 mod tsume;
 mod typo;
 mod variable;

@@ -12,6 +12,26 @@ use write_fonts::tables::fvar::{AxisInstanceArrays, Fvar, InstanceRecord, Variat
 use write_fonts::tables::gvar::{GlyphDelta, GlyphDeltas, GlyphVariations, Gvar, Tent};
 use write_fonts::types::{F2Dot14, Fixed, NameId, Tag};
 
+/// The font sources of these families taken out of the process's font database when it drops
+/// ([`crate::FontDb::remove_sources`]), also when the test fails: a test that gives sources of its
+/// own leaves no listed family or pending request for the tests after it.
+pub struct SourcesRemoved(pub Vec<String>);
+
+impl SourcesRemoved {
+    /// The sources of `families`, removed when this drops.
+    pub fn of(families: &[&str]) -> Self {
+        SourcesRemoved(families.iter().map(|f| f.to_string()).collect())
+    }
+}
+
+impl Drop for SourcesRemoved {
+    fn drop(&mut self) {
+        for family in &self.0 {
+            crate::FontDb::global().remove_sources(family);
+        }
+    }
+}
+
 /// Whether faces use and keep shaping plans ([`keep_shape_plans`]).
 static KEEP_SHAPE_PLANS: AtomicBool = AtomicBool::new(true);
 

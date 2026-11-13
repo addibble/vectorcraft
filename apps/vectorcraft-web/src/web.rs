@@ -387,6 +387,38 @@ impl eframe::App for WebShell {
             self.restart(&why);
         }
         let Some(app) = &mut self.app else { return };
+        // Font sources: those type asked for are fetched; those fetched join the session, as
+        // `text.addFont` adds a file (straight from the fetched bytes), and the type set in them is
+        // laid out again once for all of them. The host is told how each one ended, so it is no
+        // longer pending; one that failed is listed in Missing Fonts, with Activate.
+        crate::fonts::fetch_requested(ctx);
+        let db = vectorcraft_text::FontDb::global();
+        let mut added = false;
+        let mut failed = vec![];
+        for (src, bytes) in crate::fonts::take_fetched() {
+            // A file of another family is not added (FontDb::add_source_file).
+            let (file, loaded) = db.add_source_file(&src, bytes);
+            added |= !file.added.is_empty();
+            if !loaded {
+                let why = if file.found == 0 {
+                    "it is not a TrueType, OpenType or collection font".to_string()
+                } else {
+                    format!("the file has no face of {}", src.family)
+                };
+                failed.push((src, why));
+            }
+        }
+        if added {
+            app.fonts_added();
+        }
+        for (src, reason) in crate::fonts::take_failed() {
+            db.source_settled(&src, None);
+            failed.push((src, reason));
+        }
+        for (src, reason) in failed {
+            log::warn!("font source {} {}: {reason}", src.family, src.style);
+            app.font_source_failed(&src.family, &reason);
+        }
         app.tick(ctx);
         app.finish_ime_logic(ctx);
     }
@@ -439,6 +471,11 @@ impl eframe::App for WebShell {
                 }
             }
             app.ui(ui);
+        }
+        // Type laid out in this frame may have asked for font sources: the next frame's logic
+        // fetches them, so it is asked for now rather than at the next input.
+        if vectorcraft_text::FontDb::global().has_source_requests() {
+            ui.ctx().request_repaint();
         }
     }
 }
@@ -519,6 +556,8 @@ fn services(
         recovery_store: Some(Arc::new(BrowserStore { locks })),
         // File → Print: the browser's print dialog.
         print: Some(Box::new(BrowserPrint)),
+        // Font sources are fetched each frame (WebShell::logic).
+        fetches_font_sources: true,
         // The pen's end, from the page's Pointer Events (`crate::pencil`).
         stylus: Some(stylus),
         ..Default::default()

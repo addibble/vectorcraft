@@ -459,4 +459,20 @@ impl VectorcraftApp {
         self.ui.status = s.into();
         self.ui.status_sets = self.ui.status_sets.wrapping_add(1);
     }
+
+    /// A font source (`text.addFontSources`) the host couldn't fetch or add: its type stays in the
+    /// fallback face, which the status line says, and the Missing Fonts dialog of each document set
+    /// in it lists it, with Activate to ask for it again.
+    pub fn font_source_failed(&mut self, font: &str, reason: &str) {
+        self.status(format!("{font} couldn't be loaded ({reason}): its text shows in another font"));
+        crate::dialogs::missing_fonts::source_failed(self, font);
+    }
+
+    /// The host added font files to the font database itself (`FontDb::add_font_reporting`, the
+    /// files of font sources): the type is laid out again in them once for them all, as
+    /// `text.addFont` lays it out for one, after the edit the active tool is computing applies.
+    pub fn fonts_added(&mut self) {
+        self.wait_for_tool_edit("text.addFont");
+        vectorcraft_engine::cmd::fontfiles::relayout_type(&mut self.session);
+    }
 }

@@ -107,6 +107,12 @@ pub struct FontDb {
     generation: AtomicU64,
     /// This database's [`FontDb::id`].
     id: u64,
+    /// Fonts a host can supply on request ([`FontDb::add_sources`]), and those requested and not
+    /// yet taken ([`FontDb::take_source_requests`]).
+    sources: RwLock<Sources>,
+    source_requests: Mutex<SourceRequests>,
+    /// [`FontDb::supplied_generation`].
+    supplied_generation: AtomicU64,
     /// System fallback state: characters no system font covers.
     #[cfg(not(target_arch = "wasm32"))]
     sys: Mutex<SysFallback>,
@@ -165,6 +171,58 @@ const CANONICAL_CACHE_MAX: usize = 4_096;
 
 /// [`FontDb::menu_family_list`], with the [`FontDb::family_list`] it was built from.
 type MenuFamilies = (Arc<[String]>, Arc<[String]>);
+
+/// A font a host can supply when type needs it, as a font provider's fonts are activated on
+/// demand: listed in the font menus before it is loaded, and fetched by the host from `url` when
+/// type names it (the web build does so, checking the bytes against `integrity`); until then the
+/// type draws in the fallback face.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FontSource {
+    pub family: String,
+    pub style: String,
+    /// Where the host gets the file: for the web build, a URL relative to the page.
+    pub url: String,
+    /// The file's Subresource Integrity value, `sha256-<base64>`.
+    pub integrity: String,
+}
+
+/// The fonts a host can supply ([`FontDb::add_sources`]), by family: each family's sources found
+/// by one lookup, where type, a font menu's row or a family list asks.
+#[derive(Debug, Default)]
+struct Sources {
+    /// Each family's sources in the order they were given, keyed by the family in lowercase.
+    by_family: HashMap<String, Vec<FontSource>>,
+    /// How many there are in all: at most [`FontDb::MAX_SOURCES`].
+    count: usize,
+}
+
+/// The sources requested ([`FontDb::face`] met their family missing): each requested once. Both
+/// maps are keyed by sources, so they hold at most [`FontDb::MAX_SOURCES`] entries.
+#[derive(Debug, Default)]
+struct SourceRequests {
+    asked: std::collections::HashSet<(String, String)>,
+    queue: Vec<FontSource>,
+    /// How each source the host took on ended ([`FontDb::source_settled`]): `true` when its file was
+    /// added, `false` when it couldn't be fetched or added. Keyed as `asked` is.
+    settled: HashMap<(String, String), bool>,
+}
+
+/// A source's key in [`SourceRequests`]: its family and style, in lowercase.
+fn source_key(src: &FontSource) -> (String, String) {
+    (src.family.to_ascii_lowercase(), src.style.to_ascii_lowercase())
+}
+
+/// What [`FontDb::add_font_reporting`] did with a font file's bytes.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct FontsAdded {
+    /// The faces the file holds: 0 when it is no TrueType, OpenType or collection font.
+    pub found: usize,
+    /// The faces the file holds, as (family, style), whether or not they were loaded already.
+    pub held: Vec<(String, String)>,
+    /// The faces it added, as (family, style); a face already loaded (the same family, style and
+    /// version) is not added again.
+    pub added: Vec<(String, String)>,
+}
 
 #[cfg(test)]
 mod alias_tests {

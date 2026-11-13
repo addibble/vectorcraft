@@ -3471,6 +3471,8 @@ theme	Appearance	Wygląd
 	Add Font Files	Dodaj pliki czcionek
 	Font List	Lista czcionek
 	Fonts in Document	Czcionki w dokumencie
+	Add Font	Dodaj czcionkę
+	Add Font Sources	Dodaj źródła czcionek
 	Refresh Font List	Odśwież listę czcionek
 	Replace Font	Zastąp czcionkę
 	Select Text by Font	Zaznacz tekst według czcionki
@@ -9300,3 +9302,15 @@ breakText	Glyphs	Glify
 @msg	{width} × {height} pixels is too large for JPEG (at most 65535 pixels a side): lower the resolution	{width} × {height} pikseli to za dużo dla formatu JPEG (najwyżej 65535 pikseli na bok): zmniejsz rozdzielczość
 @msg	{width} × {height} pixels is too large for Targa (at most 65535 pixels a side): lower the resolution	{width} × {height} pikseli to za dużo dla formatu Targa (najwyżej 65535 pikseli na bok): zmniejsz rozdzielczość
 @msg	{w} × {h} pixels is too large for PSD (at most {MAX_SIDE} pixels a side): lower the resolution	{w} × {h} pikseli to za dużo dla formatu PSD (najwyżej {MAX_SIDE} pikseli na bok): zmniejsz rozdzielczość
+@msg	give the font file as dataBase64	podaj plik czcionki jako dataBase64
+@msg	{name} is larger than {_1} MB	{name} jest większy niż {_1} MB
+@msg	{name} is not a TrueType, OpenType or collection font	{name} nie jest czcionką TrueType, OpenType ani kolekcją czcionek
+@msg	{name}: dataBase64 is not base64	{name}: dataBase64 nie jest w base64
+@msg	fonts[{i}].sha256 is 64 hexadecimal digits	fonts[{i}].sha256 to 64 cyfry szesnastkowe
+@msg	fonts[{i}].{key} is 1 to {max} characters	fonts[{i}].{key} ma od 1 do {max} znaków
+@msg	give 1 to {MAX_FONT_SOURCES} fonts	podaj od 1 do {MAX_FONT_SOURCES} czcionek
+@msg	give fonts, a list of fonts each with a family, a url and a sha256	podaj fonts, listę czcionek, każdą z family, url i sha256
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	nie udało się wczytać czcionki {font} ({reason}) — jej tekst jest wyświetlany inną czcionką
+	Activate	Aktywuj
+	Activating…	Aktywowanie…
+@msg	a session holds at most {max} font sources	sesja może mieć najwyżej {max} źródeł fontów

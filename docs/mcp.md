@@ -1,5 +1,6 @@
 # VectorCraft MCP server
 
+> **Last updated:** 2026-11-14 · **Change:** fonts a host supplies: `text.addFont`, and `text.addFontSources` activated on demand (a source not loaded yet is no installed family; at most 20000 in all); existing response shapes retained. Previously: Envelopes: a top object's side whose pieces are all one curve split at anchors follows that curve's parameter (#7097); existing response shapes retained. Previously: Save location-refusal error (#6146); existing response shapes retained.
 > **Last updated:** 2026-11-14 · **Change:** Pencil continuation, straight-line and closing cursors; scores and estimates unchanged; no response-shape change. Previously: Snap to Point with Smart Guides off draws no Smart Guides labels or lines, #7250; no response-shape change. Previously: Envelopes: a top object's side whose pieces are all one curve split at anchors follows that curve's parameter (#7097); existing response shapes retained.
 
 `vectorcraft-cli mcp` runs a [Model Context Protocol](https://modelcontextprotocol.io) server on stdio
@@ -10163,12 +10164,38 @@ first style), empty for a static font. `text.rescanFonts`
 started: type set in a font that became available redraws in it, and type set in a family that was removed redraws in
 the fallback font and is listed as missing, without editing the document. The type in opacity masks and in the art of
 symbols and pattern swatches is laid out again too, and inline graphics take the new size of their symbols' art. The app does so by
-itself when its window comes to the front and a font folder changed meanwhile.
+itself when its window comes to the front and a font folder changed meanwhile. `text.addFont` gives the session a font
+file's faces from its bytes (`dataBase64`: TrueType, OpenType or a collection, at most 64 MB; over MCP a request line
+holds at most 16 MiB, so a file of at most about 12 MB fits there), as installing it would,
+for as long as the session runs: the web build has no installed fonts, so a page that embeds VectorCraft supplies the
+fonts its documents use this way (`window.vectorcraft.execute("text.addFont", {dataBase64})`). Type set in a face it
+adds redraws in it; a face already loaded (the same family, style and version) is not added again, and bytes that are
+no font are refused. It answers `{faces: [{family, style}], found}` (the faces added, and the faces the file holds) and
+is not an edit: nothing is saved, journaled or undone. `text.addFontSources {fonts: [{family, style?, url, sha256}]}`
+registers fonts the host can supply, as a font provider's fonts are activated on demand: they are listed in the font
+menus and `text.fontList` from then on (a menu shows a source not loaded yet by name, without a sample, and `text.fontList` gives no axes for it; listing a source asks for nothing), and type set in
+one asks for it (a style no source supplies asks for the family's nearest one). The web build fetches what type asks for from `url` (relative to the page), four at a time and at most 64 MB each, checks it against its
+SHA-256, and adds it as `text.addFont` does; until then, or when it fails, the type draws in the fallback face, highlighted as
+a substituted font, and `text.fonts` and `text.missingFonts` report it `missing` (a source not loaded yet is no installed
+family). A source that fails brings the Missing Fonts dialog of each document set in it once (closed, it comes back
+only when another font fails), where the font shows Activating… while its file is on its way and Activate, which gives
+it again, once it failed. Read-only checks (Find Font's, `text.replaceFont`'s of the font it is given) ask for no
+source; a source family the font menus' wheel passes over is skipped, so only the one it stops on is fetched, and a
+fetched file holding no face of its source's family is not added. Desktop and `vectorcraft-cli` fetch no source: their
+host adds its file with `text.addFont`, and until it does the family stays listed, its type draws in the fallback face,
+`text.fonts` reports it `missing` and Missing Fonts lists it without Activating… or Activate. `text.replaceFont` takes a
+source's family, in a style its sources supply, and type set in a source's family before it loads (the Character panel,
+`text.create`, `text.setStyle`) takes the style its sources supply nearest its own. A drag or preview open when the
+file arrives is laid out too. A family and style already a source is kept, unless it failed to load (given
+again, it is asked for again at once); a session holds at most 20000 sources, and a list whose new sources would pass that is
+refused whole. Scripts and plug-ins can run neither command. The answer is `{added, sources}`; not an edit either.
 
 ```json
 {"name":"run_command","arguments":{"command":"text.fontList","params":{}}}
 {"name":"run_command","arguments":{"command":"text.fontList","params":{"family":"Source Serif 4"}}}
 {"name":"run_command","arguments":{"command":"text.rescanFonts","params":{}}}
+{"name":"run_command","arguments":{"command":"text.addFont","params":{"dataBase64":"AAEAAAAS…"}}}
+{"name":"run_command","arguments":{"command":"text.addFontSources","params":{"fonts":[{"family":"Roboto Slab","url":"fonts/RobotoSlab.ttf","sha256":"d2985f67…"}]}}}
 ```
 
 `text.missingFonts` lists the fonts that the active document's type uses, in its layers, its symbols and its pattern
@@ -12010,6 +12037,7 @@ the error text. The interactive fallback applies only to ordinary File > Save, n
 
 | Date | Change |
 |---|---|
+| 2026-11-13 | Fonts a host supplies: `text.addFont`, and `text.addFontSources` activated on demand, as Illustrator activates Adobe Fonts. |
 | 2026-11-13 | `path.freehand`: `closed`, when given, decides whether a stroke that continues a path (`extend`) closes it; the Pencil and the Paintbrush send it by Close Paths When Ends Are Within. |
 | 2026-11-13 | Snap to Point with Smart Guides off draws no Smart Guides labels or lines (#7250). |
 | 2026-11-13 | Envelopes: a top object's side whose pieces are all one curve split at anchors follows that curve's parameter (#7097). |
