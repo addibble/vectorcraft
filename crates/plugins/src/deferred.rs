@@ -89,12 +89,14 @@ pub struct Refreshed {
 /// Milliseconds on a monotonic clock, `None` from a clock that cannot be read.
 pub type Clock = Arc<dyn Fn() -> Option<u64> + Send + Sync>;
 
-/// Milliseconds since the first reading in this process, from `web_time::Instant`: the system's
-/// monotonic clock on the desktop and the page's `performance.now()` in the web build.
+/// Milliseconds since the first reading in this process, on the monotonic clock
+/// ([`crate::clock`]): the system's on the desktop, the page's `performance.now()` in the web
+/// build; `None` without one.
 fn monotonic() -> Option<u64> {
-    static START: std::sync::OnceLock<web_time::Instant> = std::sync::OnceLock::new();
-    let start = START.get_or_init(web_time::Instant::now);
-    Some(u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX))
+    static START: std::sync::OnceLock<crate::clock::Instant> = std::sync::OnceLock::new();
+    let now = crate::clock::now()?;
+    let start = *START.get_or_init(|| now);
+    Some(u64::try_from(now.saturating_duration_since(start).as_millis()).unwrap_or(u64::MAX))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

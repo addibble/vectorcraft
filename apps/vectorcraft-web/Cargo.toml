@@ -14,7 +14,9 @@ name = "vectorcraft-web"
 path = "src/main.rs"
 
 [dependencies]
-vectorcraft-engine = { workspace = true, features = ["bundled-fonts", "heif"] }
+vectorcraft-engine = { workspace = true, features = ["bundled-fonts", "heif", "word-doc"] }
+# The page's clock for plug-in run deadlines (performance.now()): the binary picks it on wasm32.
+vectorcraft-plugins = { workspace = true, features = ["web-clock"] }
 vectorcraft-ui-egui = { workspace = true }
 # The page command API (storytold/craft-libs#413): the request plumbing behind window.vectorcraft.
 craft-web-api = { git = "https://github.com/storytold/craft-libs", rev = "fd5e2feff6ea25bed371a99cc732b3968d621505", version = "0.1.0" }
@@ -30,5 +32,9 @@ rfd = { workspace = true, features = ["file-handle-inner"] }
 wasm-bindgen = "0.2"
 serde_json = { workspace = true }
 wasm-bindgen-futures = "0.4"
+# The browser's crypto.getRandomValues for getrandom (PDF encryption's keys, vectorcraft-pdf, and
+# the script engine's Math.random seed, vectorcraft-js):
+# the binary picks the random source, not the library.
+getrandom = { version = "0.4", features = ["wasm_js"] }
 js-sys = "0.3"
 web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlElement", "HtmlCanvasElement", "HtmlInputElement", "KeyboardEvent", "HtmlIFrameElement", "HtmlAnchorElement", "Blob", "BlobPropertyBag", "ClipboardEvent", "DataTransfer", "File", "FileList", "Url", "Location", "CssStyleDeclaration", "Event", "EventTarget", "MouseEvent", "PointerEvent", "TouchEvent", "AddEventListenerOptions", "DomRect", "DragEvent", "Storage", "Navigator", "RequestInit", "Response", "AbortController", "AbortSignal"] }
