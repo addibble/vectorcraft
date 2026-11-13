@@ -303,9 +303,10 @@ fn make(s: &mut Session, p: &Value) -> Result<Value> {
 fn release(s: &mut Session, p: &Value) -> Result<Value> {
     let ids = masked_targets(s, p)?;
     let editing = s.doc()?.doc.mask_edit.is_some();
+    let entered = s.doc()?.mask_edit_return.entered().cloned();
     s.edit("Release Opacity Mask", |d, sel| {
         // Leave mask editing first: its art goes back into the mask, which is released below.
-        finish(d, sel);
+        finish(d, sel, entered.as_deref());
         let mut out = vec![];
         let mut released = Beside::above(d, &ids);
         for id in &ids {
