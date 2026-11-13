@@ -1960,6 +1960,53 @@ fn pattern_tile_follows_undecoded_image_mark_in_both_cache_orders() {
     }
 }
 
+/// A pattern's tile showing a linked image is drawn again when a host supplies the pixels of its
+/// file ([`crate::link_pixels`]): the supplied pixels take the preview's place in the tile too.
+#[test]
+fn pattern_tile_follows_supplied_linked_pixels() {
+    use vectorcraft_doc::pattern::{PatternDef, pattern_paint};
+    use vectorcraft_doc::{ImageBlob, ImageObject, LinkInfo, NodeKind};
+
+    let png = |w: u32, h: u32, rgb: [u8; 3]| {
+        let mut out = vec![];
+        image::RgbaImage::from_pixel(w, h, image::Rgba([rgb[0], rgb[1], rgb[2], 255]))
+            .write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png)
+            .unwrap();
+        out
+    };
+    let key = "linked-pattern-tile";
+    crate::link_pixels::forget(key);
+    let mut d = Document::new(80.0, 80.0);
+    // The linked file's 8 × 8 preview, green; the file is 40 × 40.
+    let preview = Arc::new(png(8, 8, [0, 200, 0]));
+    d.images.insert(key.into(), ImageBlob { mime: "image/png".into(), bytes: preview.clone(), proxy: Some(preview) });
+    let image = ImageObject {
+        key: key.into(),
+        width: 40,
+        height: 40,
+        xf: Affine::scale(0.5),
+        link: Some(LinkInfo::new("/nowhere/linked-pattern-tile.png")),
+        placement: Default::default(),
+        pixels: None,
+    };
+    let image = Node::new(d.alloc_id(), NodeKind::Image(Box::new(image)));
+    let mut pattern = PatternDef::new("Linked", vec![Arc::new(image)]);
+    pattern.tile = Rect::new(0.0, 0.0, 20.0, 20.0);
+    d.patterns.push(pattern);
+    let shape = rect_node(&mut d, Rect::new(10.0, 10.0, 70.0, 70.0), pattern_paint("Linked"), Paint::None, 0.0);
+    d.insert(Some(d.layers[0].id), 0, shape).unwrap();
+
+    let mut r = Renderer::new();
+    let opts = RenderOptions::default();
+    let before = r.render(&d, 80, 80, Affine::IDENTITY, &opts).pixel(35, 35);
+    assert!(before[1] > 150 && before[0] < 80, "the preview: {before:?}");
+    let blob = ImageBlob::new("image/png", png(40, 40, [200, 0, 0]));
+    assert!(crate::link_pixels::insert(key, crate::link_pixels::Supplied { size: (40, 40), blob }));
+    let after = r.render(&d, 80, 80, Affine::IDENTITY, &opts).pixel(35, 35);
+    crate::link_pixels::forget(key);
+    assert!(after[0] > 150 && after[1] < 80, "the supplied pixels: {after:?}");
+}
+
 /// The rasters a renderer keeps of an object's raster effects are made again when
 /// `mark_undecoded_images` changes: a blurred image whose pixels can't be decoded shows its blurred
 /// mark only while the option is on.

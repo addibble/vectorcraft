@@ -1,8 +1,38 @@
 use super::{
-    Affine, Arc, BezPath, Document, FillRule, Frame, HashMap, Ink, Node, NodeKind, Pixmap, Rect, RenderContext, Renderer, Shape, blob_key,
+    Affine, Arc, BezPath, Document, FillRule, Frame, Ink, Node, NodeKind, Pixmap, Rect, RenderContext, Renderer, Shape, adjusted_pixmap, blob_key,
     blob_pixmap, fill_rule, image_mip, ink, lookup, mip_level, peniko, proof, vello_cpu,
 };
-use crate::images;
+use std::borrow::Cow;
+
+use crate::{images, link_pixels};
+
+/// The pixels image `key` (or `own`, the pixels it holds itself) is drawn from: a linked image
+/// showing its preview takes the pixels a host supplied for its file ([`link_pixels`]) in the
+/// preview's place when there are any finer than it, and with `supplied` false the preview. `touch`
+/// marks supplied pixels drawn.
+pub(crate) fn source_blob<'a>(
+    doc: &'a Document,
+    key: &str,
+    own: Option<&'a vectorcraft_doc::ImageBlob>,
+    supplied: bool,
+    touch: bool,
+) -> Option<Cow<'a, vectorcraft_doc::ImageBlob>> {
+    let blob = own.or_else(|| doc.images.get(key))?;
+    if supplied
+        && blob.is_proxy()
+        && let Some(pixels) = if touch { link_pixels::get(key) } else { link_pixels::peek(key) }
+        && pixels.size.0.max(pixels.size.1) > preview_side(blob)
+    {
+        return Some(Cow::Owned(pixels.blob.clone()));
+    }
+    Some(Cow::Borrowed(blob))
+}
+
+/// The longer side of a linked image's preview, in pixels: its decoded size, else the most a
+/// preview has.
+fn preview_side(blob: &vectorcraft_doc::ImageBlob) -> u32 {
+    images::blob_id(blob).size.map_or(vectorcraft_doc::links::PROXY_SIZE, |(w, h)| u32::from(w.max(h)))
+}
 
 /// The color image node `n` of `doc` is colorized with ([`vectorcraft_doc::NodeExtras::colorize`]),
 /// if it is and its pixels take it ([`vectorcraft_doc::ImageBlob::takes_colorize`]), as `ink`
@@ -50,10 +80,16 @@ impl Renderer {
         // With `kept_images_only`, an image still to be decoded: it draws as a light box, not as
         // an undecoded image.
         let mut pending = false;
+        if !outline {
+            self.note_linked(f, im, unit);
+        }
         let shown = if outline && !f.doc.setup.outline_images {
             None
         } else if f.opts.kept_images_only {
-            let kept = self.nearest_kept(f, &im.key, im.pixels.as_deref(), outline, tint, unit);
+            // The supplied pixels when they are decoded, else the preview's.
+            let kept = self
+                .nearest_kept(f, &im.key, im.pixels.as_deref(), outline, tint, unit, true)
+                .or_else(|| self.nearest_kept(f, &im.key, im.pixels.as_deref(), outline, tint, unit, false));
             pending = kept.is_none() && !self.noted_undecodable(f.doc, &im.key, im.pixels.as_deref());
             if pending {
                 // Not decoded: a light box where the image will be, as a placed document's
@@ -79,7 +115,8 @@ impl Renderer {
                 // Shrunk first, so what is made of the pixels below is made of the ones drawn: a
                 // 141-megapixel photo is separated at the size it shows, not at its own (#4155).
                 let (key, pm) = if mips { image_mip(key, pm, unit) } else { (key, pm) };
-                let blob = f.doc.image_blob(im);
+                let blob = source_blob(f.doc, &im.key, im.pixels.as_deref(), true, false);
+                let blob = blob.as_deref();
                 // Zoomed in on it, only the tiles in view.
                 if let Some(window) = in_view(f, im, &key, &pm, outline, tint) {
                     return window_pixmap(f, &key, &pm, window, outline, tint, blob);
@@ -169,6 +206,32 @@ impl Renderer {
         }
     }
 
+    /// Note linked image `im` as wanting its file's pixels ([`link_pixels::note_drawn`]) when it
+    /// shows its preview drawn magnified past the preview's pixels; `unit` maps the image's unit
+    /// square to the device. Adjusted art's image is its source image's, however deep.
+    fn note_linked(&self, f: &Frame, im: &vectorcraft_doc::ImageObject, unit: Affine) {
+        if im.link.is_none() {
+            return;
+        }
+        let (mut key, mut own) = (im.key.as_str(), im.pixels.as_deref());
+        // Adjusted art's images name their sources; a cycle is no image's.
+        for _ in 0..64 {
+            if let Some(blob) = own.or_else(|| f.doc.images.get(key)) {
+                if blob.is_proxy() {
+                    // Device pixels along the image's longer stretch, against the preview's longer side.
+                    let [a, b, c, d, _, _] = unit.as_coeffs();
+                    let device = a.hypot(b).max(c.hypot(d));
+                    if device.is_finite() && device > f64::from(preview_side(blob)) {
+                        link_pixels::note_drawn(key);
+                    }
+                }
+                return;
+            }
+            let Some((src, ..)) = self.adjusts.get(key) else { return };
+            (key, own) = (src.as_str(), None);
+        }
+    }
+
     /// Name image `key` recoloured by `map` (its hash `hash`) as `derived` (the key the adjusted
     /// art's image takes): drawing `derived` draws the recoloured pixels, made when first drawn and
     /// kept with the decoded images. Names past a limit drop the art made with them too, so it is
@@ -195,30 +258,12 @@ impl Renderer {
         grey: bool,
         touch: bool,
     ) -> Option<(images::ImageKey, Arc<Pixmap>)> {
-        let (key, colour) = match own.or_else(|| doc.images.get(key)) {
-            Some(blob) => blob_pixmap(blob, touch)?,
+        let (key, colour) = match source_blob(doc, key, own, true, touch) {
+            Some(blob) => blob_pixmap(&blob, touch)?,
             None => {
                 let (src, hash, map) = self.adjusts.get(key)?.clone();
                 let (src_key, src) = self.image_pixmap(doc, &src, None, false, touch)?;
-                let key = images::ImageKey { adjust: Some(hash), ..src_key };
-                match lookup(&key, touch) {
-                    Some(pm) => (key, pm),
-                    None => {
-                        let mut pm = (*src).clone();
-                        let mut memo: HashMap<[u8; 4], [u8; 3]> = HashMap::new();
-                        for px in pm.data_mut().iter_mut().filter(|p| p.a > 0) {
-                            let a = px.a as u32;
-                            let [r, g, b] = *memo.entry([px.r, px.g, px.b, px.a]).or_insert_with(|| {
-                                // Premultiplied to straight, adjusted, then premultiplied again.
-                                let straight = [px.r, px.g, px.b].map(|v| ((v as u32 * 255 + a / 2) / a).min(255) as u8);
-                                map.apply_rgb8(straight).map(|v| ((v as u32 * a + 127) / 255) as u8)
-                            });
-                            (px.r, px.g, px.b) = (r, g, b);
-                        }
-                        let pm = images::store().insert(key.clone(), Arc::new(pm));
-                        (key, pm)
-                    }
-                }
+                adjusted_pixmap(src_key, &src, hash, &map, touch)
             }
         };
         if !grey {
@@ -239,16 +284,24 @@ impl Renderer {
     }
 
     /// The key [`Self::image_pixmap`] gives the pixels of image `key` (or `own`) and their size, without
-    /// making or looking at them: `None` until the image has been decoded.
-    fn image_key(&self, doc: &Document, key: &str, own: Option<&vectorcraft_doc::ImageBlob>, grey: bool) -> Option<(images::ImageKey, (u16, u16))> {
-        let (key, size) = match own.or_else(|| doc.images.get(key)) {
+    /// making or looking at them: `None` until the image has been decoded. With `supplied` false, a
+    /// linked image's preview's, not the pixels a host supplied ([`source_blob`]).
+    fn image_key(
+        &self,
+        doc: &Document,
+        key: &str,
+        own: Option<&vectorcraft_doc::ImageBlob>,
+        grey: bool,
+        supplied: bool,
+    ) -> Option<(images::ImageKey, (u16, u16))> {
+        let (key, size) = match source_blob(doc, key, own, supplied, false) {
             Some(blob) => {
-                let (key, _, size) = blob_key(blob);
+                let (key, _, size) = blob_key(&blob);
                 (key, size?)
             }
             None => {
                 let (src, hash, _) = self.adjusts.get(key)?;
-                let (src_key, size) = self.image_key(doc, src, None, false)?;
+                let (src_key, size) = self.image_key(doc, src, None, false, supplied)?;
                 (images::ImageKey { adjust: Some(*hash), ..src_key }, size)
             }
         };
@@ -267,7 +320,7 @@ impl Renderer {
         tint: Option<[u8; 3]>,
         m: Affine,
     ) -> Option<Arc<Pixmap>> {
-        let (key, (w, h)) = self.image_key(f.doc, key, own, grey)?;
+        let (key, (w, h)) = self.image_key(f.doc, key, own, grey, true)?;
         let key = shown_key(f, key, grey, tint);
         let level = mip_level(m, w, h);
         if level == 0 {
@@ -279,7 +332,9 @@ impl Renderer {
     /// The pixels of image `key` (or `own`) that [`RenderOptions::kept_images_only`] draws through
     /// `m`, in greyscale with `grey` (the outline view's) or colorized with `tint`: of the mips the
     /// store holds, the one [`image_mip`] would draw, else the nearest finer one (the full pixels
-    /// last), else the nearest coarser one. `None` when the store holds none. Nothing is marked used.
+    /// last), else the nearest coarser one. `None` when the store holds none. Nothing is marked used
+    /// or decoded. With `supplied` false, a linked image's preview's ([`source_blob`]).
+    #[allow(clippy::too_many_arguments)]
     fn nearest_kept(
         &self,
         f: &Frame,
@@ -288,8 +343,9 @@ impl Renderer {
         grey: bool,
         tint: Option<[u8; 3]>,
         m: Affine,
+        supplied: bool,
     ) -> Option<Arc<Pixmap>> {
-        let (key, (w, h)) = self.image_key(f.doc, key, own, grey)?;
+        let (key, (w, h)) = self.image_key(f.doc, key, own, grey, supplied)?;
         let key = shown_key(f, key, grey, tint);
         let level = mip_level(m, w, h);
         let s = images::store();
@@ -300,9 +356,9 @@ impl Renderer {
     /// Whether the shared store notes image `key` (or `own`), or the image an adjusted image is
     /// made from, as one whose pixels can't be decoded. Nothing is decoded.
     fn noted_undecodable(&self, doc: &Document, key: &str, own: Option<&vectorcraft_doc::ImageBlob>) -> bool {
-        match own.or_else(|| doc.images.get(key)) {
+        match source_blob(doc, key, own, true, false) {
             Some(blob) => {
-                let content = blob_key(blob).0.content;
+                let content = blob_key(&blob).0.content;
                 images::store().is_undecodable(&content)
             }
             None => self.adjusts.get(key).is_some_and(|(src, ..)| self.noted_undecodable(doc, src, None)),
