@@ -2,7 +2,7 @@ use super::char_style::{CharPosition, CharStyle};
 use super::{Deserialize, Serialize};
 
 /// Tab stop alignment (Tabs panel).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum TabAlign {
     #[default]
@@ -14,17 +14,17 @@ pub enum TabAlign {
 }
 
 /// A tab stop, measured from the left edge of the text (area type: the frame's left edge).
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TabStop {
     pub position: f64,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub align: TabAlign,
     /// Leader characters repeated across the tab's gap (e.g. ". ").
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub leader: String,
     /// Decimal tabs align on this character.
-    #[serde(default = "default_align_on")]
+    #[serde(default = "default_align_on", skip_serializing_if = "is_default_align_on")]
     pub align_on: char,
 }
 
@@ -40,12 +40,15 @@ impl TabStop {
 fn default_align_on() -> char {
     '.'
 }
+fn is_default_align_on(v: &char) -> bool {
+    crate::skip::saved_as(v, &default_align_on())
+}
 
 /// Distance between default tab stops when no explicit stop applies (½ inch).
 pub const DEFAULT_TAB_INTERVAL: f64 = 36.0;
 
 /// The bullet of a bulleted list ([`ParaList::bullet`]): the Paragraph panel's Bullets presets.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum Bullet {
     /// A filled dot (•).
@@ -73,7 +76,7 @@ impl Bullet {
 
 /// How a numbered list writes its numbers ([`ParaList::number`]): the Paragraph panel's Numbered
 /// List presets.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum NumberStyle {
     /// 1, 2, 3…
@@ -166,7 +169,7 @@ fn roman(mut n: u32) -> String {
 
 /// Where a list's marker stands before the first line's text ([`ParaList::align`]): the Bullets
 /// and Numbering dialog's Alignment.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum ListAlign {
     /// The marker starts where the first line starts: at the left indent plus the first-line
@@ -186,7 +189,7 @@ pub enum ListAlign {
 /// the first ([`Self::level`]) is set [`LIST_LEVEL_INDENT`] further in for each level. The marker
 /// is not a character of the text, and an empty paragraph has none. A saved list reads the fields
 /// it leaves out as their defaults, and a build ignores the fields it doesn't know.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default)]
 pub struct ParaList {
     /// The bullet each paragraph of a bulleted list starts with. A numbered list keeps it for

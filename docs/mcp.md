@@ -411,6 +411,63 @@ are given) with its ancestor `path`, and `limit` / `offset` page the list. A sco
 `nodes` instead of `layers` (each the summary the full tree gives it, sliced by `depth` / `childLimit`) plus
 `total`, the entries before paging; artboards, selection and history stay whole. `limit` / `offset` alone page the
 top layers (`layers` and `total`). Without these options the reply is the whole layer tree as before.
+When a summary is not enough, read the model itself a part at a time: `run_command document.query
+{path, limit?, offset?, depth?, layout?}` (or the `query_document` tool) answers a JSONPath
+([RFC 9535](https://www.rfc-editor.org/rfc/rfc9535)) over the model as `document.json` gives it
+(`$.artboards[*].name`, `$.layers[0].kind.children[?@.kind.type == 'path'].id`,
+`$..[?@.name == 'logo']`) with `{matches: [{path, pointer, value}], total}`, where `path` is the
+match's normalized path (`$['layers'][0]['kind']`), so a later query or `document.schema {at}`
+names it exactly, and `pointer` the same as a JSON Pointer, what `document.patch` takes; `limit`
+(default 100; `0` counts only) and `offset` page the matches, `depth` cuts each value at that many
+levels with what lies below summarized as `{…n keys}` or `[…n items]`, and an answer that would
+come to more than 1 MiB is an error asking for a narrower query. The limit counts the answer as
+its caller writes it, `layout: compact` (the default) or `pretty`; this server writes answers
+pretty-printed and runs every query so (`query_document`, `run_command`, batches), whatever
+`layout` says, so no answer an agent reads is past the limit. The three tools come from the
+shared `craft-jsonquery` crate (craft-libs), so other Craft apps offer the same ones. What the keys
+mean is
+`run_command document.schema {type?, at?, index?}` (or the `document_schema` tool): the model's
+JSON Schema, generated from its own types and doc comments, read one type at a time. Without
+arguments it describes `Document`, the root: each property with its type (`array of Artboard`,
+`map of ImageBlob`, `number | null`), default and description, and `types`, the named types the
+properties refer to, to describe next with `type`. `at` describes the type of the value at a
+JSONPath into the active document, an enum resolved to the variant the value's tag names, whether
+the tag is `type`, `kind`, `model` or `shape` (`kind` of a layer lists `children`, of a path lists
+`path`; a fill's paint lists the fields of its kind). `document.query` and `document.schema {at}`
+name a linked file outside the folders `--automation-read-root` gives as `document.json` does, by
+file name only. `index: true` lists every type with a line each.
+`document.schema` needs an open document only for `at`.
+To change the model where a command does not say it, `run_command document.patch {patch, label?}`
+(or the `patch_document` tool) applies a JSON Patch ([RFC 6902](https://www.rfc-editor.org/rfc/rfc6902))
+with JSON Pointer paths ([RFC 6901](https://www.rfc-editor.org/rfc/rfc6901)): the `pointer` each
+`document.query` match carries (`/layers/0/kind/children/2/opacity`; `/-` appends to an array),
+operations `add`, `remove`, `replace`, `move`, `copy` and `test`, applied in order, all or none,
+the result loaded through the model as a file's document is read, so what the model cannot be,
+or what reading the saved file back would change (a value out of its range, art nested too deep),
+is refused whole and the document stays as it was. While `--automation-read-root` is in force,
+`document.patch` is refused whatever it changes (the JSON such a session is shown names linked
+files outside the read roots by file name only, so it is not the document's): use the
+document's commands instead. A field left out at its default holds it for
+`replace` and `test`; `add` sets it too. When the object that would hold the field is left out as
+well (a type object's `area` with every option at its default), there is nothing to `replace`
+in: `add` the object with the field (`{"op": "add", "path": "…/area", "value": {"gutter": 12}}`).
+`test` compares numbers by value (`1` is `1.0`). A key no field of the model has, such as a
+misspelled one, is refused rather than dropped; foreign data under `unknown` is kept as it is. The
+document may grow to no more values, or levels of nesting, than a file's reader takes, so copies
+cannot double it without end, and a patch has at most 65536 operations. Ruler guides stay above
+their layer's art, so art added at the end of a layer that holds guides goes below them; a guide
+put anywhere but directly in a layer is refused, and so is removing every artboard. A patch waits
+until opacity-mask, symbol or Puppet Warp editing ends. It is one undo step (`label`, default
+Patch) and one journal entry, undone and replayed like any edit; isolation mode ends when the
+object isolated is gone. An object or artboard added without an `id`, or a copy, gets a fresh id,
+as paste and duplicate give one, and the object copied keeps its own; no id is given out twice (a
+lowered `next_id` is raised again, and a deleted artboard's id written back is replaced). An open
+document that would read back from its file otherwise than it is (one imported, or made before a
+range was checked) is patched as reading makes it, and the answer's `notes` say what reading
+changed; what the patch itself puts out of range is still refused. The answer is `{applied,
+freshIds, newIds, newArtboardIds, notes?}` (`freshIds` counts `newIds`). Prefer a command where
+one exists (`swatch.update` reaches every paint that links the swatch; a patch changes the swatch
+alone).
 `document.find` needs at least one filter and all given filters must match; matching
 ignores case, `name` is a substring of the Layers panel name, `text` a substring of type content and `kind` the
 exact panel label (`Layer`, `Group`, `Clip Group`, `Path`, `Compound Path`, `Type`, `Image`, `Rectangle`, ...).
@@ -646,6 +703,9 @@ sampler.
 | `run_command` | `{command, params?}` | Runs any command. Use it for everything without a dedicated tool. |
 | `inspect_document` | `{depth?, childLimit?, ids?, kind?, limit?, offset?}` | Artboards (with `color`, `#rrggbb`, for one with a background color), layer tree (ids, kinds, bounds, paint), selection, history, tool. A type node's `fill`, `stroke` and `strokeWidth` are the paint its characters show (its first run's); fills and strokes of the type object itself come as `objectFill`, `objectStroke` and `objectStrokeWidth`. Paint comes as a label (`"#ff0000"`, `"None"`, `"G1 40% (#ff9999)"` for a swatch at a tint); `paint.proxies` gives it as an object. |
 | `inspect_ui` | `{}` | UI state. Remote mode only. |
+| `query_document` | `{path, limit?, offset?, depth?}` | JSONPath (RFC 9535) over the document model: `{matches: [{path, pointer, value}], total}`, bounded, never past 1 MiB pretty-printed (see [Resource templates](#resource-templates)). |
+| `document_schema` | `{type?, at?, index?}` | The model's schema one type at a time: `Document` by default, a named `type`, the type of the value `at` a JSONPath, or the `index` of every type. |
+| `patch_document` | `{patch, label?}` | JSON Patch (RFC 6902) at JSON Pointers (RFC 6901) over the document model, all or none, one undo step and journal entry; see [Resource templates](#resource-templates). |
 | `select_tool` | `{tool}` | `selection`, `directSelection`, `pen`, `rectangle`, `ellipse`, `polygon`, `star`, `lineSegment`, … |
 | `pointer_gesture` | `{events:[{kind,x,y,mods?,backquote?,pressure?,tiltX?,tiltY?,rotation?,holdMs?}], tool?, mods?, backquote?}` | `kind` is one of `down`, `drag`, `up`, `move`, `doubleclick`. `backquote` is the held state for each event; the top-level value supplies its default, and a `backquote` that is not a boolean is an error. Events go through the same path as the mouse. Headless, a `move` replies after the tool's highlight under the pointer is ready, including the Shape Builder's and the Live Paint Bucket's regions of a large selection, which the desktop app finds off the UI thread and highlights after the reply. The release of a Shape Builder click or drag over such a selection replies once the merge is applied, headless and in the desktop app, which computes the merge off the UI thread. In the desktop app, a gesture sent before then is made after the merge, and its reply comes once it is made; a command that can edit, select, save or redraw the documents (a preference, the proof and separations views), sent before then, waits for the merge and runs after it. |
 | `pointer_gesture` | `{events:[{kind,x,y,mods?,backquote?,pressure?,tiltX?,tiltY?,rotation?,holdMs?}], tool?, mods?, backquote?}` | `kind` is one of `down`, `drag`, `up`, `move`, `doubleclick`. `backquote` is the held state for each event; the top-level value supplies its default. Events go through the same path as the mouse. Headless, a `move` replies after the tool's highlight under the pointer is ready, including the Shape Builder's and the Live Paint Bucket's regions of a large selection, which the desktop app finds off the UI thread and highlights after the reply. Remote, the events wait until the keys and other input sent before them (`press_key`, `type_text`) have reached the app, so a key pressed between two calls of one drag applies before the release. When that input is dropped because the document, a dialog or the focus changed first, the call fails and its events are not sent. The release of a Shape Builder click or drag over such a selection replies once the merge is applied, headless and in the desktop app, which computes the merge off the UI thread. In the desktop app, a gesture sent before then is made after the merge, and its reply comes once it is made; a command that can edit, select, save or redraw the documents (a preference, the proof and separations views), sent before then, waits for the merge and runs after it. |
@@ -11949,4 +12009,5 @@ the error text. The interactive fallback applies only to ordinary File > Save, n
 | 2026-11-13 | `path.freehand`: `closed`, when given, decides whether a stroke that continues a path (`extend`) closes it; the Pencil and the Paintbrush send it by Close Paths When Ends Are Within. |
 | 2026-11-13 | Snap to Point with Smart Guides off draws no Smart Guides labels or lines (#7250). |
 | 2026-11-13 | Envelopes: a top object's side whose pieces are all one curve split at anchors follows that curve's parameter (#7097). |
+| 2026-11-13 | Document JSON: `document.query`, `document.schema` and `document.patch` (the `query_document`, `document_schema` and `patch_document` tools) over the model as a saved file holds it, which leaves out fields at their defaults; `document.patch` answers `notes` when it first reads the document as its file would, and is refused while automation read roots are in force (use the document's commands there; `document.query` and `document.schema {at}` name linked files outside them by file name only). |
 | 2026-11-11 | Document READ_ONLY_LOCATION for saves (#6146); no response-shape change. |

@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::Document;
 
 /// File Info → Copyright Status.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum CopyrightStatus {
     #[default]
@@ -45,7 +45,7 @@ impl CopyrightStatus {
 pub const MAX_RATING: u8 = 5;
 
 /// File → File Info.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct DocMetadata {
     /// The title the file this document was opened from gives itself (an SVG's root `<title>`, a
@@ -55,21 +55,31 @@ pub struct DocMetadata {
     /// save as they did.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    #[serde(skip_serializing_if = "doc_metadata_defaults::author")]
     pub author: String,
     /// The author's position or job title.
+    #[serde(skip_serializing_if = "doc_metadata_defaults::author_title")]
     pub author_title: String,
+    #[serde(skip_serializing_if = "doc_metadata_defaults::description")]
     pub description: String,
     /// Keywords, each once, in the order they were added.
+    #[serde(skip_serializing_if = "doc_metadata_defaults::keywords")]
     pub keywords: Vec<String>,
     /// 0 (unrated) to [`MAX_RATING`] stars.
+    #[serde(skip_serializing_if = "doc_metadata_defaults::rating")]
     pub rating: u8,
+    #[serde(skip_serializing_if = "doc_metadata_defaults::copyright_status")]
     pub copyright_status: CopyrightStatus,
+    #[serde(skip_serializing_if = "doc_metadata_defaults::copyright_notice")]
     pub copyright_notice: String,
     /// Where to read more about the copyright.
+    #[serde(skip_serializing_if = "doc_metadata_defaults::copyright_url")]
     pub copyright_url: String,
     /// When the document was created, as Unix seconds (UTC).
+    #[serde(skip_serializing_if = "doc_metadata_defaults::created")]
     pub created: Option<i64>,
     /// When the document was last saved, as Unix seconds (UTC).
+    #[serde(skip_serializing_if = "doc_metadata_defaults::modified")]
     pub modified: Option<i64>,
 }
 
@@ -172,6 +182,23 @@ pub fn civil(t: i64) -> [i64; 6] {
 pub fn iso8601(t: i64) -> String {
     let [y, mo, d, h, mi, s] = civil(t);
     format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z")
+}
+
+/// What a reader fills in for each field of [`DocMetadata`] left out (see `crate::skip::container_defaults`).
+mod doc_metadata_defaults {
+    use super::{CopyrightStatus, DocMetadata};
+    crate::skip::container_defaults!(DocMetadata {
+        author: String,
+        author_title: String,
+        description: String,
+        keywords: Vec<String>,
+        rating: u8,
+        copyright_status: CopyrightStatus,
+        copyright_notice: String,
+        copyright_url: String,
+        created: Option<i64>,
+        modified: Option<i64>,
+    });
 }
 
 #[cfg(test)]

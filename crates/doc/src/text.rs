@@ -42,7 +42,7 @@ pub use wrap::{resolve_wrap, wrap_work};
 /// paragraph's). Invariant (kept by [`TextObject::normalize_paras`]): `paras` is either empty —
 /// every paragraph uses `para` — or holds one style per paragraph with `paras[0] == para` and at
 /// least two different styles. Readers that only know `para` see the first paragraph's style.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct TextObject {
     /// Top-to-bottom, right-to-left writing. Defaults to horizontal for old documents.
     #[serde(default, skip_serializing_if = "crate::skip::is_default")]
@@ -55,7 +55,7 @@ pub struct TextObject {
     /// the object, so the runs (and their styles) stay the text itself.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub ruby: Vec<RubySpan>,
-    #[serde(default = "ParaStyle::omitted")]
+    #[serde(default = "ParaStyle::omitted", skip_serializing_if = "para_left_out")]
     pub para: ParaStyle,
     /// Per-paragraph attributes (see the type's docs); empty = every paragraph uses `para`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -152,3 +152,9 @@ pub struct TextStyleScale {
 
 #[cfg(test)]
 mod tests;
+
+/// True, while the model is serialized as saved ([`crate::as_saved`]), when a text object's
+/// paragraph style is the one a reader fills in for it when it is missing ([`ParaStyle::omitted`]).
+fn para_left_out(v: &ParaStyle) -> bool {
+    crate::skip::saved_as(v, &ParaStyle::omitted())
+}

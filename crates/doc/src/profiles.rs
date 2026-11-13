@@ -9,7 +9,7 @@ use crate::Document;
 pub const LEGACY_PROFILES_KEY: &str = "colorProfiles";
 
 /// The profiles a document is tagged with, by name (`None`: the working space).
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ColorProfiles {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rgb: Option<String>,

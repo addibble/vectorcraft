@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::node::{LAYER_COLORS, Node};
 
 /// Paint Stops At: the widest gap Gap Detection closes.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum GapSize {
     /// Small Gaps: [`GapSize::SMALL`] points.
@@ -60,14 +60,17 @@ impl GapSize {
 pub const DEFAULT_GAP_COLOR: [u8; 3] = LAYER_COLORS[1].1;
 
 /// A Live Paint group's Gap Options.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct GapOptions {
     /// Gap Detection: paint stops at gaps up to `size` wide.
+    #[serde(skip_serializing_if = "gap_options_defaults::detect")]
     pub detect: bool,
     /// Paint Stops At.
+    #[serde(skip_serializing_if = "gap_options_defaults::size")]
     pub size: GapSize,
     /// Gap Preview Color: the color gaps show in.
+    #[serde(skip_serializing_if = "gap_options_defaults::color")]
     pub color: [u8; 3],
 }
 
@@ -89,6 +92,12 @@ impl Node {
     pub fn gap_options(&self) -> GapOptions {
         self.extras().live_paint_gaps.as_deref().copied().unwrap_or_default()
     }
+}
+
+/// What a reader fills in for each field of [`GapOptions`] left out (see `crate::skip::container_defaults`).
+mod gap_options_defaults {
+    use super::{GapOptions, GapSize};
+    crate::skip::container_defaults!(GapOptions { detect: bool, size: GapSize, color: [u8; 3] });
 }
 
 #[cfg(test)]

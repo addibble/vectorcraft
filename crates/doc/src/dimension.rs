@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use vectorcraft_geom::{Affine, Anchor, PathData, Point, Vec2};
 
 /// What a dimension measures.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum DimensionMode {
     #[default]
@@ -27,7 +27,7 @@ impl DimensionMode {
 
 /// The direction a linear dimension measures in: along the line through its two points, or only
 /// their horizontal or vertical distance.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Orientation {
     #[default]
@@ -37,7 +37,7 @@ pub enum Orientation {
 }
 
 /// The unit a length is labelled in.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum LengthUnit {
     #[default]
@@ -93,7 +93,7 @@ impl LengthUnit {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum LineType {
     #[default]
@@ -102,7 +102,7 @@ pub enum LineType {
     Dotted,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ArrowStyle {
     #[default]
@@ -113,7 +113,7 @@ pub enum ArrowStyle {
 }
 
 /// Where the label sits across the dimension line.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum TextPosition {
     /// On the side of the dimension line away from the measured object.
@@ -124,7 +124,7 @@ pub enum TextPosition {
 }
 
 /// Where the label sits along the dimension line.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum TextAlignment {
     Left,
@@ -133,31 +133,53 @@ pub enum TextAlignment {
     Right,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct DimensionOptions {
+    #[serde(skip_serializing_if = "dimension_options_defaults::units")]
     pub units: LengthUnit,
+    #[serde(skip_serializing_if = "dimension_options_defaults::precision")]
     pub precision: usize,
     /// Drawing : real size. 1:10 multiplies the drawn length by ten.
+    #[serde(skip_serializing_if = "dimension_options_defaults::scale")]
     pub scale: String,
+    #[serde(skip_serializing_if = "dimension_options_defaults::hide_units")]
     pub hide_units: bool,
+    #[serde(skip_serializing_if = "dimension_options_defaults::line_weight")]
     pub line_weight: f64,
+    #[serde(skip_serializing_if = "dimension_options_defaults::line_type")]
     pub line_type: LineType,
+    #[serde(skip_serializing_if = "dimension_options_defaults::line_color")]
     pub line_color: [u8; 3],
+    #[serde(skip_serializing_if = "dimension_options_defaults::arrow_style")]
     pub arrow_style: ArrowStyle,
+    #[serde(skip_serializing_if = "dimension_options_defaults::arrow_scale")]
     pub arrow_scale: f64,
+    #[serde(skip_serializing_if = "dimension_options_defaults::extension_weight")]
     pub extension_weight: f64,
+    #[serde(skip_serializing_if = "dimension_options_defaults::extension_type")]
     pub extension_type: LineType,
+    #[serde(skip_serializing_if = "dimension_options_defaults::extension_color")]
     pub extension_color: [u8; 3],
+    #[serde(skip_serializing_if = "dimension_options_defaults::extension_offset")]
     pub extension_offset: f64,
+    #[serde(skip_serializing_if = "dimension_options_defaults::extension_length")]
     pub extension_length: f64,
+    #[serde(skip_serializing_if = "dimension_options_defaults::hide_extensions")]
     pub hide_extensions: bool,
+    #[serde(skip_serializing_if = "dimension_options_defaults::font_family")]
     pub font_family: String,
+    #[serde(skip_serializing_if = "dimension_options_defaults::font_style")]
     pub font_style: String,
+    #[serde(skip_serializing_if = "dimension_options_defaults::font_size")]
     pub font_size: f64,
+    #[serde(skip_serializing_if = "dimension_options_defaults::text_color")]
     pub text_color: [u8; 3],
+    #[serde(skip_serializing_if = "dimension_options_defaults::text_position")]
     pub text_position: TextPosition,
+    #[serde(skip_serializing_if = "dimension_options_defaults::text_alignment")]
     pub text_alignment: TextAlignment,
+    #[serde(skip_serializing_if = "dimension_options_defaults::text_offset")]
     pub text_offset: f64,
 }
 
@@ -258,7 +280,7 @@ impl DimensionOptions {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SegmentRef {
     pub node: NodeId,
@@ -285,7 +307,7 @@ impl SegmentRef {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum DimensionSource {
     Segment {
@@ -372,7 +394,7 @@ impl DimensionSource {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PointRef {
     pub node: NodeId,
@@ -387,7 +409,7 @@ impl PointRef {
 }
 
 /// The point of an anchor that an [`AnchorWeight`] names: the anchor, or one of its handles.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum AnchorPart {
     #[default]
@@ -407,7 +429,7 @@ impl AnchorPart {
 }
 
 /// One anchor's share of a [`FreePoint`].
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AnchorWeight {
     pub subpath: usize,
@@ -420,7 +442,7 @@ pub struct AnchorWeight {
 
 /// A measured point that is not an anchor (a point on a segment, or a point a Smart Guide gave),
 /// linked to one path so that it moves with it.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum FreePoint {
     /// A point on a segment at curve parameter `t`, 0 at the segment's first anchor and 1 at its
@@ -615,7 +637,7 @@ impl FreePoint {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Dimension {
     pub mode: DimensionMode,
@@ -995,4 +1017,33 @@ pub fn corner(doc: &Document, node: NodeId, subpath: usize, anchor: usize) -> Op
     let first = SegmentRef { node, subpath, segment: before };
     let second = SegmentRef { node, subpath, segment: after };
     (first.is_straight(doc) && second.is_straight(doc)).then_some((first, second))
+}
+
+/// What a reader fills in for each field of [`DimensionOptions`] left out (see `crate::skip::container_defaults`).
+mod dimension_options_defaults {
+    use super::{ArrowStyle, DimensionOptions, LengthUnit, LineType, TextAlignment, TextPosition};
+    crate::skip::container_defaults!(DimensionOptions {
+        units: LengthUnit,
+        precision: usize,
+        scale: String,
+        hide_units: bool,
+        line_weight: f64,
+        line_type: LineType,
+        line_color: [u8; 3],
+        arrow_style: ArrowStyle,
+        arrow_scale: f64,
+        extension_weight: f64,
+        extension_type: LineType,
+        extension_color: [u8; 3],
+        extension_offset: f64,
+        extension_length: f64,
+        hide_extensions: bool,
+        font_family: String,
+        font_style: String,
+        font_size: f64,
+        text_color: [u8; 3],
+        text_position: TextPosition,
+        text_alignment: TextAlignment,
+        text_offset: f64,
+    });
 }

@@ -1,7 +1,7 @@
 use super::{Appearance, Deserialize, Knockout, Node, Rect, Serialize, skip};
 
 /// A named graphic style (Graphic Styles panel): an appearance plus the object's transparency.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GraphicStyle {
     pub name: String,
     pub appearance: Appearance,
@@ -20,7 +20,7 @@ pub struct GraphicStyle {
     /// Placed gradients are stored relative to the unit box (0, 0)–(1, 1), so applying the style
     /// places them on each object's own bounds. Styles saved before this kept document
     /// coordinates (false).
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[serde(default, skip_serializing_if = "crate::skip::is_false")]
     pub unit_box: bool,
 }
 

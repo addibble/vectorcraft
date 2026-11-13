@@ -12,7 +12,7 @@ pub type AnchorRef = (usize, usize);
 /// (subpath index, segment index) inside a path.
 pub type SegmentRef = (usize, usize);
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Selection {
     /// Selected objects in selection order.
     pub objects: Vec<NodeId>,
@@ -67,7 +67,7 @@ pub struct Selection {
 }
 
 /// See [`Selection::symbol_part`].
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct SymbolPart {
     /// The symbol instance.
     pub instance: NodeId,

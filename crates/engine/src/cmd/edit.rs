@@ -55,6 +55,17 @@ pub fn specs() -> Vec<CommandSpec> {
             let d = super::links::with_hidden_paths_named(&st.doc, super::links::LinkBase::of(st));
             Ok(serde_json::to_value(&*d).unwrap_or(Value::Null))
         }),
+        cmd!(query "document.query", "Query Document", [], None, "{path: a JSONPath (RFC 9535) over the document model as a saved file holds it (a field at the value a reader fills in for it is left out: document.schema gives each default, document.json the fields a file leaves out but a command's answer keeps); such as `$.artboards[*].name`; `$.layers[0].kind.children[?@.kind.type == 'path'].id`; `$..[?@.name == 'logo']` (document.schema describes the model), limit?: at most this many matches (default 100; 0 counts only), offset?: matches skipped first, depth?: levels of each match's value shown; containers below summarized as `{…n keys}` or `[…n items]` (default all), layout?: compact (default) or pretty; how the caller writes the answer; the 1 MiB limit counts it so} → {matches: [{path: the match's normalized path, pointer: the same as a JSON Pointer (what document.patch takes), value}], total}; an answer that would come to more than 1 MiB is an error asking for a narrower query", has_doc, doc_query),
+        cmd!(
+            "document.patch",
+            "Patch Document",
+            [],
+            None,
+            "{patch: a JSON Patch (RFC 6902); an array of operations (add; remove; replace; move; copy; test) with JSON Pointer paths (RFC 6901) into the document model as a saved file holds it and document.query points at it (each match's `pointer`; replace and test take a field left out as holding its default); applied in order; all or none; the result must be a document a file can hold (values in range; at most 126 levels deep; keys the model has; at least one artboard; ruler guides directly in layers, kept above their art); at most 65536 operations; test compares numbers by value; an object or artboard added without an `id` (or a copy whose id another one has; the original keeps its own) gets a fresh one; refused in an editing mode (opacity mask, symbol or Puppet Warp) and while automation read roots are in force (use the document's commands there), label?: the undo step's name (default Patch)} → {applied: operations, freshIds: how many objects were given an id, newIds: their ids, newArtboardIds: the artboards', notes?: what reading the document as its file would changed first (a document that does not read back as it is)}; one undo step and one journal entry, so the patch is undone and replayed like any edit",
+            has_doc,
+            doc_patch
+        ),
+        cmd!(query "document.schema", "Document Schema", [], None, "{type?: a type of the model to describe (default Document, the root), at?: a JSONPath (RFC 9535) into the active document as document.query reads it; describes the type of the value there (its first match; an enum as the variant the value's tag names), index?: true lists every type with a line each} → one type at a time, so a large model is read as needed: {type, description, properties: [{name, type, required?, default?, description}], variants?: [{tag|name, description, properties}] for an enum, types: [the types the properties refer to, to describe next]}", always, doc_schema),
         cmd!(
             "document.setUnits",
             "Units",
@@ -551,6 +562,275 @@ fn compare_image(path: &str) -> Result<image::RgbaImage> {
 #[cfg(target_arch = "wasm32")]
 fn doc_compare(_: &mut Session, _: &Value) -> Result<Value> {
     Err(bad("document.compare", "comparing with an image file isn't available in the browser"))
+}
+
+/// The document as a saved file holds it (`vectorcraft_doc::as_saved`): what document.patch
+/// patches, so its pointers point into the file. A patched value reads back through the model,
+/// which fills in what was left out.
+fn saved_form(d: &Document) -> serde_json::Result<Value> {
+    vectorcraft_doc::as_saved(|| serde_json::to_value(d))
+}
+
+/// The open document as a saved file holds it with its linked files named as `document.json`
+/// names them: by file name only, past the folders a session that may read only some is given.
+/// What document.query and document.schema's `at` read.
+fn shown_form(st: &crate::DocState) -> serde_json::Result<Value> {
+    saved_form(&super::links::with_hidden_paths_named(&st.doc, super::links::LinkBase::of(st)))
+}
+
+fn doc_query(s: &mut Session, p: &Value) -> Result<Value> {
+    const C: &str = "document.query";
+    let opts = crate::query::opts(p).map_err(|e| bad(C, e))?;
+    let value = shown_form(s.doc()?).map_err(|e| bad(C, e.to_string()))?;
+    craft_jsonquery::query::from_params(&value, p, opts).map_err(|e| bad(C, e))
+}
+
+fn doc_patch(s: &mut Session, p: &Value) -> Result<Value> {
+    const C: &str = "document.patch";
+    // A session confined to read roots is shown linked files outside them by file name only, so
+    // the JSON it would patch is not the document's: patching is not offered there.
+    if crate::file_access::current().is_some() {
+        return Err(bad(
+            C,
+            "patching the document isn't offered while automation read roots are in force (the document's JSON names linked files outside them by file name only); use the document's commands instead",
+        ));
+    }
+    let label = str_param(p, "label").filter(|l| !l.is_empty()).unwrap_or("Patch").to_string();
+    let st = s.doc()?;
+    let before = Arc::clone(&st.doc);
+    // An editing mode keeps what it edits outside the saved form (the art of the symbol or mask
+    // on its editing layer, the pins), so the JSON a patch changes is not all of the document.
+    if before.mask_edit.is_some() || before.symbol_edit.is_some() || before.puppet.is_some() {
+        return Err(bad(
+            C,
+            "the document is in opacity-mask, symbol or Puppet Warp editing; leave it first (its JSON does not hold what that mode edits)",
+        ));
+    }
+    let json = |e: serde_json::Error| bad(C, e.to_string());
+    // An open document that is not itself as its saved file would read (one imported, or made
+    // before a range was checked) is patched as reading would make it: what reading changes is
+    // noted in the answer, and what the patch changes is held to the file's ranges.
+    let (base, notes) = as_read(&before).map_err(|e| bad(C, format!("the document does not read back as a file: {e}")))?;
+    let base: &Document = base.as_deref().unwrap_or(&before);
+    let forms = {
+        let saved = saved_form(base).map_err(json)?;
+        // Every field written, those every serialization leaves out at their defaults too.
+        let full = crate::patch::needs_defaults(p).then(|| vectorcraft_doc::describing(|| serde_json::to_value(base))).transpose().map_err(json)?;
+        crate::patch::Forms { saved, full }
+    };
+    let mut applied = crate::patch::apply(p, forms).map_err(|e| bad(C, e))?;
+    // What the patch wrote, to find keys the model does not have once it is read.
+    let written: Vec<(String, Value)> = applied.written().into_iter().filter_map(|w| applied.value.pointer(&w).cloned().map(|v| (w, v))).collect();
+    let mut doc = vectorcraft_format::read_document_json(std::mem::take(&mut applied.value))
+        .map_err(|e| bad(C, format!("the patched document does not load: {e}")))?;
+    if doc.mask_edit.is_some() {
+        return Err(bad(C, "`mask_edit` is opacity-mask editing's state, not part of the document; enter mask editing with its command"));
+    }
+    // A key the model does not have is dropped by reading: refused, not lost. (Before anything
+    // moves what the patch wrote: tidying the ruler guides below.)
+    if let Some(at) = unknown_key(&doc, base, &written).map_err(json)? {
+        return Err(bad(
+            C,
+            format!("`{at}` is not a field of the document model (reading the patched document drops it); document.schema lists each type's fields"),
+        ));
+    }
+    if doc.artboards.is_empty() && !base.artboards.is_empty() {
+        return Err(bad(C, "a document needs at least one artboard"));
+    }
+    // Picture bytes are not in the JSON; a patch never changes them. Nor is what the document
+    // keeps without saving it.
+    doc.images = before.images.clone();
+    doc.retired_artboard_id = before.retired_artboard_id.clone();
+    doc.opened_artboard = before.opened_artboard;
+    doc.units_from_file = before.units_from_file;
+    for gone in base.artboards.iter().filter(|a| !doc.artboards.iter().any(|b| b.id == a.id)) {
+        doc.retire_artboard_id(gone.id);
+    }
+    // Ids the patch repeats, leaves out or takes back from what was deleted: fresh ones, the
+    // copy's, never the original's. The counter never goes down, whatever the patch wrote in it.
+    let artboard_ids = fresh_artboard_ids(&mut doc, base, |i| applied.added(&format!("/artboards/{i}")));
+    doc.raise_next_id(before.peek_next_id());
+    let fresh = doc.give_fresh_ids(|pointer| applied.added(pointer)).ok_or_else(|| bad(C, "the document has no object ids left to give"))?;
+    doc.fix_next_id();
+    // A deleted object leaves a saved selection naming it, as Delete does.
+    doc.tidy_saved_selections();
+    // Ruler guides go above their layer's art, as reading a file puts them: art added at the end
+    // of a layer that holds guides goes below them. One anywhere else is refused.
+    let misplaced = doc.tidy_ruler_guides();
+    if misplaced > 0 {
+        return Err(bad(C, "a ruler guide goes directly in a layer or sublayer, not in a group, another object, a symbol or a pattern"));
+    }
+    doc.version = doc.version.max(vectorcraft_doc::FORMAT_VERSION);
+    // What reading a file does to its document must leave this one as it is: else a value is
+    // out of range or the art cannot be held, and the saved file would read back otherwise.
+    let mut read_back = doc.clone();
+    let read_notes = vectorcraft_format::fix_read(&mut read_back).map_err(|e| bad(C, format!("the patched document does not load: {e}")))?;
+    if read_back != doc {
+        let at = match (saved_form(&doc), saved_form(&read_back)) {
+            (Ok(a), Ok(b)) => first_difference(&a, &b, String::new()).unwrap_or_default(),
+            _ => String::new(),
+        };
+        let why = if read_notes.is_empty() { String::new() } else { format!(" ({})", read_notes.join("; ")) };
+        return Err(bad(
+            C,
+            format!("the patched document is not one a file can hold: reading it back would change `{at}`{why}; keep values in their ranges"),
+        ));
+    }
+    // What the patch left as it was stays shared with the undo history.
+    share_unchanged(&mut doc, &before);
+    Session::refresh_text_bounds(&mut doc);
+    s.edit(&label, |d, sel| {
+        *d = doc;
+        // What was selected may be gone or changed beyond recognition.
+        sel.clear();
+        Ok(())
+    })?;
+    // Isolation ends with the isolated object gone.
+    leave_isolation_if_gone(s.doc_mut()?);
+    let mut answer = json!({"applied": applied.ops, "freshIds": fresh.len(), "newIds": fresh, "newArtboardIds": artboard_ids});
+    if !notes.is_empty() {
+        answer["notes"] = json!(notes);
+    }
+    Ok(answer)
+}
+
+/// `before` as reading its saved file would make it, with what reading noted, when that differs
+/// from `before` (`None` when it does not).
+fn as_read(before: &Document) -> std::result::Result<(Option<Box<Document>>, Vec<String>), vectorcraft_format::FormatError> {
+    let mut d = before.clone();
+    d.tidy_saved_selections();
+    d.version = d.version.max(vectorcraft_doc::FORMAT_VERSION);
+    let mut read = d.clone();
+    let mut notes = vectorcraft_format::fix_read(&mut read)?;
+    if read == d {
+        return Ok((None, vec![]));
+    }
+    if let (Ok(a), Ok(b)) = (saved_form(&d), saved_form(&read))
+        && let Some(at) = first_difference(&a, &b, String::new())
+    {
+        notes.insert(0, format!("the document was first made as reading its file makes it, which changed `{at}`"));
+    }
+    Ok((Some(Box::new(read)), notes))
+}
+
+/// The first key the patch wrote (`written`: each value's pointer and JSON) that the patched
+/// document `doc` does not have, read from it: a key of no field, dropped by reading. A top-level
+/// key the document keeps for a newer version only (`Document::extra`) counts as dropped too,
+/// unless `base` kept it already. Where `doc` holds a value of another form than the one written
+/// (a field read from either), nothing below it is compared.
+fn unknown_key(doc: &Document, base: &Document, written: &[(String, Value)]) -> serde_json::Result<Option<String>> {
+    if let Some(k) = doc.extra.keys().find(|k| !base.extra.contains_key(*k)) {
+        return Ok(Some(format!("/{}", k.replace('~', "~0").replace('/', "~1"))));
+    }
+    if written.is_empty() {
+        return Ok(None);
+    }
+    let out = vectorcraft_doc::describing(|| serde_json::to_value(doc))?;
+    for (at, w) in written {
+        let Some(o) = out.pointer(at) else { return Ok(Some(at.clone())) };
+        let mut stack = vec![(w, o, at.clone())];
+        while let Some((w, o, at)) = stack.pop() {
+            match (w, o) {
+                (Value::Object(w), Value::Object(o)) => {
+                    for (k, v) in w {
+                        let here = format!("{at}/{}", k.replace('~', "~0").replace('/', "~1"));
+                        match o.get(k) {
+                            Some(x) => stack.push((v, x, here)),
+                            None => return Ok(Some(here)),
+                        }
+                    }
+                }
+                (Value::Array(w), Value::Array(o)) if w.len() == o.len() => {
+                    stack.extend(w.iter().zip(o).enumerate().map(|(i, (v, x))| (v, x, format!("{at}/{i}"))));
+                }
+                _ => {}
+            }
+        }
+    }
+    Ok(None)
+}
+
+/// Give each artboard whose id another artboard has, or 0, or one `base` does not have that was
+/// given out or deleted before ([`Document::retired_artboard_id`]), a fresh id; of those sharing
+/// one, one `added` (by index) does not name keeps it. Answers the new ids.
+fn fresh_artboard_ids(doc: &mut Document, base: &Document, added: impl Fn(usize) -> bool) -> Vec<u32> {
+    let retired = doc.retired_artboard_id.get();
+    let had: BTreeSet<u32> = base.artboards.iter().map(|a| a.id).collect();
+    let mut taken = BTreeSet::new();
+    let mut renumber = vec![];
+    for pass in [false, true] {
+        for (i, a) in doc.artboards.iter().enumerate().filter(|(i, _)| added(*i) == pass) {
+            if a.id == 0 || (a.id <= retired && !had.contains(&a.id)) || !taken.insert(a.id) {
+                renumber.push(i);
+            }
+        }
+    }
+    renumber.sort_unstable();
+    let mut fresh = vec![];
+    for i in renumber {
+        let id = doc.next_artboard_id();
+        if let Some(a) = doc.artboards.get_mut(i) {
+            a.id = id;
+            fresh.push(id);
+        }
+    }
+    fresh
+}
+
+/// The first JSON Pointer where `a` and `b` differ, `None` when they don't.
+fn first_difference(a: &Value, b: &Value, at: String) -> Option<String> {
+    match (a, b) {
+        _ if a == b => None,
+        (Value::Object(x), Value::Object(y)) => x
+            .iter()
+            .find_map(|(k, v)| y.get(k).map_or(Some(format!("{at}/{k}")), |w| first_difference(v, w, format!("{at}/{k}"))))
+            .or_else(|| y.keys().find(|k| !x.contains_key(*k)).map(|k| format!("{at}/{k}"))),
+        (Value::Array(x), Value::Array(y)) if x.len() == y.len() => {
+            x.iter().zip(y).enumerate().find_map(|(i, (v, w))| first_difference(v, w, format!("{at}/{i}")))
+        }
+        _ => Some(at),
+    }
+}
+
+/// `doc`'s art, wherever it equals `before`'s, the very objects `before` holds, so the undo
+/// history keeps one copy of what a patch did not change.
+fn share_unchanged(doc: &mut Document, before: &Document) {
+    fn share(n: &mut Arc<Node>, old: &Arc<Node>) {
+        if Arc::ptr_eq(n, old) {
+            return;
+        }
+        if **n == **old {
+            *n = Arc::clone(old);
+            return;
+        }
+        let Some(old_children) = old.children() else { return };
+        let by_id: HashMap<NodeId, &Arc<Node>> = old_children.iter().map(|c| (c.id, c)).collect();
+        if let Some(children) = Arc::make_mut(n).children_mut() {
+            for c in children {
+                if let Some(old) = by_id.get(&c.id) {
+                    share(c, old);
+                }
+            }
+        }
+    }
+    let old_layers: HashMap<NodeId, &Arc<Node>> = before.layers.iter().map(|l| (l.id, l)).collect();
+    for l in &mut doc.layers {
+        if let Some(old) = old_layers.get(&l.id) {
+            share(l, old);
+        }
+    }
+    for s in &mut doc.symbols {
+        if let Some(old) = before.symbols.iter().find(|o| o.name == s.name) {
+            share(&mut s.art, &old.art);
+        }
+    }
+}
+
+fn doc_schema(s: &mut Session, p: &Value) -> Result<Value> {
+    const C: &str = "document.schema";
+    // The document is read only for `at`.
+    let document = || -> std::result::Result<Value, String> { shown_form(s.doc().map_err(|e| e.to_string())?).map_err(|e| e.to_string()) };
+    crate::schema::answer(p, document).map_err(|e| bad(C, e))
 }
 
 /// Document Setup's units (also `document.setup {units}`).

@@ -10,7 +10,7 @@ use vectorcraft_geom::Rect;
 use crate::text::ScriptMetrics;
 
 /// Transparency grid cell size.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum GridSize {
     Small,
@@ -65,7 +65,7 @@ pub const GRID_COLOR_PRESETS: &[(&str, [Color; 2])] = &[
 ];
 
 /// How text is written to formats without live type (Document Setup → Type → Export).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum ExportText {
     /// Keep text as text (editable).
@@ -88,7 +88,7 @@ impl ExportText {
 }
 
 /// Quote characters (Document Setup → Type): opening and closing double and single quotes.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Quotes {
     pub double: [char; 2],
     pub single: [char; 2],
@@ -238,7 +238,7 @@ pub const DEFAULT_FLATTENER: &str = "Medium Resolution";
 
 /// Background Contents (New Document): what shows behind the art on the artboards, and what
 /// raster exports put there.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum Background {
     #[default]
@@ -274,40 +274,57 @@ pub fn bleed_in_range(bleed: [f64; 4]) -> [f64; 4] {
 }
 
 /// File → Document Setup.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct DocSetup {
     /// Bleed beyond every artboard edge in points: top, bottom, left, right.
+    #[serde(skip_serializing_if = "doc_setup_defaults::bleed")]
     pub bleed: [f64; 4],
     /// Show Images in Outline Mode.
+    #[serde(skip_serializing_if = "doc_setup_defaults::outline_images")]
     pub outline_images: bool,
     /// The Highlight Substituted Fonts value older builds kept in Document Setup. Files keep it as
     /// they were saved; the screen follows Preferences › Type › Highlight Substituted Fonts.
+    #[serde(skip_serializing_if = "doc_setup_defaults::highlight_substituted_fonts")]
     pub highlight_substituted_fonts: bool,
     /// Highlight glyphs the font lacks (drawn from a fallback font).
+    #[serde(skip_serializing_if = "doc_setup_defaults::highlight_substituted_glyphs")]
     pub highlight_substituted_glyphs: bool,
     /// Transparency grid cell size.
+    #[serde(skip_serializing_if = "doc_setup_defaults::grid_size")]
     pub grid_size: GridSize,
     /// Transparency grid colours; the first is also the simulated paper colour.
+    #[serde(skip_serializing_if = "doc_setup_defaults::grid_colors")]
     pub grid_colors: [Color; 2],
     /// Simulate Colored Paper: artboards show the paper colour and art is multiplied onto it.
+    #[serde(skip_serializing_if = "doc_setup_defaults::simulate_paper")]
     pub simulate_paper: bool,
     /// Transparency flattener preset for output that can't keep transparency (None =
     /// [`DEFAULT_FLATTENER`]).
+    #[serde(skip_serializing_if = "doc_setup_defaults::flattener_preset")]
     pub flattener_preset: Option<String>,
     /// Discard White Overprint in Output.
+    #[serde(skip_serializing_if = "doc_setup_defaults::discard_white_overprint")]
     pub discard_white_overprint: bool,
     /// Document language (one of [`LANGUAGES`]).
+    #[serde(skip_serializing_if = "doc_setup_defaults::language")]
     pub language: String,
+    #[serde(skip_serializing_if = "doc_setup_defaults::quotes")]
     pub quotes: Quotes,
     /// Use Typographer's Quotes: typed straight quotes become [`DocSetup::quotes`].
+    #[serde(skip_serializing_if = "doc_setup_defaults::typographers_quotes")]
     pub typographers_quotes: bool,
+    #[serde(skip_serializing_if = "doc_setup_defaults::superscript")]
     pub superscript: ScriptMetrics,
+    #[serde(skip_serializing_if = "doc_setup_defaults::subscript")]
     pub subscript: ScriptMetrics,
     /// Synthesized small capitals, percent of the font size.
+    #[serde(skip_serializing_if = "doc_setup_defaults::small_caps_size")]
     pub small_caps_size: f64,
+    #[serde(skip_serializing_if = "doc_setup_defaults::export_text")]
     pub export_text: ExportText,
     /// Background Contents chosen in New Document.
+    #[serde(skip_serializing_if = "doc_setup_defaults::background")]
     pub background: Background,
     /// Character panel menu › System Layout: every text object advances by whole points. Off by
     /// default and for documents from before it, and saved only when on.
@@ -391,6 +408,30 @@ impl DocSetup {
         }
         self.small_caps_size = self.small_caps_size.clamp(1.0, MAX_SMALL_CAPS);
     }
+}
+
+/// What a reader fills in for each field of [`DocSetup`] left out (see `crate::skip::container_defaults`).
+mod doc_setup_defaults {
+    use super::{Background, Color, DocSetup, ExportText, GridSize, Quotes, ScriptMetrics};
+    crate::skip::container_defaults!(DocSetup {
+        bleed: [f64; 4],
+        outline_images: bool,
+        highlight_substituted_fonts: bool,
+        highlight_substituted_glyphs: bool,
+        grid_size: GridSize,
+        grid_colors: [Color; 2],
+        simulate_paper: bool,
+        flattener_preset: Option<String>,
+        discard_white_overprint: bool,
+        language: String,
+        quotes: Quotes,
+        typographers_quotes: bool,
+        superscript: ScriptMetrics,
+        subscript: ScriptMetrics,
+        small_caps_size: f64,
+        export_text: ExportText,
+        background: Background,
+    });
 }
 
 #[cfg(test)]

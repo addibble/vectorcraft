@@ -11,7 +11,11 @@
 //!   "images": { "<key>": { "mime": "image/png", "data": "<base64>" } } }
 //! ```
 //! It is lossless for everything in the document model; foreign data lives in `document.unknown`
-//! and document keys a newer version added are kept (`Document::extra`). Only the images the
+//! and document keys a newer version added are kept (`Document::extra`). The current version omits
+//! defaults (`vectorcraft_doc::as_saved`): a field equal to the value a reader fills in when it
+//! is missing is left out (a text run at 100% horizontal scale, a paragraph with no indents), so a
+//! document's JSON holds what differs from the defaults. Older versions read such files, since they
+//! fill in the same values; files saved for older apps keep every field. Only the images the
 //! document uses are written. `preview` (optional) is a PNG of the first artboard, at most
 //! [`PREVIEW_MAX`] pixels on its longer side, for file browsers. `profiles` (optional, Embed ICC
 //! Profiles) holds the ICC files of colour profiles the document is tagged with, for machines that
@@ -199,7 +203,9 @@ impl SaveOptions {
     /// as [`save_to`] writes the document with them (in their version)?
     pub fn pretty_fits(&self, doc: &Document) -> bool {
         let objects: usize = doc.layers.iter().map(|l| l.count()).sum();
-        objects <= PRETTY_MAX_OBJECTS && body(doc, self).is_ok_and(|b| pretty_size_at_most(&b, PRETTY_MAX_BYTES))
+        // Measured as it is saved: the current version leaves out defaults, as save_to does.
+        let fits = || body(doc, self).is_ok_and(|b| pretty_size_at_most(&b, PRETTY_MAX_BYTES));
+        objects <= PRETTY_MAX_OBJECTS && if self.version >= VERSION { vectorcraft_doc::as_saved(fits) } else { fits() }
     }
 }
 
@@ -314,6 +320,12 @@ const JSON_CHUNK: usize = 64 << 10;
 /// file: write to a temporary file ([`write_atomic_with`]).
 pub fn save_to(doc: &Document, o: &SaveOptions, w: impl Write) -> Result<(), FormatError> {
     o.check()?;
+    // The current version leaves out fields equal to what a reader fills in for them; files for
+    // older apps keep every field, as those apps wrote them.
+    if o.version >= VERSION { vectorcraft_doc::as_saved(|| write(doc, o, w)) } else { write(doc, o, w) }
+}
+
+fn write(doc: &Document, o: &SaveOptions, w: impl Write) -> Result<(), FormatError> {
     let pretty = o.pretty && !o.compress;
     let Body { d, v1, blobs, linked } = body(doc, o)?;
     let entries = Entries { blobs: &blobs, linked: &linked, include_linked: o.include_linked };
@@ -521,17 +533,6 @@ fn load_file_within(bytes: &[u8], max_nodes: usize, max_values: usize) -> Result
 
 /// The document of `file`, within the budgets of [`load_file_within`].
 fn load_unpacked(file: unpack::Unpacked<'_>, max_nodes: usize, max_values: usize) -> Result<NativeFile, FormatError> {
-    // The JSON reader stops at 128 levels (a document's objects use three each), the paths read
-    // at `MAX_READ_ANCHORS` anchors together, the document at `MAX_READ_NODES` objects, and the
-    // fields read before an object's type at `MAX_BUFFERED_VALUES` values. The preview and the
-    // PDF are skipped without being kept.
-    fn within_budgets<T>(max_nodes: usize, max_values: usize, read: impl FnOnce() -> T) -> T {
-        #[cfg(test)]
-        DOCUMENT_READS.with(|n| n.set(n.get() + 1));
-        vectorcraft_doc::geom::path::with_anchor_budget(vectorcraft_doc::geom::path::MAX_READ_ANCHORS, || {
-            vectorcraft_doc::node::with_node_budget(max_nodes, || vectorcraft_doc::node::with_buffered_value_budget(max_values, read))
-        })
-    }
     let read_error = |e| match e {
         ReadError::Json(e) => {
             let why = if e.to_string().contains("recursion limit") { format!("its objects are nested too deep ({e})") } else { e.to_string() };
@@ -583,60 +584,7 @@ fn load_unpacked(file: unpack::Unpacked<'_>, max_nodes: usize, max_values: usize
         }
         doc.images.insert(k, blob);
     }
-    // Saved mid-edit by an older version: drop the opacity-mask editing layer. Those versions
-    // removed it only as a top-level layer, so an id naming anything else is ignored.
-    if doc.mask_edit.is_some_and(|me| !doc.layers.iter().any(|l| l.id == me.layer)) {
-        doc.mask_edit = None;
-    }
-    doc.drop_edit_modes();
-    // Saved before per-fill/stroke overprint: the Overprint Black list becomes overprint flags.
-    doc.migrate_overprint_black();
-    // Saved before v3: the assigned profiles move out of `unknown`.
-    doc.migrate_color_profiles();
-    // A document before version 3: Color Halftone's Max Radius in points becomes pixels (#3260).
-    doc.migrate_halftone_radii();
-    doc.fix_next_id();
-    // Untrusted: the bleed and type proportions, within the ranges Document Setup takes.
-    doc.setup.keep_in_range();
-    // Untrusted: capped, named and pointing at objects the file has.
-    doc.tidy_saved_selections();
-    // Untrusted: capped, named and with a zoom and centre the canvas can show.
-    doc.tidy_views();
-    doc.tidy_graph_designs();
-    doc.raster_effects.add_around = doc.raster_effects.add_around.clamp(0.0, vectorcraft_doc::rastersettings::MAX_ADD_AROUND);
-    let mut depth_notes = vec![];
-    doc.limit_depth_noting(&mut depth_notes);
-    // Untrusted: ruler guide nodes only directly in layers, above their art (after the depth limit:
-    // the walk recurses; before the canvas check, which takes a layer's first member as its
-    // clipping path).
-    doc.tidy_ruler_guides();
-    // Untrusted: nothing beyond the canvas, where no edit may leave anything (after the depth
-    // limit: the walk recurses). A file whose artboards all lie there has no page to show (#3575).
-    let had_artboards = !doc.artboards.is_empty();
-    let beyond = doc.drop_beyond_canvas();
-    if had_artboards && doc.artboards.is_empty() {
-        return Err(FormatError::NotVectorcraft(format!(
-            "its artboards all lie beyond the canvas (more than {} pt from the origin)",
-            vectorcraft_doc::MAX_COORD
-        )));
-    }
-    depth_notes.extend(beyond.note());
-    // The saved ruler guides become nodes on their layers (after the guides beyond the canvas are
-    // dropped, and after `fix_next_id`: new ids start above the file's).
-    doc.guides_into_nodes();
-    // Untrusted: the type's sizes, leading, baseline shifts and scales, its indents and paragraph
-    // spacing, and its tab stops, each within its range (after the depth limit: the walk recurses).
-    doc.keep_type_values_in_range();
-    // Untrusted: ruby ranges over the type's text, clamped to it (after the depth limit too).
-    doc.fix_ruby();
-    // Untrusted: the raster effects resolution, within 1 to 2400 ppi (72 when it isn't finite).
-    doc.raster_effects_ppi = Some(doc.raster_effects_ppi).filter(|v| v.is_finite()).unwrap_or(72.0).clamp(1.0, 2400.0);
-    // Untrusted: the superscript, subscript and small caps proportions of the type, the graph
-    // labels and the character styles, within the ranges `document.setup` takes (after the depth
-    // limit: the walk recurses).
-    doc.keep_scripts_in_range();
-    // The conversions above bring an older document to today's version.
-    doc.version = doc.version.max(vectorcraft_doc::FORMAT_VERSION);
+    let depth_notes = fix_read(&mut doc)?;
     let profiles = f
         .profiles
         .into_iter()
@@ -650,6 +598,88 @@ fn load_unpacked(file: unpack::Unpacked<'_>, max_nodes: usize, max_values: usize
         })
         .collect::<Result<_, FormatError>>()?;
     Ok(NativeFile { doc, depth_notes, info, profiles })
+}
+
+// The JSON reader stops at 128 levels (a document's objects use three each), the paths read at
+// `MAX_READ_ANCHORS` anchors together, the document at `MAX_READ_NODES` objects, and the fields
+// read before an object's type at `MAX_BUFFERED_VALUES` values. The preview and the PDF are
+// skipped without being kept.
+fn within_budgets<T>(max_nodes: usize, max_values: usize, read: impl FnOnce() -> T) -> T {
+    #[cfg(test)]
+    DOCUMENT_READS.with(|n| n.set(n.get() + 1));
+    vectorcraft_doc::geom::path::with_anchor_budget(vectorcraft_doc::geom::path::MAX_READ_ANCHORS, || {
+        vectorcraft_doc::node::with_node_budget(max_nodes, || vectorcraft_doc::node::with_buffered_value_budget(max_values, read))
+    })
+}
+
+/// A document's JSON as a file holds it (its saved form, [`vectorcraft_doc::as_saved`]) read
+/// within the budgets a file's document is read in, before [`fix_read`]: what reads the model
+/// from JSON other than a file (a JSON Patch over the open document) reads it this way.
+pub fn read_document_json(value: serde_json::Value) -> Result<Document, FormatError> {
+    within_budgets(vectorcraft_doc::node::MAX_READ_NODES, vectorcraft_doc::node::MAX_BUFFERED_VALUES, || serde_json::from_value::<Document>(value))
+        .map_err(|e| FormatError::NotVectorcraft(e.to_string()))
+}
+
+/// What reading a file does to its document once read (after its images): an older version's
+/// data brought to today's, and untrusted values made ones the app can hold (ids, ranges, depth,
+/// nothing beyond the canvas). Answers the notes for what it dropped or merged; refuses a
+/// document whose artboards all lie beyond the canvas.
+pub fn fix_read(d: &mut Document) -> Result<Vec<String>, FormatError> {
+    // Saved mid-edit by an older version: drop the opacity-mask editing layer. Those versions
+    // removed it only as a top-level layer, so an id naming anything else is ignored.
+    if d.mask_edit.is_some_and(|me| !d.layers.iter().any(|l| l.id == me.layer)) {
+        d.mask_edit = None;
+    }
+    d.drop_edit_modes();
+    // Saved before per-fill/stroke overprint: the Overprint Black list becomes overprint flags.
+    d.migrate_overprint_black();
+    // Saved before v3: the assigned profiles move out of `unknown`.
+    d.migrate_color_profiles();
+    // A document before version 3: Color Halftone's Max Radius in points becomes pixels (#3260).
+    d.migrate_halftone_radii();
+    d.fix_next_id();
+    // Untrusted: the bleed and type proportions, within the ranges Document Setup takes.
+    d.setup.keep_in_range();
+    // Untrusted: capped, named and pointing at objects the file has.
+    d.tidy_saved_selections();
+    // Untrusted: capped, named and with a zoom and centre the canvas can show.
+    d.tidy_views();
+    d.tidy_graph_designs();
+    d.raster_effects.add_around = d.raster_effects.add_around.clamp(0.0, vectorcraft_doc::rastersettings::MAX_ADD_AROUND);
+    let mut notes = vec![];
+    d.limit_depth_noting(&mut notes);
+    // Untrusted: ruler guide nodes only directly in layers, above their art (after the depth limit:
+    // the walk recurses; before the canvas check, which takes a layer's first member as its
+    // clipping path).
+    d.tidy_ruler_guides();
+    // Untrusted: nothing beyond the canvas, where no edit may leave anything (after the depth
+    // limit: the walk recurses). A file whose artboards all lie there has no page to show (#3575).
+    let had_artboards = !d.artboards.is_empty();
+    let beyond = d.drop_beyond_canvas();
+    if had_artboards && d.artboards.is_empty() {
+        return Err(FormatError::NotVectorcraft(format!(
+            "its artboards all lie beyond the canvas (more than {} pt from the origin)",
+            vectorcraft_doc::MAX_COORD
+        )));
+    }
+    notes.extend(beyond.note());
+    // The saved ruler guides become nodes on their layers (after the guides beyond the canvas are
+    // dropped, and after `fix_next_id`: new ids start above the file's).
+    d.guides_into_nodes();
+    // Untrusted: the type's sizes, leading, baseline shifts and scales, its indents and paragraph
+    // spacing, and its tab stops, each within its range (after the depth limit: the walk recurses).
+    d.keep_type_values_in_range();
+    // Untrusted: ruby ranges over the type's text, clamped to it (after the depth limit too).
+    d.fix_ruby();
+    // Untrusted: the raster effects resolution, within 1 to 2400 ppi (72 when it isn't finite).
+    d.raster_effects_ppi = Some(d.raster_effects_ppi).filter(|v| v.is_finite()).unwrap_or(72.0).clamp(1.0, 2400.0);
+    // Untrusted: the superscript, subscript and small caps proportions of the type, the graph
+    // labels and the character styles, within the ranges `document.setup` takes (after the depth
+    // limit: the walk recurses).
+    d.keep_scripts_in_range();
+    // The conversions above bring an older document to today's version.
+    d.version = d.version.max(vectorcraft_doc::FORMAT_VERSION);
+    Ok(notes)
 }
 
 #[cfg(test)]
