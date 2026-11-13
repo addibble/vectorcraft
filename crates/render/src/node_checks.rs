@@ -155,18 +155,25 @@ pub fn draws_plugin_effects(doc: &Document) -> bool {
         || vectorcraft_brush::library(doc).iter().any(|b| b.art().into_iter().any(holds_plugin_effect))
 }
 
-/// A symbol instance's stain ([`vectorcraft_brush::stain`]) as bits for a cache key: its color
-/// model, the color's components and the amount (all 0 without a stain).
-pub(crate) fn stain_bits(stain: Option<(vectorcraft_color::Color, f32)>) -> [u32; 6] {
-    use vectorcraft_color::Color;
-    let Some((color, amount)) = stain else { return [0; 6] };
-    let (model, [p, q, r, s]) = match color {
+/// A symbol instance's stain ([`vectorcraft_doc::symbol_overrides::staining_fill`]) for a cache
+/// key: its color model, the color's components, the amount and the tint as bits, and the swatch
+/// the stain is linked to, which stained art can keep (a spot color's plate, Registration). All 0
+/// and no swatch for an instance without a stain, or none.
+pub(crate) type StainKey = ([u32; 7], Option<String>);
+
+/// [`StainKey`] of instance `inst`.
+pub(crate) fn stain_key(inst: Option<&Node>) -> StainKey {
+    use vectorcraft_color::{Color, Paint};
+    let Some((Paint::Solid { color, swatch, tint }, amount)) = inst.and_then(vectorcraft_doc::symbol_overrides::staining_fill) else {
+        return ([0; 7], None);
+    };
+    let (model, [p, q, r, s]) = match *color {
         Color::Rgb { r, g, b } => (1, [r, g, b, 0.0]),
         Color::Cmyk { c, m, y, k } => (2, [c, m, y, k]),
         Color::Gray { k } => (3, [k, 0.0, 0.0, 0.0]),
         Color::Lab { l, a, b } => (4, [l, a, b, 0.0]),
     };
-    [model, p.to_bits(), q.to_bits(), r.to_bits(), s.to_bits(), amount.to_bits()]
+    ([model, p.to_bits(), q.to_bits(), r.to_bits(), s.to_bits(), amount.to_bits(), tint.to_bits()], swatch.clone())
 }
 
 /// What places the symbols' art besides the art itself, as `doc` holds it: their 9-slice guides
@@ -207,4 +214,30 @@ pub(crate) fn kept_placing(placing: SymbolPlacing) -> ([Option<vectorcraft_brush
 /// Do the values a renderer `kept` ([`kept_placing`]) equal `placing`?
 pub(crate) fn same_placing(kept: &[Option<vectorcraft_brush::serde_json::Value>; 2], placing: SymbolPlacing) -> bool {
     kept.iter().map(Option::as_ref).eq(placing)
+}
+
+#[cfg(test)]
+mod tests {
+    use vectorcraft_color::{Color, Paint};
+    use vectorcraft_doc::{Node, NodeId, NodeKind};
+
+    /// An instance of symbol `S` whose fill `fill` stains it in full.
+    fn stained(fill: Paint) -> Node {
+        let mut inst = Node::new(NodeId(1), NodeKind::SymbolInstance { symbol: "S".into(), xf: vectorcraft_geom::Affine::IDENTITY });
+        inst.appearance.set_fill(fill);
+        inst
+    }
+
+    /// A stain linked to a swatch keeps that link on the art (a spot color's plate), so its key
+    /// tells it from the same color unlinked, and from the swatch at another tint of the same color.
+    #[test]
+    fn the_stain_key_holds_the_link_and_tint() {
+        let ink = Color::cmyk(0.0, 1.0, 1.0, 0.0);
+        let linked = |tint: f32| Paint::Solid { color: ink, swatch: Some("Ink".into()), tint };
+        let key = |p: Paint| super::stain_key(Some(&stained(p)));
+        assert_ne!(key(linked(1.0)), key(Paint::solid(ink)), "linked and unlinked");
+        assert_ne!(key(linked(1.0)), key(linked(0.5)), "the same color at another tint");
+        assert_eq!(key(linked(1.0)), key(linked(1.0)));
+        assert_eq!(super::stain_key(None), super::stain_key(Some(&stained(Paint::None))), "no stain");
+    }
 }

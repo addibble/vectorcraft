@@ -368,14 +368,6 @@ fn bake_object(d: &mut Document, n: &Node) -> Option<Node> {
         if let Some(m) = moved_type_group(n) {
             return Some(bake_pieces(d, m));
         }
-        // A symbol instance's art as the canvas draws it: with its own appearance changes, stained
-        // by its fill.
-        let symbol = match &n.kind {
-            NodeKind::SymbolInstance { symbol, .. } => {
-                d.symbols.iter().find(|s| s.name == *symbol).map(|s| vectorcraft_doc::symbol_overrides::instance_art(&s.art, n))
-            }
-            _ => None,
-        };
         // Instances baked inside the art of others stop at the depth limit, or once their art
         // passes the objects one export bakes that way: an instance of a symbol whose art holds
         // instances of itself is kept as it is there. The symbol's art is held in the count while
@@ -387,7 +379,10 @@ fn bake_object(d: &mut Document, n: &Node) -> Option<Node> {
         let nested = instance && INSTANCE_DEPTH.with(|c| c.get()) > 0;
         let before = NESTED_NODES.with(|c| c.get());
         if nested {
-            let count = symbol.as_ref().map_or(0, |a| a.count() as u64);
+            let count = match &n.kind {
+                NodeKind::SymbolInstance { symbol, .. } => d.symbols.iter().find(|s| s.name == *symbol).map_or(0, |s| s.art.count() as u64),
+                _ => 0,
+            };
             let spent = before.saturating_add(count);
             let dropped = NESTED_DROPPED.with(|c| c.get());
             if INSTANCE_DEPTH.with(|c| c.get()) >= vectorcraft_doc::depth::MAX_DEPTH || spent.saturating_add(dropped) > crate::SYMBOL_ART_MAX_NODES {
@@ -395,6 +390,8 @@ fn bake_object(d: &mut Document, n: &Node) -> Option<Node> {
             }
             NESTED_NODES.with(|c| c.set(spent));
         }
+        // As it shows it: with a dynamic symbol's changes, stained by its fill.
+        let symbol = vectorcraft_doc::symbol_overrides::art_of_instance(d, n);
         let Some(m) = reshape(Some(d), n, symbol.as_ref()) else {
             if nested {
                 NESTED_NODES.with(|c| c.set(before));
