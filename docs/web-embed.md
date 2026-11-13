@@ -38,7 +38,9 @@ Every message is a plain object with a string `type`. VectorCraft posts only to 
 | `vectorcraft:taskBar` | from the parent | `actions` (array of `{id, label, icon?, when, linked?, enabled?}`) | Host-only: the host page's own buttons on the Contextual Task Bar, for the selections `when` names. |
 | `vectorcraft:taskBarAction` | to the parent | `id` (string), `selection` (array of numbers) | Host-only: the user clicked action `id`, with these objects selected. |
 | `vectorcraft:selection` | to the parent | `ids` (array of numbers) | The selected objects changed (the active document's; none with no document open). |
-| `vectorcraft:failed` | to the parent | `error` (string) | Before `ready`: the app couldn't start. After `ready`: the last `vectorcraft:open`, `vectorcraft:configure`, `vectorcraft:saved`, `vectorcraft:recoveryEntries` or `vectorcraft:taskBar` was refused; the app keeps running. |
+| `vectorcraft:panel` | from the parent | `id`, `title`, `anchor` (`taskBar` or `dock`), `content` (array of items); or `id` and `close: true` | Host-only: a panel the host page fills, drawn with VectorCraft's widgets. |
+| `vectorcraft:panelEvent` | to the parent | `panel`, `id` (strings), `kind` (`click` or `change`), `selection` (array of numbers, a click) or `value` (a change) | Host-only: the user clicked a button or changed a field of a host panel. |
+| `vectorcraft:failed` | to the parent | `error` (string) | Before `ready`: the app couldn't start. After `ready`: the last `vectorcraft:open`, `vectorcraft:configure`, `vectorcraft:saved`, `vectorcraft:recoveryEntries`, `vectorcraft:taskBar` or `vectorcraft:panel` was refused; the app keeps running. |
 
 **`vectorcraft:ready`** comes once, when the app has started. `version` is the app's version (`CARGO_PKG_VERSION`). A host that has heard neither `ready` nor `failed` after a reasonable time should assume the app couldn't start. The commonest reason is a browser without WebGPU or WebGL2.
 
@@ -106,6 +108,7 @@ page runs itself.
 - `when` is `image` (one image selected, with the Selection, Direct Selection or Group Selection tool) or `clipGroup` (one clip group selected). Never with the Artboard tool.
 - `linked` (optional, default `false`) shows the action only for a linked picture: the image itself, or the one image a clip group holds directly.
 - `enabled` (optional, default `true`): a disabled action is drawn dimmed and doesn't click. Send the list again to turn it on.
+- `panel` (optional): the id of a host panel anchored to the task bar (below). The action opens and closes that panel as a popover under the bar, the way Shape Properties opens, in place of posting `vectorcraft:taskBarAction`.
 
 The actions come after the bar's own, before the Fill and Stroke chips. They are not commands, so
 `hide` doesn't touch them; `hide` does leave out the bar's More Options items it names, so a page
@@ -120,6 +123,27 @@ nothing itself.
 **`vectorcraft:selection`** tells the page whenever the selected objects change, `{ ids }`: the
 active document's, `[]` while none is open, the first one after the first frame. Selecting a path's
 anchors alone doesn't change it.
+
+### Host panels (host-only)
+
+**`vectorcraft:panel`** fills a panel with the host page's items, `{ id, title, anchor, content }`, drawn with VectorCraft's own widgets. Sending a panel again with the same `id` replaces its items; `{ id, close: true }` takes it away.
+
+- `anchor: "taskBar"`: a popover under the Contextual Task Bar, opened and closed by the task bar action whose `panel` names it. It closes with Escape or a click outside it.
+- `anchor: "dock"`: a panel of the docking system, `host:<id>`, which floats, tabs, docks and closes like any other. `window.panel {panel: "host:<id>"}` shows it; it floats the first time. A docked panel sent again keeps its place.
+
+`content` is at most 64 items, top to bottom:
+
+- `{kind: "text", text, tone?}`: up to 2,000 characters; `tone` is `hint` (dimmed) or `error`.
+- `{kind: "button", id, label, primary?, enabled?, icon?}`. `icon` names one of the app's icons (`trash-2`, say), drawn in place of the label, which is then its tooltip and its name to a screen reader; an icon the app doesn't have shows the label.
+- `{kind: "row", items: [buttons]}`: buttons side by side.
+- `{kind: "textArea", id, label, value, placeholder?, maxChars?}`: VectorCraft keeps the text being typed. While the field has the keyboard, a `value` sent again is ignored, so the page can resend the panel without undoing the typing. `maxChars` (1 to 4,000) is held while typing.
+- `{kind: "checkbox", id, label, checked, enabled?}`.
+- `{kind: "separator"}`.
+- `{kind: "list", items: [{id, text, tone?, buttons?}]}`: at most 200 rows; a row's buttons are named `<row id>/<button id>` in events.
+
+Ids are 1 to 100 characters and unique in the panel (a row's buttons within the row); labels and titles at most 100 characters. A page fills at most 8 panels. A message of any other shape is refused with `vectorcraft:failed`, and nothing changes; fields it doesn't name are ignored.
+
+**`vectorcraft:panelEvent`** tells the page what the user did: `{ panel, id, kind: "click", selection }` for a button (never a disabled one), with the objects selected then; `{ panel, id, kind: "change", value }` for a checkbox (its new boolean) or a text area (its text, each frame it changes and once more as it loses the keyboard).
 
 ## Who is heard
 

@@ -396,6 +396,9 @@ pub struct HostTaskBarAction {
     pub linked: bool,
     /// Drawn dimmed and not clickable when false.
     pub enabled: bool,
+    /// A host panel anchored to the task bar ([`crate::host_panels`]) this action opens and closes
+    /// as a popover under the bar, in place of telling the page it was clicked.
+    pub panel: Option<String>,
 }
 
 /// The selections a page's task bar action shows for.
@@ -876,6 +879,10 @@ pub struct UiState {
     /// docs/web-embed.md), shown after the bar's own for the selections they name.
     #[serde(skip)]
     pub host_task_bar: Vec<HostTaskBarAction>,
+    /// The panels an embedding page filled (`vectorcraft:panel`), what their text areas hold, and
+    /// the clicks and changes the page hasn't heard yet ([`crate::host_panels`]).
+    #[serde(skip)]
+    pub host_panels: crate::host_panels::HostPanels,
     /// The page's task bar actions clicked since the page last heard them: each action's id and
     /// the selected objects as they were when it was clicked (`vectorcraft:taskBarAction`).
     #[serde(skip)]
@@ -1300,6 +1307,7 @@ impl Default for UiState {
             host_save_on_close: false,
             host_task_bar: Vec::new(),
             host_task_bar_clicked: Vec::new(),
+            host_panels: Default::default(),
             host_closing: None,
             host_titles: Vec::new(),
             layers_panel: Default::default(),

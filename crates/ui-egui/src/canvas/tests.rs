@@ -12878,7 +12878,7 @@ fn pictures_for_host_actions(app: &mut VectorcraftApp) -> [vectorcraft_doc::Node
 }
 
 fn host_action(id: &str, when: crate::state::HostTaskBarWhen, linked: bool, enabled: bool) -> crate::state::HostTaskBarAction {
-    crate::state::HostTaskBarAction { id: id.into(), label: format!("Do {id}"), icon: None, when, linked, enabled }
+    crate::state::HostTaskBarAction { id: id.into(), label: format!("Do {id}"), icon: None, when, linked, enabled, panel: None }
 }
 
 /// An embedding page's task bar actions (`vectorcraft:taskBar`) show after the bar's own, only for

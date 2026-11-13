@@ -510,6 +510,7 @@ impl eframe::App for WebShell {
                 bridge.report_dirty(app);
                 bridge.report_link(app);
                 bridge.report_task_bar(app);
+                bridge.report_panels(app);
                 bridge.report_selection(app);
             }
         }
