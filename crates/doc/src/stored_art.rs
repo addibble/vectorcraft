@@ -306,6 +306,89 @@ impl Document {
         self.raise_next_id(next);
         total
     }
+
+    /// After the document was rewritten whole from its JSON (a JSON Patch over its saved form):
+    /// gives every stored object, the layer tree's included, whose id is 0, past the id range, or
+    /// taken by a slice or by another object a new id, as paste and duplicate give a copy one.
+    /// Of the objects sharing an id, one `added` does not name keeps it (the first in visiting
+    /// order), so a copy never takes the id of the object it copies; `added` is given each
+    /// object's JSON Pointer into the document's JSON (`/layers/0/kind/children/2`,
+    /// `/symbols/1/art`, `/layers/0/mask/art`). Answers the new ids in visiting order, or `None`,
+    /// with nothing changed, when the id range has too few left.
+    pub fn give_fresh_ids(&mut self, added: impl Fn(&str) -> bool) -> Option<Vec<NodeId>> {
+        /// `n` and everything below it in [`visit`] order, each with its pointer.
+        fn walk(n: &Node, pointer: &mut String, f: &mut dyn FnMut(&Node, &str)) {
+            f(n, pointer);
+            let len = pointer.len();
+            if let Some(m) = &n.extras().mask {
+                pointer.push_str("/mask/art");
+                walk(&m.art, pointer, f);
+                pointer.truncate(len);
+            }
+            let key = match &n.kind {
+                crate::NodeKind::Envelope { .. } => "content",
+                crate::NodeKind::Repeat(_) => "source",
+                _ => "children",
+            };
+            for (i, c) in n.children().into_iter().flatten().enumerate() {
+                pointer.push_str(&format!("/kind/{key}/{i}"));
+                walk(c, pointer, f);
+                pointer.truncate(len);
+            }
+        }
+        // Where a root sits in the document's JSON; none for brush art mounted while a command runs
+        // (`mounted_art` is not saved), whose objects keep their ids and are never added by a patch.
+        let root_pointer = |r: StoredRoot| match r {
+            StoredRoot::Layer(i) => Some(format!("/layers/{i}")),
+            StoredRoot::Symbol(i) => Some(format!("/symbols/{i}/art")),
+            StoredRoot::GraphDesign(i) => Some(format!("/graph_designs/{i}/art")),
+            StoredRoot::Pattern { pattern, art } => Some(format!("/patterns/{pattern}/art/{art}")),
+            StoredRoot::Mounted(_) => None,
+        };
+        // Each object as (the root's place among the roots, the root, visiting index in it, id,
+        // added).
+        let mut objects = vec![];
+        for (k, (root, r)) in self.stored_roots().enumerate() {
+            let in_json = root_pointer(r);
+            let saved = in_json.is_some();
+            let (mut i, mut pointer) = (0, in_json.unwrap_or_default());
+            walk(root, &mut pointer, &mut |n, p| {
+                objects.push((k, r, i, n.id, saved && added(p)));
+                i += 1;
+            });
+        }
+        let mut taken: HashSet<NodeId> = self.slices.iter().map(|s| s.id).collect();
+        let mut fresh: std::collections::BTreeMap<usize, (StoredRoot, HashSet<usize>)> = Default::default();
+        let mut total = 0;
+        // The objects already there claim their ids first, then the added ones.
+        for pass in [false, true] {
+            for &(k, r, i, id, _) in objects.iter().filter(|o| o.4 == pass) {
+                if id.0 != 0 && id.0 < MAX_NEXT_ID && taken.insert(id) {
+                    continue;
+                }
+                total += 1;
+                fresh.entry(k).or_insert_with(|| (r, HashSet::new())).1.insert(i);
+            }
+        }
+        if total == 0 {
+            return Some(vec![]);
+        }
+        // New ids start above every id kept (the counter read from JSON may stand below them).
+        let kept = objects.iter().map(|o| o.3.0).chain(self.slices.iter().map(|s| s.id.0)).chain(self.assets.iter().map(|a| a.id));
+        let first = kept.filter(|id| *id < MAX_NEXT_ID).map(|id| id + 1).fold(self.peek_next_id(), u64::max);
+        if first.saturating_add(total as u64) > MAX_NEXT_ID {
+            return None;
+        }
+        // Root by root in visiting order, so the new ids follow it.
+        let mut next = first;
+        for (r, f) in fresh.into_values() {
+            if let Some(root) = self.stored_root_mut(r) {
+                renumber(root, &f, &mut 0, &mut next);
+            }
+        }
+        self.raise_next_id(next);
+        Some((first..next).map(NodeId).collect())
+    }
 }
 
 #[cfg(test)]
@@ -405,6 +488,45 @@ mod tests {
         d.stored_node_mut(NodeId(15)).unwrap().name = Some("changed".into());
         assert_eq!(d.mounted_art[1].0.name.as_deref(), Some("changed"));
         assert_eq!(d.number_mounted_art(), 0, "a second pass changes nothing");
+    }
+
+    #[test]
+    fn fresh_ids_go_to_the_added_copies_and_every_pointer_is_the_objects() {
+        // The layer holds a copy of object 10 (added, before it) and object 10; the symbol's
+        // object repeats the layer's, and the design's has none.
+        let mut d = doc([10, 0, 14]);
+        let layer = d.layers[0].id;
+        d.insert(Some(layer), 0, rect(10)).unwrap();
+        let json = serde_json::to_value(&d).unwrap();
+        let seen_cell = std::cell::RefCell::new(vec![]);
+        let fresh = d.give_fresh_ids(|p| {
+            seen_cell.borrow_mut().push(p.to_string());
+            p == "/layers/0/kind/children/0"
+        });
+        let fresh = fresh.unwrap();
+        let seen = seen_cell.into_inner();
+        for p in &seen {
+            assert!(json.pointer(p).and_then(|n| n.get("kind")).is_some(), "{p} is no object in {json}");
+        }
+        assert!(seen.contains(&"/layers/0/kind/children/1/mask/art".to_string()), "{seen:?}");
+        let children = d.layers[0].children().unwrap();
+        assert_eq!(children[1].id, NodeId(10), "the object already there keeps its id");
+        assert_eq!(fresh.len(), 3, "the copy, the symbol's object and the design's: {fresh:?}");
+        assert_eq!(fresh[0], children[0].id);
+        let mut ids = vec![];
+        d.visit_stored(|n, _| ids.push(n.id));
+        assert_eq!(ids.iter().collect::<HashSet<_>>().len(), ids.len(), "{ids:?}");
+        assert!(ids.iter().all(|id| id.0 != 0 && id.0 < d.peek_next_id()));
+        assert_eq!(d.give_fresh_ids(|_| true), Some(vec![]), "a second pass changes nothing");
+    }
+
+    #[test]
+    fn no_fresh_ids_past_the_range() {
+        let mut d = doc([12, 0, 14]);
+        d.next_id = MAX_NEXT_ID;
+        let before = d.clone();
+        assert_eq!(d.give_fresh_ids(|_| false), None);
+        assert_eq!(d, before);
     }
 
     #[test]

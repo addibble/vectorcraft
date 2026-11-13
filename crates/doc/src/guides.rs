@@ -3,7 +3,7 @@ use super::{Deserialize, NodeId, Serialize, Vec2};
 /// A ruler guide as a value: an entry of the saved `guides` list, or a ruler guide node of a
 /// document as [`crate::Document::ruler_guides`] lists it. In a document, ruler guides are
 /// [`crate::NodeKind::RulerGuide`] nodes on their layers.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Guide {
     /// true = vertical guide at `pos` (x), false = horizontal at `pos` (y).
     pub vertical: bool,
@@ -25,10 +25,10 @@ pub struct Guide {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     /// Locked on its own (its layer's lock is separate).
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[serde(default, skip_serializing_if = "crate::skip::is_false")]
     pub locked: bool,
     /// Hidden on its own (its layer's visibility is separate).
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[serde(default, skip_serializing_if = "crate::skip::is_false")]
     pub hidden: bool,
 }
 
@@ -44,7 +44,7 @@ impl Guide {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GridPrefs {
     pub spacing: f64,
     pub subdivisions: u32,
@@ -58,7 +58,7 @@ impl Default for GridPrefs {
 
 /// What the rulers measure from (View › Rulers): the active artboard's origin, the default of a
 /// new document, or one origin for the whole document.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum RulerMode {
     #[default]
@@ -70,5 +70,10 @@ impl RulerMode {
     /// The mode of a document saved before the choice existed: global, as its rulers measured.
     pub fn legacy() -> Self {
         Self::Global
+    }
+    /// While saving, whether this is [`Self::legacy`], which a reader fills in when the field is
+    /// missing.
+    pub(crate) fn is_legacy(&self) -> bool {
+        crate::skip::saved_as(self, &Self::legacy())
     }
 }
