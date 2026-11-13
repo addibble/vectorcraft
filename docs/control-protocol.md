@@ -1118,6 +1118,13 @@ The browser has no installed fonts, so a host page supplies the fonts its docume
 `vectorcraft.execute("text.addFontSources", {fonts: [{family, style, url, sha256}]})` lists a whole collection in the
 font menus and lets the app fetch each face itself when type uses it (`docs/mcp.md`, fonts).
 
+Nor can it read a document's linked files: `vectorcraft.execute("links.addSources", {sources: [{path, url, sidecar?}]})` lists the
+ones the page can supply, and the app fetches each (`url` with `{width}`, `{height}` or `{side}` filled in) once an image
+linking it is drawn larger than its preview, at the size it prints at; `links.loadSources` asks for all of them before a
+print, and `view.imageCache` sets the memory they and decoded images may hold (`docs/mcp.md`, links). A source's
+`sidecar` is the file's XMP sidecar, as text, whose main subject (an IPTC image region) Placement Options › Preserve:
+Subject places it by.
+
 ## Revision history
 
 | Date | Change | Summary |
@@ -1156,3 +1163,4 @@ the error text. The interactive fallback applies only to ordinary File > Save, n
 | Date | Change |
 |---|---|
 | 2026-11-11 | Document READ_ONLY_LOCATION for saves (#6146); no response-shape change. |
+| 2026-10-25 | minor | A host page lists the linked files it can supply with `links.addSources`; `view.imageCache` sets the image budgets. |

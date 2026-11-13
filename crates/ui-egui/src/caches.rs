@@ -146,6 +146,8 @@ pub struct CacheKey {
     /// which the document drew a plug-in effect ([`vectorcraft_render::draws_plugin_effects`]): a
     /// frame drawn before it draws those effects as the plug-ins installed then did. 0 until then.
     pub plugins: u64,
+    /// [`vectorcraft_render::link_pixels::generation`]: linked files' pixels a host supplied since.
+    pub linked: u64,
     /// View › Pixel Preview: the document pixels rendered (x0, y0, x1, y1), one per point, shown
     /// with hard edges. None: the art is rendered for the screen.
     pub pixel: Option<[i64; 4]>,

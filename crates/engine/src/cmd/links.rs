@@ -36,7 +36,7 @@ use vectorcraft_doc::{
 use vectorcraft_geom::{Affine, FillRule, PathData, Point, Rect, shapes};
 
 use super::fileio::{self, RasterImage, absolute_path, file_created, file_stamp, read_file, write_file};
-use super::{CommandSpec, EngineError, Result, Session, bad, bool_or, cmd, has_doc, ids_param, object_param, str_param, switch_or};
+use super::{CommandSpec, EngineError, Result, Session, always, bad, bool_or, cmd, has_doc, ids_param, object_param, str_param, switch_or};
 
 pub fn specs() -> Vec<CommandSpec> {
     vec![
@@ -130,7 +130,142 @@ pub fn specs() -> Vec<CommandSpec> {
             has_doc,
             placement_options
         ),
+        cmd!(
+            query "links.addSources",
+            "Add Link Sources",
+            [],
+            None,
+            "{sources: [{path: the path links name (their relative path, else their path), url: where the host serves the file at a size, `{width}`, `{height}` and `{side}` (the longer) replaced by the pixels asked for (for the web build, relative to the page), sidecar?: the file's XMP sidecar as text (at most 256 KB: what <name>.xmp beside it would hold; its main subject, an IPTC image region in relative units, is the link's for Link Info and Placement Options › Preserve: Subject, before what the link kept; a new sidecar for a path changes no pixels)}] (1 to 100000), resolution?: 300 (ppi, 1 to 2400: the most a placement is asked for at, the host's output resolution)} linked files a host can supply where VectorCraft reads no files (the web build): an image linking one shows its saved preview until it is drawn magnified past it, then the file is fetched at the size its largest placement needs at that resolution (never more than the file has) and drawn over the preview, and used for PDF export; resized larger, it is fetched again. What arrives is kept outside the document, the least recently drawn dropped first past view.imageCache's linked budget. A link with a source counts as found (status ok in links.list, links.check and the Links panel) until its fetch fails. A path already a source takes the new URL (its file is asked for again from it); one that failed is asked for again. Not an edit: nothing is saved, journaled or undone → {added, sources (how many there are now), resolution}",
+            always,
+            add_sources
+        ),
+        cmd!(
+            query "links.supplySource",
+            "Supply Link Source",
+            [],
+            None,
+            "{path, dataBase64: the file's pixels (PNG, JPEG, GIF, WebP, TIFF or BMP, at most 256 MB; there may be fewer than the file has)} what a link source's fetch brought (the web build calls this itself), or a host's own copy: kept for every linked image of the open documents that links path, drawn over its preview and used for PDF export. Not an edit → {images (how many images, by content, it is kept for), pixelWidth, pixelHeight}",
+            always,
+            supply_source
+        ),
+        cmd!(
+            query "links.loadSources",
+            "Load Link Sources",
+            [],
+            None,
+            "{} ask for every linked image of the active document that has a source and lacks the pixels its placements need at the sources' resolution, drawn or not (before printing or exporting: call again until loading is 0) → {loaded, loading, failed} (images, by content)",
+            has_doc,
+            load_sources
+        ),
+        cmd!(
+            query "view.imageCache",
+            "Image Cache",
+            [],
+            None,
+            "{decoded?: bytes (the decoded images all views share; default an eighth of memory up to 1 GB, 256 MB on the web), linked?: bytes (the encoded pixels link sources supplied; default 512 MB, 128 MB on the web)} set the budgets (at least 16 MB each; past one, the least recently drawn go and are decoded or fetched again when next drawn) → {decoded: {budget, bytes}, linked: {budget, bytes}} (the bytes held now)",
+            always,
+            image_cache
+        ),
     ]
+}
+
+// ---------- link sources ----------
+
+/// The most sources one `links.addSources` call may give.
+const MAX_LINK_SOURCES: usize = 100_000;
+/// The largest sidecar a source may carry: a sidecar of regions is a few kilobytes.
+const MAX_SIDECAR: usize = 256 << 10;
+
+/// `links.addSources`: the files a host can supply, checked and registered with
+/// [`crate::link_sources`].
+fn add_sources(s: &mut Session, p: &Value) -> Result<Value> {
+    const C: &str = "links.addSources";
+    let list = p.get("sources").and_then(Value::as_array).ok_or_else(|| bad(C, "give sources, a list of sources each with a path and a url"))?;
+    if list.is_empty() || list.len() > MAX_LINK_SOURCES {
+        return Err(bad(C, format!("give 1 to {MAX_LINK_SOURCES} sources")));
+    }
+    let resolution = match p.get("resolution") {
+        None | Some(Value::Null) => None,
+        Some(v) => Some(v.as_f64().filter(|r| r.is_finite() && (1.0..=2400.0).contains(r)).ok_or_else(|| bad(C, "resolution is 1 to 2400 ppi"))?),
+    };
+    let mut sources = Vec::with_capacity(list.len());
+    for (i, src) in list.iter().enumerate() {
+        let text = |key: &str, max: usize| -> Result<String> {
+            let v = src.get(key).and_then(Value::as_str).map(str::trim).unwrap_or("");
+            if v.is_empty() || v.len() > max {
+                return Err(bad(C, format!("sources[{i}].{key} is 1 to {max} characters")));
+            }
+            Ok(v.to_string())
+        };
+        let sidecar = match src.get("sidecar") {
+            None | Some(Value::Null) => None,
+            Some(v) => Some(
+                v.as_str()
+                    .filter(|x| x.len() <= MAX_SIDECAR)
+                    .ok_or_else(|| bad(C, format!("sources[{i}].sidecar is the XMP sidecar's text, at most {MAX_SIDECAR} bytes")))?
+                    .to_string(),
+            ),
+        };
+        sources.push((text("path", 4096)?, crate::link_sources::LinkSource { url: text("url", 4096)?, sidecar }));
+    }
+    let added = crate::link_sources::add(sources, resolution);
+    // Links supplied now count as found: the Links panel and the canvas look again (not an edit).
+    for st in &mut s.docs {
+        st.revision += 1;
+    }
+    let (count, resolution) = crate::link_sources::summary();
+    Ok(json!({ "added": added, "sources": count, "resolution": resolution }))
+}
+
+/// `links.supplySource`: a source's file, as base64, kept for the images linking it.
+fn supply_source(s: &mut Session, p: &Value) -> Result<Value> {
+    const C: &str = "links.supplySource";
+    let path = str_param(p, "path").filter(|p| !p.is_empty()).ok_or_else(|| bad(C, "give the path links name"))?;
+    let data = str_param(p, "dataBase64").ok_or_else(|| bad(C, "give the file as dataBase64"))?;
+    // Base64 is four characters for three bytes: refuse an oversized file before decoding it.
+    if data.len() / 4 * 3 > crate::link_sources::MAX_SUPPLIED {
+        return Err(bad(C, format!("{path} is larger than {} MB", crate::link_sources::MAX_SUPPLIED >> 20)));
+    }
+    let bytes = vectorcraft_format::base64_decode(data).ok_or_else(|| bad(C, "dataBase64 is not base64"))?;
+    let (images, (w, h)) = crate::link_sources::supply(s, path, bytes).map_err(|e| bad(C, e))?;
+    Ok(json!({ "images": images, "pixelWidth": w, "pixelHeight": h }))
+}
+
+/// `links.loadSources`: every linked image of the active document with a source asked for.
+fn load_sources(s: &mut Session, _: &Value) -> Result<Value> {
+    let l = crate::link_sources::load_all(&s.doc()?.doc);
+    Ok(json!({ "loaded": l.loaded, "loading": l.loading, "failed": l.failed }))
+}
+
+/// The least an image cache's budget may be set to.
+const MIN_CACHE: u64 = 16 << 20;
+
+/// `view.imageCache`: the decoded images' and link sources' budgets, set and told.
+fn image_cache(_: &mut Session, p: &Value) -> Result<Value> {
+    const C: &str = "view.imageCache";
+    let budget = |key: &str| -> Result<Option<usize>> {
+        match p.get(key) {
+            None | Some(Value::Null) => Ok(None),
+            Some(v) => {
+                let b = v
+                    .as_u64()
+                    .filter(|b| *b >= MIN_CACHE)
+                    .ok_or_else(|| bad(C, format!("{key} is a whole number of bytes, at least {MIN_CACHE}")))?;
+                Ok(Some(usize::try_from(b).unwrap_or(usize::MAX)))
+            }
+        }
+    };
+    let (decoded, linked) = (budget("decoded")?, budget("linked")?);
+    if let Some(b) = decoded {
+        vectorcraft_render::set_image_cache_budget(b);
+    }
+    if let Some(b) = linked {
+        vectorcraft_render::link_pixels::set_budget(b);
+    }
+    Ok(json!({
+        "decoded": { "budget": vectorcraft_render::image_cache_budget(), "bytes": vectorcraft_render::image_cache_bytes() },
+        "linked": { "budget": vectorcraft_render::link_pixels::budget(), "bytes": vectorcraft_render::link_pixels::bytes() },
+    }))
 }
 
 // ---------- finding files ----------
@@ -394,8 +529,12 @@ fn refused(link: &LinkInfo, doc_path: Option<&str>) -> Option<craft_docpath::Ref
 /// Where the file of group `g` (of a document looking from `base`) is and whether it still has
 /// the content shown. Its bytes are read only when its size or modification time changed. An image
 /// placed from a DCS file is modified when one of its plate files of their own changed.
+/// A file not found that a host supplies ([`crate::link_sources`]) is OK, with nothing found.
 fn probe(g: &Group, base: LinkBase) -> (Status, Option<Found>) {
-    let Some(mut f) = locate(&g.link, base) else { return (Status::Missing, None) };
+    // Not found here, but supplied by the host (a link source): found all the same, as a file a
+    // font provider serves counts as installed.
+    let unread = || if crate::link_sources::sourced(&g.link) { Status::Ok } else { Status::Missing };
+    let Some(mut f) = locate(&g.link, base) else { return (unread(), None) };
     let l = &g.link;
     if !g.plate_files.is_empty() && super::place::dcs::plate_files_changed(&g.plate_files, &f.path) {
         return (Status::Modified, Some(f));
@@ -403,7 +542,7 @@ fn probe(g: &Group, base: LinkBase) -> (Status, Option<Found>) {
     if l.size == Some(f.size) && l.modified.is_some() && l.modified == f.modified {
         return (Status::Ok, Some(f));
     }
-    let Ok(bytes) = f.read() else { return (Status::Missing, None) };
+    let Ok(bytes) = f.read() else { return (unread(), None) };
     let same = match &l.hash {
         Some(h) => *h == hash_bytes(&bytes),
         // Linked before links kept a hash: the image the file decodes to.
@@ -2680,9 +2819,10 @@ fn region_json(r: ImageRegion) -> Value {
     json!({ "left": r.left, "top": r.top, "right": r.right, "bottom": r.bottom })
 }
 
-/// The main subject of the file `l` links to, as last read.
+/// The main subject of the file `l` links to: the one its host's sidecar names (link sources),
+/// else the one kept when it was last read.
 pub(crate) fn link_subject(l: &LinkInfo) -> Option<ImageRegion> {
-    l.subject
+    crate::link_sources::subject(l).or(l.subject)
 }
 
 /// Placement Options as `{preserve, align, clip}`.
