@@ -773,6 +773,12 @@ impl Renderer {
             outer,
             &swatches,
             &mut |key, map| {
+                // A linked image showing the missing-file placeholder keeps it as it is, so a broken
+                // link looks broken whatever adjusts its colours; one drawn from pixels a host
+                // supplied for its file is recoloured.
+                if crate::renderer::source_blob(doc, key, None, true, false).is_some_and(|b| b.is_missing_placeholder()) {
+                    return None;
+                }
                 let mut h = std::hash::DefaultHasher::new();
                 std::hash::Hash::hash(&format!("{map:?}"), &mut h);
                 let hash = std::hash::Hasher::finish(&h);

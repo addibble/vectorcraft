@@ -39,8 +39,9 @@ type TileKey = (String, u64, Ink, bool);
 
 /// What a tile was drawn from besides its pattern's own art, for art that shows more than itself:
 /// the art of every pattern and symbol and the pixels of every image in the document, the
-/// document's other data (which holds its brushes), and the fonts and hyphenation exceptions
-/// ([`vectorcraft_text::layout_inputs`]). Editing a symbol leaves the art
+/// document's other data (which holds its brushes), the fonts and hyphenation exceptions
+/// ([`vectorcraft_text::layout_inputs`]), and the pixels hosts supplied for linked files
+/// ([`crate::link_pixels`]). Editing a symbol leaves the art
 /// of a pattern that shows it as it was, so the art alone kept the tile from before (#1723). Held
 /// weakly: a weak reference keeps the allocation, so no other value gets one of these addresses
 /// while the tile is kept.
@@ -51,6 +52,9 @@ struct Deps {
     /// edit; compare the brush library alone if that ever costs a frame.
     unknown: Weak<vectorcraft_brush::serde_json::Map<String, vectorcraft_brush::serde_json::Value>>,
     fonts: u64,
+    /// [`crate::link_pixels::generation`]: a linked image in the art draws the pixels a host
+    /// supplied for its file over its preview.
+    linked: u64,
 }
 
 impl Deps {
@@ -68,12 +72,14 @@ impl Deps {
             pixels: Self::pixels(doc).map(Arc::downgrade).collect(),
             unknown: vectorcraft_doc::Shared::downgrade(&doc.unknown),
             fonts: vectorcraft_text::layout_inputs(),
+            linked: crate::link_pixels::generation(),
         }
     }
 
     /// Does `doc` hold what the tile was drawn from?
     fn current(&self, doc: &Document) -> bool {
         self.fonts == vectorcraft_text::layout_inputs()
+            && self.linked == crate::link_pixels::generation()
             && std::ptr::eq(self.unknown.as_ptr(), &*doc.unknown)
             && self.art.iter().map(Weak::as_ptr).eq(Self::art(doc).map(Arc::as_ptr))
             && self.pixels.iter().map(Weak::as_ptr).eq(Self::pixels(doc).map(Arc::as_ptr))

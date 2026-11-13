@@ -25,6 +25,7 @@ fn extras_are_written_flat_in_order() {
         e.pixel_aligned = true;
         e.warp_piece = true;
         e.clip_pieces = true;
+        e.placement_clip = true;
     }
     /// The top-level keys of a JSON object, in the order written.
     struct Keys(Vec<String>);
@@ -73,6 +74,7 @@ fn extras_are_written_flat_in_order() {
         "pixel_aligned",
         "warp_piece",
         "clip_pieces",
+        "placement_clip",
     ];
     assert_eq!(keys, order);
     assert_eq!(v["shape_mode"], "exclude");
