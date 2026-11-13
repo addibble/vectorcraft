@@ -496,6 +496,8 @@ mod tests {
 
     /// Load Variable Library's warning about variables that aren't text shows in the status bar,
     /// translated in every language but English.
+    // Reads catalogs other than English.
+    #[cfg(feature = "translations")]
     #[test]
     fn the_variable_library_warning_shows_in_the_status_bar() {
         use crate::i18n::{Lang, message};
@@ -515,6 +517,8 @@ mod tests {
     /// kind and about variables that make it refuse the file show in the status bar, and so does
     /// its refusal of a header that is another variable's name; all three are translated in every
     /// language but English.
+    // Reads catalogs other than English.
+    #[cfg(feature = "translations")]
     #[test]
     fn the_export_data_sets_warning_shows_in_the_status_bar() {
         use crate::i18n::{Lang, message};
@@ -550,6 +554,7 @@ mod tests {
 
     /// The notes of a `.ai` whose variable library was read in part, or couldn't be read, are
     /// translated in every language that translated the note they replace.
+    #[cfg(feature = "translations")]
     #[test]
     fn the_notes_of_an_ai_variable_library_are_translated() {
         use crate::i18n::{Lang, message};

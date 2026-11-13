@@ -181,8 +181,11 @@ pub fn show(app: &mut VectorcraftApp, ctx: &egui::Context) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "translations")]
     use crate::i18n::Lang;
 
+    // Reads catalogs other than English.
+    #[cfg(feature = "translations")]
     #[test]
     fn entries_are_built_once_per_language_and_match_english_shown_text_and_ids() {
         let ctx = egui::Context::default();
@@ -216,7 +219,7 @@ mod tests {
     fn use_precise_cursors_palette_result_toggles_the_preference() {
         let ctx = egui::Context::default();
         let query = "use precise cursors";
-        let entries = entries(&ctx, Lang::EN);
+        let entries = entries(&ctx, crate::i18n::Lang::EN);
         let matches: Vec<&Entry> = entries.iter().filter(|e| query.split_whitespace().all(|word| e.haystack.contains(word))).take(14).collect();
         assert!(matches.iter().any(|e| e.id == "view.preciseCursors"), "preference toggle appears for its name");
         assert!(entries.iter().filter(|e| e.id == "view.capsLock").all(|e| e.shown != "Use Precise Cursors"));
@@ -443,6 +446,8 @@ mod tests {
     /// Each filter plug-in has one result, also when two share a name: its menu path translates,
     /// the plug-in's name does not, and a pick runs that filter (a dialog for one with parameters,
     /// nothing with no document open).
+    // Reads a catalog other than English.
+    #[cfg(feature = "translations")]
     #[test]
     fn each_filter_plugin_is_a_result_of_its_own() {
         use vectorcraft_plugins::wat as tpl;

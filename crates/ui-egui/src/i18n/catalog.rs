@@ -229,7 +229,7 @@ impl Catalog {
     }
 
     /// [`Catalog::message_forms`] with the first form of the translation.
-    #[cfg(test)]
+    #[cfg(all(test, feature = "translations"))]
     pub fn message<'a>(&self, s: &'a str) -> Option<(&str, Captures<'_, 'a>)> {
         self.message_forms(s).and_then(|(forms, caps)| Some((forms.first()?.as_str(), caps)))
     }
@@ -262,8 +262,8 @@ impl Catalog {
     }
 }
 
-/// `{name}` placeholders of a template, in order of appearance; `{{` is a literal brace.
-#[cfg(test)]
+/// `{name}` placeholders of a template, in order of appearance; `{{` is a literal brace (for the catalog tests).
+#[cfg(all(test, feature = "translations"))]
 pub fn placeholders(s: &str) -> Vec<&str> {
     let mut out = Vec::new();
     let mut rest = s;

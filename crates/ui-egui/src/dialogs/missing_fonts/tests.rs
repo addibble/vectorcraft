@@ -351,6 +351,7 @@ fn files_go_with_their_fonts_by_name() {
 }
 
 /// A folder search's counts use the forms the language's plural rule picks for each count.
+#[cfg(feature = "translations")]
 #[test]
 fn search_counts_use_each_count_form() {
     let mut app = VectorcraftApp::new(Session::new(), Default::default());

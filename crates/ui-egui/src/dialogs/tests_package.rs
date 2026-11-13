@@ -349,6 +349,7 @@ fn fonts_left_out_of_the_package_are_named() {
 /// A package made while the interface is in another language keeps its status line in English,
 /// note included, so the status bar can show it in the language of the moment. The dialog shown
 /// at once is in the interface language.
+#[cfg(feature = "translations")]
 #[test]
 fn a_package_status_is_stored_in_english() {
     let dir = Folder::new("english");
@@ -372,6 +373,7 @@ fn a_package_status_is_stored_in_english() {
 
 /// The dialog's note on linked files left out of a package uses the form the language's plural
 /// rule picks for the count. The status bar's note stays English.
+#[cfg(feature = "translations")]
 #[test]
 fn the_missing_links_note_uses_each_count_form() {
     let note = |code: &str, missing: usize| {
@@ -391,6 +393,7 @@ fn the_missing_links_note_uses_each_count_form() {
 
 /// A long list of fonts left out is cut short in the desktop's status line, so the status bar can
 /// still translate the line. The dialog names every font.
+#[cfg(feature = "translations")]
 #[test]
 fn a_long_list_of_fonts_left_out_is_cut_short_in_the_status() {
     use crate::i18n::{Lang, message};
@@ -428,6 +431,7 @@ fn a_background_package_behind_another_dialog_names_every_font_in_the_status() {
 /// note, is translated by every catalog when the status bar shows it after a language switch, in
 /// the form the language's plural rule picks for the count, and a folder whose name has a space or
 /// parentheses keeps its whole name, next to one note or two.
+#[cfg(feature = "translations")]
 #[test]
 fn an_english_package_status_is_translated_after_a_language_switch() {
     use crate::i18n::{Lang, message};

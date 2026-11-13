@@ -311,6 +311,7 @@ mod tests {
 
     /// The question about modified linked files uses the form the language's plural rule picks for
     /// the count.
+    #[cfg(feature = "translations")]
     #[test]
     fn the_modified_links_question_uses_each_count_form() {
         let mut app = VectorcraftApp::new(Session::new(), Default::default());

@@ -234,6 +234,7 @@ fn warnings_reach_the_status_and_errors_keep_the_dialog_open() {
 
 /// The Summary's warnings are translated as far as the catalog has them: a warning without a row
 /// keeps its words, and a colon in it can still take the catalog's punctuation.
+#[cfg(feature = "translations")]
 #[test]
 fn summary_warnings_are_translated() {
     let fr = crate::i18n::Lang::from_code("fr").unwrap();
