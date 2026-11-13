@@ -46,6 +46,7 @@ mod free_transform;
 pub mod graphics;
 pub mod hang_beacon;
 pub mod host_panels;
+pub mod host_region;
 pub mod i18n;
 pub mod icon_data;
 pub mod icons;
