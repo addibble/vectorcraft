@@ -162,6 +162,10 @@ fn vertical_type_names_the_alignments_top_and_bottom_and_the_position_y() {
 /// Chinese writes a full-width colon.
 #[test]
 fn position_label_is_translated() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let mut app = VectorcraftApp::new(Session::new(), Default::default());
     app.session.execute("file.new", &json!({})).unwrap();
     app.session.execute("text.create", &json!({"x": 10, "y": 20, "text": "a	b", "area": {"width": 300, "height": 100}})).unwrap();

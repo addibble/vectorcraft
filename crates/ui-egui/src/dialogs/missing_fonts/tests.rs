@@ -385,6 +385,10 @@ fn files_go_with_their_fonts_by_name() {
 /// A folder search's counts use the forms the language's plural rule picks for each count.
 #[test]
 fn search_counts_use_each_count_form() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let mut app = VectorcraftApp::new(Session::new(), Default::default());
     let mut progress_text = |code: &str, n: u64| {
         crate::i18n::set_current(crate::i18n::Lang::from_code(code).unwrap());

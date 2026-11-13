@@ -10,6 +10,10 @@ fn the_thai_filter_lists_fonts_with_thai() {
     assert_eq!(passing(japanese), [0, 1]);
     assert_eq!(passing(latin), [0, 2]);
     assert_eq!(super::script_label(3), "Thai");
+    // The rest reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let zh = crate::i18n::Lang::from_code("zh-hans").unwrap();
     crate::i18n::set_current(zh);
     assert_eq!(super::script_label(1), crate::i18n::tr_ctx(zh, "font-script", "Japanese"));
@@ -920,6 +924,10 @@ fn a_filter_chosen_in_one_panels_menu_is_on_in_the_others() {
 #[test]
 fn the_variable_filter_is_named_as_fonts_are() {
     use crate::i18n::{Lang, tr, tr_ctx};
+    // The rest reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let (ja, zh) = (Lang::from_code("ja").unwrap(), Lang::from_code("zh-hans").unwrap());
     assert_eq!((tr_ctx(ja, "font-technology", "Variable"), tr(ja, "Variable")), ("バリアブル", "変数"));
     assert_eq!((tr_ctx(zh, "font-technology", "Variable"), tr(zh, "Variable")), ("可变", "变量"));

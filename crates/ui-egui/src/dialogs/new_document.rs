@@ -1712,6 +1712,10 @@ mod tests {
     #[test]
     fn align_new_objects_label_wraps_inside_the_details_column() {
         const LABEL: &str = "Στοίχιση νέων αντικειμένων στο πλέγμα εικονοστοιχείων";
+        // The rest reads catalogs other than English, compiled in with `translations`.
+        if !cfg!(feature = "translations") {
+            return;
+        }
         crate::i18n::set_current(crate::i18n::Lang::from_code("el").unwrap());
         let mut h = big();
         set(h.state_mut(), "advanced", json!(true));

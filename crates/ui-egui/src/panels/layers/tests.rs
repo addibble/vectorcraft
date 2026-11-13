@@ -14,6 +14,10 @@ fn filled_targets(app: &mut VectorcraftApp, ctx: &egui::Context) -> usize {
 /// is, even when it reads like one.
 #[test]
 fn only_generated_names_are_translated() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let zh = crate::i18n::Lang::from_code("zh-hant").unwrap();
     let mut app = VectorcraftApp::new(Session::new(), Default::default());
     let run = |app: &mut VectorcraftApp, id: &str, p: serde_json::Value| app.session.execute(id, &p).unwrap();

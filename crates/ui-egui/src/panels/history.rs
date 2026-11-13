@@ -161,6 +161,10 @@ mod tests {
             run("charStyle.apply", json!({"name": name, "id": text}));
         }
         run("charStyle.setAttrs", json!({"name": "Graphic Style “X”", "attrs": {"size": 30.0}}));
+        // The rest reads catalogs other than English, compiled in with `translations`.
+        if !cfg!(feature = "translations") {
+            return;
+        }
         let ja = crate::i18n::Lang::from_code("ja").expect("ja registered");
         crate::i18n::set_current(ja);
         let rows = listed(&mut app);
@@ -187,6 +191,10 @@ mod tests {
     /// takes that row's translation without the ellipsis; a name with no row has none.
     #[test]
     fn effect_steps_read_the_menu_row() {
+        // Reads catalogs other than English, compiled in with `translations`.
+        if !cfg!(feature = "translations") {
+            return;
+        }
         let ja = crate::i18n::Lang::from_code("ja").expect("ja registered");
         for effect in ["Revolve", "Feather"] {
             let menu_row =

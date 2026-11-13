@@ -101,6 +101,9 @@ pub fn run_ui_command(app: &mut VectorcraftApp, id: &str, p: &Value) -> Option<R
             "auto".to_string()
         } else if let Some(l) = crate::i18n::Lang::from_code(lang) {
             l.code().to_string()
+        } else if crate::i18n::Lang::is_registered(lang) {
+            // A language this build leaves out: kept for a build that has it, read as Automatic.
+            lang.to_ascii_lowercase()
         } else {
             let codes: Vec<&str> = std::iter::once("auto").chain(crate::i18n::Lang::all().map(|l| l.code())).collect();
             return Some(Err(format!("lang must be one of {}", codes.join(", "))));
