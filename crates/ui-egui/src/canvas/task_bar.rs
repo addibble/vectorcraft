@@ -350,6 +350,9 @@ pub(super) fn task_bar(app: &mut VectorcraftApp, ui: &mut Ui, xf: &Xf) {
     }
     // The bar's buttons for commands an embedding page hid leave it, as their menu items do.
     items.retain(|(_, _, cmd, _)| !crate::menus::host_hidden(app, command_of(cmd)));
+    // The embedding page's own actions for this selection (`vectorcraft:taskBar`), after the bar's.
+    let host = host_actions(app, first.filter(|_| !on_artboards && n == 1), is_image, is_clip_group);
+    let bar_options = more_options(app);
     let paints = chip_paints(app, ui.ctx());
     let colored = has_colors(&st.doc, &st.selection.objects) && !crate::menus::host_hidden(app, "ui.recolorDialog");
     let doc = st.uid;
@@ -373,7 +376,9 @@ pub(super) fn task_bar(app: &mut VectorcraftApp, ui: &mut Ui, xf: &Xf) {
     .into_iter()
     .filter_map(|(shown, chip)| shown.then_some(chip))
     .collect();
-    let widths: Vec<f32> = items.iter().map(|(label, _, cmd, _)| item_width(ui, label, cmd)).collect();
+    // The bar's items, then the embedding page's actions, laid out as one run of actions.
+    let widths: Vec<f32> =
+        items.iter().map(|(label, _, cmd, _)| item_width(ui, label, cmd)).chain(host.iter().map(|a| host_action_width(ui, a))).collect();
     let fidelity = app.session.tool_options()["fidelity"].as_f64();
     let font_w = fonts.then(|| {
         let w = crate::panels::character::TASK_BAR_WIDTHS;
@@ -388,6 +393,8 @@ pub(super) fn task_bar(app: &mut VectorcraftApp, ui: &mut Ui, xf: &Xf) {
     ui.ctx().data_mut(|d| d.insert_temp(task_bar_id().with("fonts"), fonts));
     let Some(layout) = layout else { return };
     let est = layout.size(spacing);
+    // Each of the page's actions' row, after the bar's items'.
+    let host_rows = layout.actions.get(items.len()..).unwrap_or_default();
     // Its place under the selection, then where the handle moved it, kept on the canvas (with the
     // bar's size last frame, the layout's size before it first shows and whenever the layout
     // changed since, as after the canvas or the selection changed).
@@ -416,9 +423,9 @@ pub(super) fn task_bar(app: &mut VectorcraftApp, ui: &mut Ui, xf: &Xf) {
     if place.pinned && place.pin_at.is_none() {
         place.pin_at = place.shown_at;
     }
-    let pinned = place.pinned;
     let mut moved = Vec2::ZERO;
     let mut run: Option<(&str, serde_json::Value)> = None;
+    let mut host_clicked: Option<String> = None;
     let mut show_swatches = false;
     egui::Area::new(id).order(egui::Order::Middle).fixed_pos(pos).show(ui.ctx(), |ui| {
         egui::Frame::NONE
@@ -459,6 +466,10 @@ pub(super) fn task_bar(app: &mut VectorcraftApp, ui: &mut Ui, xf: &Xf) {
                         if row == 0 && fonts && !layout.font_row {
                             crate::panels::character::task_bar(app, ui, f32::INFINITY);
                         }
+                        let on_row: Vec<_> = host.iter().zip(host_rows).filter(|(_, at)| **at == Some(row)).map(|(a, _)| a.clone()).collect();
+                        if let Some(id) = draw_host_actions(ui, &t, &on_row) {
+                            host_clicked = Some(id);
+                        }
                         for (chip, at) in chips.iter().zip(&layout.chips) {
                             if *at != row {
                                 continue;
@@ -487,20 +498,24 @@ pub(super) fn task_bar(app: &mut VectorcraftApp, ui: &mut Ui, xf: &Xf) {
                                     run = Some((*cmd, params.clone()));
                                 }
                             }
+                            // The page's actions too wide for any row: the page's to run.
+                            for (action, _) in host.iter().zip(host_rows).filter(|(_, at)| at.is_none()) {
+                                any = true;
+                                if widgets::menu_item_name(ui, &action.label, action.enabled, false) {
+                                    host_clicked = Some(action.id.clone());
+                                }
+                            }
                             if any {
                                 ui.separator();
                             }
-                            let bar = [
-                                (tl!("Hide Bar"), "window.taskBar", false),
-                                (tl!("Pin Bar Position"), "window.taskBar.pin", pinned),
-                                (tl!("Reset Bar Position"), "window.taskBar.reset", false),
-                            ];
-                            for (label, cmd, checked) in bar {
-                                if widgets::menu_item(ui, label, true, checked) {
+                            for (label, cmd, checked) in &bar_options {
+                                if widgets::menu_item(ui, label, true, *checked) {
                                     run = Some((cmd, json!({})));
                                 }
                             }
-                            ui.separator();
+                            if !bar_options.is_empty() {
+                                ui.separator();
+                            }
                             if widgets::menu_item(ui, tl!("Show Properties Panel"), true, false) {
                                 run = Some(("window.panel", json!({"panel": "properties"})));
                             }
@@ -515,6 +530,7 @@ pub(super) fn task_bar(app: &mut VectorcraftApp, ui: &mut Ui, xf: &Xf) {
                 }
             });
     });
+    record_host_click(app, host_clicked);
     if moved != Vec2::ZERO {
         let to = keep_in(pos + moved);
         let place = &mut app.ui.task_bar_place;
@@ -864,6 +880,96 @@ fn center_on_path_items(app: &VectorcraftApp, items: &mut Vec<(&'static str, &'s
 
 /// The Contextual Task Bar's Fidelity field with the Smooth tool.
 const TASK_BAR_FIDELITY: &str = "taskBar.fidelity";
+
+/// A page's action is the page's to run: it hears the click with what was selected.
+fn record_host_click(app: &mut VectorcraftApp, clicked: Option<String>) {
+    if let Some(id) = clicked {
+        let selected = app.session.active().map(|st| st.selection.objects.clone()).unwrap_or_default();
+        app.ui.host_task_bar_clicked.push((id, selected));
+    }
+}
+
+/// The embedding page's actions (`vectorcraft:taskBar`) for the one object selected, `first` (none
+/// with the Artboard tool or several selected):
+/// those for an image when it is one, for a clip group when it is one, and those `linked` only for
+/// a linked picture (the image, or the one image a clip group holds directly).
+fn host_actions(
+    app: &VectorcraftApp,
+    first: Option<&vectorcraft_doc::Node>,
+    is_image: bool,
+    is_clip_group: bool,
+) -> Vec<crate::state::HostTaskBarAction> {
+    if first.is_none() {
+        return vec![];
+    }
+    let linked = |o: &vectorcraft_doc::Node| matches!(&o.kind, NodeKind::Image(im) if im.link.is_some());
+    let clipped = first.filter(|_| is_clip_group).and_then(|f| {
+        let mut images = f.children().into_iter().flatten().filter(|c| matches!(c.kind, NodeKind::Image(_)));
+        images.next().filter(|_| images.next().is_none())
+    });
+    app.ui
+        .host_task_bar
+        .iter()
+        .filter(|a| match a.when {
+            crate::state::HostTaskBarWhen::Image => is_image && (!a.linked || first.is_some_and(linked)),
+            crate::state::HostTaskBarWhen::ClipGroup => is_clip_group && (!a.linked || clipped.is_some_and(|c| linked(c))),
+        })
+        .cloned()
+        .collect()
+}
+
+/// The width of the page's action button for `action`, as [`draw_host_actions`] draws it.
+fn host_action_width(ui: &Ui, action: &crate::state::HostTaskBarAction) -> f32 {
+    let inset = if action.icon.as_deref().is_some_and(crate::icons::exists) { 30.0 } else { 10.0 };
+    ui.painter().layout_no_wrap(action.label.clone(), egui::FontId::proportional(13.0), Color32::PLACEHOLDER).size().x + inset + 8.0
+}
+
+/// The page's actions drawn as the bar's own buttons, each named for screen readers (and
+/// `ui.widgets`); a disabled one dimmed, its hover text kept, and not clickable. An icon the app
+/// doesn't have leaves the label alone. Answers the id of the one clicked.
+fn draw_host_actions(ui: &mut Ui, t: &Tokens, host: &[crate::state::HostTaskBarAction]) -> Option<String> {
+    let mut clicked = None;
+    for action in host {
+        let icon = action.icon.as_deref().filter(|i| crate::icons::exists(i));
+        let ink = if action.enabled { t.text_strong } else { t.text_dim };
+        let galley = ui.painter().layout_no_wrap(action.label.clone(), egui::FontId::proportional(13.0), ink);
+        let inset = if icon.is_some() { 30.0 } else { 10.0 };
+        let sense = if action.enabled { Sense::click() } else { Sense::hover() };
+        let (r, resp) = ui.allocate_exact_size(vec2(galley.size().x + inset + 8.0, 30.0), sense);
+        if action.enabled && resp.hovered() {
+            ui.painter().rect_filled(r, CornerRadius::same(3), t.hover);
+        }
+        ui.painter().rect_stroke(r, CornerRadius::same(3), Stroke::new(1.0, t.button_border), StrokeKind::Inside);
+        if let Some(icon) = icon {
+            crate::icons::paint(
+                ui,
+                icon,
+                egui::Rect::from_min_size(r.min + vec2(8.0, 7.0), vec2(16.0, 16.0)),
+                if action.enabled { t.icon } else { t.text_dim },
+            );
+        }
+        ui.painter().galley(pos2(r.left() + inset, r.center().y - galley.size().y / 2.0), galley, ink);
+        resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, action.enabled, action.label.as_str()));
+        if action.enabled && resp.on_hover_text(action.label.as_str()).clicked() {
+            clicked = Some(action.id.clone());
+        }
+    }
+    clicked
+}
+
+/// The bar's own items in its More Options menu (label, command, checked), less those an embedding
+/// page hid (`vectorcraft:configure`'s `hide`), as the menus leave them out: a page whose actions
+/// are on the bar hides Hide Bar, so the user can't lose them.
+pub(crate) fn more_options(app: &VectorcraftApp) -> Vec<(&'static str, &'static str, bool)> {
+    [
+        (tl!("Hide Bar"), "window.taskBar", false),
+        (tl!("Pin Bar Position"), "window.taskBar.pin", app.ui.task_bar_place.pinned),
+        (tl!("Reset Bar Position"), "window.taskBar.reset", false),
+    ]
+    .into_iter()
+    .filter(|(_, cmd, _)| !crate::menus::host_hidden(app, cmd))
+    .collect()
+}
 
 /// The Contextual Task Bar's Image Trace button: a trace with the Default preset.
 const TASK_BAR_IMAGE_TRACE: &str = "taskBar.imageTrace";
