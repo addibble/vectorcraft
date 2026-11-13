@@ -62,13 +62,14 @@ impl Session {
                     // Type in no thread numbers its list paragraphs from 1 (before the mask copies
                     // its editing layer's art).
                     cmd::threads::restart_unthreaded_counts(&mut st.doc);
-                    // Opacity-mask editing: the mask follows its art on the editing layer.
-                    if st.doc.mask_edit.is_some() {
-                        cmd::maskedit::sync(Arc::make_mut(&mut st.doc));
-                    }
                     // Threaded text re-flows when any of its frames changed.
                     if !st.doc.text_threads.is_empty() {
                         cmd::threads::reflow(&before, Arc::make_mut(&mut st.doc));
+                    }
+                    // Opacity-mask editing: the mask follows its art on the editing layer, as
+                    // the passes above left it.
+                    if st.doc.mask_edit.is_some() {
+                        cmd::maskedit::sync(&before, Arc::make_mut(&mut st.doc));
                     }
                     // Symbol editing: the symbol also takes the text wrap, list numbering and
                     // re-flow those passes gave its editing layer; when that changes the symbol, its
