@@ -68,7 +68,10 @@ pub use adjust::{
     ADJUSTMENTS, CHANNELS, ColorMap, ImageHook, adjust, adjust_in_document, color_map, curve_at, curve_points, has_adjustment, is_adjustment,
     is_channel,
 };
-pub use bake::{StrokeArt, bake_appearance, bake_document, bake_type_appearance, expand_art, expand_leaf, fresh_ids, needs_bake};
+pub use bake::{
+    DrawnFirst, StrokeArt, ThreeD, bake_appearance, bake_document, bake_pieces, bake_type_appearance, drawn_first, expand_art, expand_leaf,
+    fresh_ids, needs_bake, three_d_of,
+};
 pub use clip::{WarpSeams, clip_outline, knockout_silhouette, warp_pieces_translucent};
 pub use group::{
     OutlineHook, PATHFINDER_EFFECTS, compound_shape_area, compound_shape_art, evaluate_container, has_container_appearance, has_pathfinder,
