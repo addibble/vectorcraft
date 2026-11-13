@@ -1,7 +1,7 @@
 use super::{
     Affine, AppearanceItem, Arc, BezPath, BlendMode, FillRule, Frame, MAX_INLINE_DEPTH, MISSING_INLINE_LOGGED, Node, NodeKind, PlacedEntry,
     PlacedKey, Rect, RenderContext, Renderer, SUBSTITUTED, Shape, TextGeom, TextObject, blend_mode, blob_pixmap, depends_on_document, fx, holds_type,
-    image_mip, ink, kurbo, lru, peniko, place, proof, stain_bits, text_geom, text_geom_snapped, vello_cpu,
+    image_mip, ink, kurbo, lru, peniko, place, proof, stain_key, text_geom, text_geom_snapped, vello_cpu,
 };
 use super::{AntiAlias, Pixmap, single_threaded_context};
 use crate::paint;
@@ -63,7 +63,7 @@ impl Renderer {
         if !kept_kind || overridden || fx::has_object_fx(art) {
             return (place(art, xf, scale_strokes, inst), false);
         }
-        let stain = stain_bits(inst.and_then(vectorcraft_brush::stain));
+        let stain = stain_key(inst);
         let key = (Arc::as_ptr(art) as usize, xf.as_coeffs().map(f64::to_bits), scale_strokes, stain);
         if let Some(e) = self.placed_arts.get(&key, self.stamp)
             && std::ptr::eq(e.art.as_ptr(), Arc::as_ptr(art))
@@ -98,7 +98,7 @@ impl Renderer {
         used: &mut u64,
     ) -> Option<(Arc<Node>, bool)> {
         let kept_kind = matches!(art.kind, NodeKind::Group { .. } | NodeKind::Layer { .. }) || vectorcraft_doc::live::is_live(art);
-        let stain = stain_bits(vectorcraft_brush::stain(inst));
+        let stain = stain_key(Some(inst));
         let key = (Arc::as_ptr(art) as usize, xf.as_coeffs().map(f64::to_bits), false, stain);
         // As in `placed_art`, an instance with appearance changes of its own isn't kept.
         let overridden = !inst.extras().symbol_overrides.is_empty();

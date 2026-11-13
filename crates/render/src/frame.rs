@@ -100,8 +100,8 @@ pub(crate) type FxArtEntry = (Arc<Node>, Arc<Node>, Option<live::Found>);
 
 /// What symbol art placed by [`Renderer::placed_art`] or [`Renderer::sliced_art`] is kept under:
 /// the art's address, the bits of the transform's coefficients, whether strokes scale with it, and
-/// the stain ([`stain_bits`]).
-pub(crate) type PlacedKey = (usize, [u64; 6], bool, [u32; 6]);
+/// the stain ([`crate::node_checks::StainKey`]).
+pub(crate) type PlacedKey = (usize, [u64; 6], bool, crate::node_checks::StainKey);
 
 /// Symbol art placed by [`Renderer::placed_art`] or [`Renderer::sliced_art`].
 pub(crate) struct PlacedEntry {
