@@ -487,8 +487,19 @@ impl Renderer {
             h.finish()
         };
         let address = |a: &Arc<Node>| Arc::as_ptr(a) as usize;
+        // Hashed when they aren't those the symbols were last checked with.
+        let placing = crate::node_checks::symbol_placing(doc);
+        let placing = if crate::node_checks::same_placing(&self.symbol_placing.0, placing) {
+            self.symbol_placing.1
+        } else {
+            crate::node_checks::kept_placing(placing).1
+        };
         let patterns = hash(&mut |h| doc.patterns.iter().for_each(|p| crate::pattern::hash_tiling(p, h)));
-        let symbols = hash(&mut |h| doc.symbols.iter().for_each(|s| (&s.name, address(&s.art)).hash(h)));
+        // The symbols' art, and the 9-slice guides and natural sizes that place it.
+        let symbols = hash(&mut |h| {
+            doc.symbols.iter().for_each(|s| (&s.name, address(&s.art)).hash(h));
+            placing.hash(h);
+        });
         let images = hash(&mut |h| {
             for (key, blob) in &doc.images {
                 (key, Arc::as_ptr(&blob.bytes) as usize, blob.proxy.as_ref().map(|p| Arc::as_ptr(p) as usize)).hash(h);
