@@ -35,6 +35,7 @@ impl VectorcraftApp {
             || self.synthetic_injected
             || !self.queued_screenshots.is_empty()
             || self.pending_screenshots.iter().any(|p| p.slot.is_none())
+            || !self.widget_requests.is_empty()
     }
 
     /// Capture the viewport identity and geometry (content and inner rectangles, pixels per point and

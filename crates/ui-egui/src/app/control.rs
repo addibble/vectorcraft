@@ -115,6 +115,7 @@ impl VectorcraftApp {
                 control::Outcome::AfterToolEdit { from, to, document } => {
                     self.pointer_replies.push(control::PendingPointerReply { from, to, document, reply });
                 }
+                control::Outcome::Widgets(asked) => control::widget_list::queue(self, ctx, asked, reply),
             }
         }
         if handled == control::MAX_CONTROL_REQUESTS_PER_FRAME {

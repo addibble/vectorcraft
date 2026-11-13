@@ -210,6 +210,9 @@ impl VectorcraftApp {
             injected_generation: InputGeneration::default(),
             injected_settle_hook: false,
             injected_settled: Default::default(),
+            cursor_scale: 1.0,
+            widget_requests: Vec::new(),
+            widget_tree_ours: false,
             geometry_epoch: 0,
             geometry_stamp: None,
         }
@@ -442,6 +445,8 @@ impl VectorcraftApp {
             crate::menus::invoke(self, crate::shortcuts::paste_command(held), json!({}));
         }
         self.collect_screenshots(ctx);
+        // A `ui.widgets` request no pass answered in time is refused, drawn or not.
+        crate::control::widget_list::expire(self, ctx, crate::clock::now_ms());
         if let Some(u) = self.pending_url.take() {
             ctx.open_url(egui::OpenUrl::new_tab(u));
         }
@@ -662,6 +667,8 @@ impl VectorcraftApp {
         }
         scrub::end_frame(self, &ctx);
         native_menu::sync(self, &ctx);
+        // After every bar, panel, menu and dialog of the pass, so each of them is listed.
+        crate::control::widget_list::end_of_pass(self, &ctx);
         // Observe once, after all of this pass's input, dialogs, floating panels, palette and
         // commands: the latest completed pass is authoritative for owner, text and cause.
         crate::ime::end_of_pass(self, &ctx);
