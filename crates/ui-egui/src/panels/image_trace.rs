@@ -328,11 +328,14 @@ pub(crate) fn view_row(app: &mut VectorcraftApp, ui: &mut Ui, current: TraceView
     }
 }
 
+/// The command the Image Trace button runs.
+const TRACE_COMMAND: &str = "imageTrace.make";
+
 /// Trace the selected image, or trace the selected Image Trace object again, with `preset`.
 fn trace_with(app: &mut VectorcraftApp, preset: &str) {
     // A failure is reported in the status bar. The panel stays as it was: the Image Trace
     // button (Properties, Control bar) opens it.
-    if let Err(e) = crate::trace_runs::start(app, "imageTrace.make", json!({ "preset": preset }), false) {
+    if let Err(e) = crate::trace_runs::start(app, TRACE_COMMAND, json!({ "preset": preset }), false) {
         app.status(e);
     }
 }
@@ -412,6 +415,10 @@ pub(crate) const TRACE_BUTTON_W: f32 = 104.0;
 /// The Image Trace button for a selected image (Control bar, Properties): a click traces it with
 /// the Default preset, its arrow lists the presets to trace it with.
 pub(crate) fn trace_button(app: &mut VectorcraftApp, ui: &mut Ui, width: f32) {
+    // Left out while an embedding page hid Image Trace, as its menu item is.
+    if crate::menus::host_hidden(app, TRACE_COMMAND) {
+        return;
+    }
     let (main, arrow) = widgets::split_button_named(ui, tl!("Image Trace"), tl!("Tracing Presets"), width);
     if main.on_hover_text(tl!("Trace the image with the Default preset")).clicked() {
         trace_with(app, "Default");

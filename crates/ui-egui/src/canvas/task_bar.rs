@@ -348,8 +348,10 @@ pub(super) fn task_bar(app: &mut VectorcraftApp, ui: &mut Ui, xf: &Xf) {
         }
         items.push((tl!("Duplicate"), "copy", "edit.duplicate", none()));
     }
+    // The bar's buttons for commands an embedding page hid leave it, as their menu items do.
+    items.retain(|(_, _, cmd, _)| !crate::menus::host_hidden(app, command_of(cmd)));
     let paints = chip_paints(app, ui.ctx());
-    let colored = has_colors(&st.doc, &st.selection.objects);
+    let colored = has_colors(&st.doc, &st.selection.objects) && !crate::menus::host_hidden(app, "ui.recolorDialog");
     let doc = st.uid;
     let bounds = xf.rect.shrink(8.0);
     // The canvas's width less the frame's margins and stroke.
@@ -883,3 +885,16 @@ const TASK_BAR_TO_CORNER: &str = "taskBar.toCorner";
 /// anchors or a path selected whole with Direct Selection. The bar's Smooth button runs
 /// `object.path.smooth` instead.
 const TASK_BAR_TO_SMOOTH: &str = "taskBar.toSmooth";
+
+/// The command a bar button's id runs: the bar's own buttons ([`TASK_BAR_IMAGE_TRACE`] and the
+/// others) run theirs, any other id is a command.
+fn command_of(id: &str) -> &str {
+    match id {
+        TASK_BAR_IMAGE_TRACE => "imageTrace.make",
+        TASK_BAR_ARTBOARD_OPTIONS => "tool.options",
+        TASK_BAR_DUPLICATE_ARTBOARDS => "artboard.duplicate",
+        TASK_BAR_REARRANGE_ARTBOARDS => "artboard.rearrange",
+        TASK_BAR_TO_CORNER | TASK_BAR_TO_SMOOTH => "path.convertAnchors",
+        id => id,
+    }
+}

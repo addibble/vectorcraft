@@ -27,6 +27,49 @@ pub(crate) fn kept_from_browser(key: &str, code: &str, modifiers: Modifiers, alt
     vectorcraft_ui_egui::shortcuts::runs_a_shortcut(key, code, modifiers)
 }
 
+/// Whether a press that went to the page's body, with nothing on the page holding the keyboard,
+/// is pressed on the canvas: the page holds nothing but the app, so a key the app binds (a tool's
+/// `V`, a command's chord: `kept`, [`kept_from_browser`], or [`runs_a_shortcut`]) or a key the
+/// canvas acts on itself ([`canvas_key`]: Delete, an arrow, Escape) is the app's. Any other key
+/// stays with the browser: a Cmd or Ctrl chord the app doesn't bind (Copy, Reload), AltGr, Alt and
+/// an arrow (Back and Forward), F11 (Full Screen).
+///
+/// [`runs_a_shortcut`]: vectorcraft_ui_egui::shortcuts::runs_a_shortcut
+pub(crate) fn pressed_on_canvas(key: &str, code: &str, modifiers: Modifiers, alt_graph: bool, kept: bool) -> bool {
+    if kept {
+        return true;
+    }
+    if modifiers.ctrl || modifiers.mac_cmd || alt_graph {
+        return false;
+    }
+    canvas_key(key, code, modifiers) || vectorcraft_ui_egui::shortcuts::runs_a_shortcut(key, code, modifiers)
+}
+
+/// The keys the canvas acts on without the keymap (`shortcuts::handle`), pressed alone or with
+/// Shift: Enter and Escape (a tool's), Tab (the panels), Delete and Backspace (Clear), Space (the
+/// Hand tool held) and the arrows (a nudge; Shift nudges further).
+fn canvas_key(key: &str, code: &str, modifiers: Modifiers) -> bool {
+    if modifiers.alt {
+        return false;
+    }
+    let named = Key::from_name(key).or(Key::from_name(code));
+    matches!(
+        named,
+        Some(
+            Key::Enter
+                | Key::Escape
+                | Key::Tab
+                | Key::Delete
+                | Key::Backspace
+                | Key::Space
+                | Key::ArrowLeft
+                | Key::ArrowRight
+                | Key::ArrowUp
+                | Key::ArrowDown
+        )
+    ) || code == "Space"
+}
+
 /// Leave a paste to its Paste event (#5555). eframe's web runner reports a Cmd+V press both as the
 /// key press and, with the clipboard's text, as a Paste event (the browser's `paste` comes in the
 /// same task as the `keydown`, so both are in one frame's input); the app pastes on each, as egui's
@@ -62,19 +105,75 @@ fn to_the_app(e: &web_sys::KeyboardEvent) -> bool {
         .is_some_and(|before| before.has_type::<web_sys::HtmlCanvasElement>())
 }
 
+/// Whether nothing on the page has the keyboard: the event went to its body (or the document),
+/// as it does once a text field lets go of the focus without giving it back to the canvas. The
+/// page holds nothing but the app, so such a key is the app's.
+#[cfg(target_arch = "wasm32")]
+fn to_the_page(e: &web_sys::KeyboardEvent) -> bool {
+    use wasm_bindgen::JsCast as _;
+    let Some(target) = e.target() else { return false };
+    target.has_type::<web_sys::Document>() || target.dyn_ref::<web_sys::Element>().is_some_and(|el| matches!(el.tag_name().as_str(), "BODY" | "HTML"))
+}
+
+/// The app's canvas given the keyboard and the press `e` pressed on it again, so egui runs it
+/// (eframe reads keys only from the canvas and its text input).
+#[cfg(target_arch = "wasm32")]
+fn press_on_canvas(e: &web_sys::KeyboardEvent) {
+    use wasm_bindgen::JsCast as _;
+    // The app's own canvas, by its id (a new one after a graphics restart keeps it).
+    let Some(canvas) = web_sys::window()
+        .and_then(|w| w.document())
+        .and_then(|d| d.get_element_by_id(crate::web::CANVAS_ID))
+        .and_then(|c| c.dyn_into::<web_sys::HtmlCanvasElement>().ok())
+    else {
+        return;
+    };
+    // Focus failing only leaves the key unpressed, as it was.
+    let _ = canvas.focus();
+    let init = web_sys::KeyboardEventInit::new();
+    init.set_key(&e.key());
+    init.set_code(&e.code());
+    init.set_location(e.location());
+    init.set_repeat(e.repeat());
+    init.set_ctrl_key(e.ctrl_key());
+    init.set_meta_key(e.meta_key());
+    init.set_alt_key(e.alt_key());
+    init.set_shift_key(e.shift_key());
+    init.set_bubbles(true);
+    init.set_cancelable(true);
+    init.set_composed(true);
+    if let Ok(press) = web_sys::KeyboardEvent::new_with_keyboard_event_init_dict("keydown", &init) {
+        // Whether egui took it is the canvas's own business; the browser's action is cancelled.
+        let _ = canvas.dispatch_event(&press);
+    }
+}
+
 /// Cancel the page's default action for [`kept_from_browser`] presses, before eframe's listener
-/// sees the event (it doesn't stop it).
+/// sees the event (it doesn't stop it). A press with nothing on the page holding the keyboard
+/// ([`to_the_page`]: after a text field let go) is pressed on the canvas instead when it is the
+/// app's ([`pressed_on_canvas`]): Cmd+S saves rather than the browser's Save Page, and `V` picks
+/// the Selection tool.
 #[cfg(target_arch = "wasm32")]
 pub(crate) fn keep_app_keys() {
     use wasm_bindgen::JsCast as _;
     let Some(window) = web_sys::window() else { return };
     let on_key = wasm_bindgen::closure::Closure::<dyn FnMut(web_sys::KeyboardEvent)>::new(|e: web_sys::KeyboardEvent| {
         // An IME's keys are its own until it commits.
-        if e.is_composing() || !to_the_app(&e) {
+        if e.is_composing() {
             return;
         }
-        if kept_from_browser(&e.key(), &e.code(), modifiers(&e), e.get_modifier_state("AltGraph")) {
-            e.prevent_default();
+        let (app, alt_graph) = (to_the_app(&e), e.get_modifier_state("AltGraph"));
+        let page = !app && to_the_page(&e);
+        let kept = (app || page) && kept_from_browser(&e.key(), &e.code(), modifiers(&e), alt_graph);
+        if !(kept || (page && pressed_on_canvas(&e.key(), &e.code(), modifiers(&e), alt_graph, kept))) {
+            return;
+        }
+        e.prevent_default();
+        if page {
+            // Pressed again once this listener has returned: the press on the canvas reaches this
+            // listener too, which can't run inside itself.
+            let press = e.clone();
+            wasm_bindgen_futures::spawn_local(async move { press_on_canvas(&press) });
         }
     });
     if let Err(e) = window.add_event_listener_with_callback_and_bool("keydown", on_key.as_ref().unchecked_ref(), true) {
@@ -131,6 +230,36 @@ mod tests {
 
     fn key(key: Key, pressed: bool, modifiers: Modifiers) -> egui::Event {
         egui::Event::Key { key, physical_key: None, pressed, repeat: false, modifiers }
+    }
+
+    #[test]
+    fn a_press_on_the_page_body_is_the_apps_unless_the_browser_keeps_it() {
+        // A tool's key, and the keys the canvas acts on, alone or with Shift: the canvas's.
+        for (key, code, mods) in [
+            ("v", "KeyV", Modifiers::NONE),
+            ("p", "KeyP", Modifiers::NONE),
+            ("Delete", "Delete", Modifiers::NONE),
+            ("Backspace", "Backspace", Modifiers::NONE),
+            ("Escape", "Escape", Modifiers::NONE),
+            ("Enter", "Enter", Modifiers::NONE),
+            ("Tab", "Tab", Modifiers::NONE),
+            (" ", "Space", Modifiers::NONE),
+            ("ArrowLeft", "ArrowLeft", Modifiers::NONE),
+            ("ArrowDown", "ArrowDown", Modifiers::SHIFT),
+        ] {
+            assert!(pressed_on_canvas(key, code, mods, false, false), "{key} ({code}) {mods:?}");
+        }
+        // A bound chord: the canvas's; an unbound one (Copy, Reload) and AltGr: the browser's.
+        assert!(pressed_on_canvas("s", "KeyS", cmd(), false, true));
+        assert!(!pressed_on_canvas("c", "KeyC", cmd(), false, false));
+        assert!(!pressed_on_canvas("ż", "KeyZ", Modifiers::CTRL | Modifiers::ALT, true, false));
+        // Keys the app binds to nothing stay with the browser: Alt+arrows (Back and Forward) and
+        // F11 (Full Screen). (F12 is the app's File › Revert.)
+        for (key, code, mods) in
+            [("ArrowLeft", "ArrowLeft", Modifiers::ALT), ("ArrowRight", "ArrowRight", Modifiers::ALT), ("F11", "F11", Modifiers::NONE)]
+        {
+            assert!(!pressed_on_canvas(key, code, mods, false, false), "{key} ({code}) {mods:?}");
+        }
     }
 
     #[test]
