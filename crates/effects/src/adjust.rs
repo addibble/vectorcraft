@@ -524,15 +524,17 @@ fn color_mask_keys<'a>(n: &'a Node, out: &mut Vec<&'a str>) {
 
 /// [`adjust`] for export and Expand Appearance: recoloured images become new embedded images in
 /// `d` (named by their content), and a symbol instance stands for its symbol's art: `symbol_art`
-/// when given, otherwise the symbol's art with the instance's own appearance changes. A linked
+/// when given, otherwise the art as the instance shows it (a dynamic symbol's changes, then the
+/// instance's stain). A linked
 /// image is recoloured from its file's pixels (output swaps in what a link source supplied), never
 /// from its preview.
 pub fn adjust_in_document(d: &mut Document, n: &Node, symbol_art: Option<Node>) -> Option<Node> {
     let art;
     let src = match &n.kind {
-        NodeKind::SymbolInstance { symbol, .. } if has_adjustment(n) => {
-            let symbol = symbol_art
-                .or_else(|| d.symbols.iter().find(|s| s.name == *symbol).map(|s| vectorcraft_doc::symbol_overrides::dynamic_art(&s.art, n)));
+        NodeKind::SymbolInstance { .. } if has_adjustment(n) => {
+            // The art the caller gave, else the instance's art as it shows it: with a dynamic
+            // symbol's changes, stained by its fill.
+            let symbol = symbol_art.or_else(|| vectorcraft_doc::symbol_overrides::art_of_instance(d, n));
             art = crate::reshape::as_art(Some(d), n, symbol.as_ref())?;
             &art
         }

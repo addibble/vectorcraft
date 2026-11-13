@@ -1016,3 +1016,48 @@ fn a_3d_shadow_is_one_undo_step_saved_exported_and_expanded() {
     });
     assert_eq!(shadows, 1);
 }
+/// A stained symbol instance (its fill mixes its art's paints towards it) with a geometry effect
+/// or a color adjustment exports and expands stained, as the canvas draws it. The stain is at half
+/// opacity over two shapes of different colours, so staining twice or by the wrong amount shows.
+#[test]
+fn a_stained_instance_exports_and_expands_stained() {
+    let draw = |d: &vectorcraft_doc::Document| {
+        vectorcraft_render::Renderer::new().render(d, 400, 400, vectorcraft_geom::Affine::IDENTITY, &Default::default()).pixels
+    };
+    let differ = |a: &[u8], b: &[u8]| a.iter().zip(b).filter(|(x, y)| x.abs_diff(**y) > 8).count();
+    for (effect, params) in [
+        ("distort.roughen", json!({"size": 2, "detail": 2})),
+        ("adjust.brightnessContrast", json!({"brightness": 40, "contrast": 20})),
+        ("adjust.hueSaturation", json!({"hue": 90})),
+    ] {
+        let mut s = Session::new();
+        s.execute("file.new", &json!({"width": 400, "height": 400})).unwrap();
+        s.execute("paint.setFill", &json!({"color": "#338ad6"})).unwrap();
+        let a = s.execute("path.create", &json!({"d": "M100 100L160 100L160 200L100 200Z"})).unwrap()["id"].clone();
+        s.execute("paint.setFill", &json!({"color": "#e8c33a"})).unwrap();
+        let b = s.execute("path.create", &json!({"d": "M170 120L240 120L240 180L170 180Z"})).unwrap()["id"].clone();
+        s.execute("select.set", &json!({"ids": [a, b]})).unwrap();
+        let id = s.execute("symbol.new", &json!({"name": "Mark"})).unwrap()["id"].clone();
+        s.execute("select.set", &json!({"ids": [id]})).unwrap();
+        s.execute("paint.setFill", &json!({"color": "#ff0000"})).unwrap();
+        let fill = node(&s, NodeId(id.as_u64().unwrap()))
+            .appearance
+            .items
+            .iter()
+            .position(|i| matches!(i, vectorcraft_doc::AppearanceItem::Fill(_)))
+            .expect("the instance's fill");
+        s.execute("appearance.setItem", &json!({"index": fill, "opacity": 50})).unwrap();
+        assert_eq!(
+            vectorcraft_doc::symbol_overrides::stain(&node(&s, NodeId(id.as_u64().unwrap()))).map(|(_, amount)| amount),
+            Some(0.5),
+            "{effect}: stained at half opacity"
+        );
+        s.execute("effect.apply", &json!({"effect": effect, "item": null, "params": params})).unwrap();
+        let drawn = draw(&s.doc().unwrap().doc);
+        let baked = draw(&effects::bake_document(&s.doc().unwrap().doc).unwrap());
+        s.execute("effect.expandAppearance", &json!({})).unwrap();
+        let expanded = draw(&s.doc().unwrap().doc);
+        assert!(differ(&drawn, &baked) < drawn.len() / 400, "{effect}: exported {}", differ(&drawn, &baked));
+        assert!(differ(&drawn, &expanded) < drawn.len() / 400, "{effect}: expanded {}", differ(&drawn, &expanded));
+    }
+}
