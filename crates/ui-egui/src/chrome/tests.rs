@@ -1236,7 +1236,7 @@ fn the_tab_title_names_the_opacity_mask_while_it_is_edited() {
     let mut s = Session::new();
     s.execute("file.new", &json!({"width": 100, "height": 100})).unwrap();
     s.execute("shape.rectangle", &json!({"x": 0, "y": 0, "width": 50, "height": 50})).unwrap();
-    let title = |s: &Session| super::tab_title(s.active().unwrap(), 1.0, false, false);
+    let title = |s: &Session| super::tab_title(s.active().unwrap(), None, 1.0, false, false);
     assert!(title(&s).ends_with("(RGB/Preview)"), "{}", title(&s));
     s.execute("transparency.makeOpacityMask", &json!({})).unwrap();
     assert!(title(&s).ends_with("(<Opacity Mask>/Opacity Mask)"), "{}", title(&s));
@@ -1254,6 +1254,48 @@ fn only_the_outlined_documents_tab_reads_outline() {
     let titles: Vec<String> = (0..app.session.documents().len()).filter_map(|i| super::document_window_title(&app, (i, 1))).collect();
     assert!(titles[0].ends_with("(RGB/Preview)"), "{titles:?}");
     assert!(titles[1].ends_with("(RGB/Outline)"), "{titles:?}");
+}
+
+/// A host-given title shows on the tab in place of the document's name, which saves and the
+/// rest of the app keep using; once the name changes the tab shows the name again.
+#[test]
+fn the_tab_shows_the_title_the_host_gave_the_document_while_its_name_is_unchanged() {
+    let inbox = crate::Inbox::default();
+    let services = crate::Services { inbox: Some(inbox.clone()), write: Some(Box::new(|_: &str, _: &[u8]| Ok(()))), ..Default::default() };
+    let mut app = crate::VectorcraftApp::new(Session::new(), services);
+    let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><rect width="10" height="10"/></svg>"#.to_vec();
+    let titled = crate::OpenArrival { title: Some("Patterns & Proof".into()), ..crate::OpenArrival::file("Patterns & Proof v5.svg", svg.clone()) };
+    inbox.lock().unwrap().extend([crate::OpenArrival::file("Plain.svg", svg), titled]);
+    app.drain_inbox();
+    let tabs = |app: &crate::VectorcraftApp| -> Vec<String> {
+        app.session.documents().iter().map(|d| super::tab_title(d, crate::state::host_title(&app.ui.host_titles, d), 1.0, false, false)).collect()
+    };
+    let shown = tabs(&app);
+    assert!(shown[0].starts_with("Plain.svg @ "), "{shown:?}");
+    assert!(shown[1].starts_with("Patterns & Proof @ "), "{shown:?}");
+    // The document keeps its name: what saves, exports and Document Info go by.
+    assert_eq!(app.session.documents()[1].title(), "Patterns & Proof v5.svg");
+    app.run("file.saveAs", json!({ "path": "/docs/Copy.vectorcraft" })).unwrap();
+    assert!(tabs(&app)[1].starts_with("Copy.vectorcraft @ "), "{:?}", tabs(&app));
+}
+
+/// A host's file that isn't a document (a swatch library) opens from its bytes, as
+/// `window.vectorcraft.openFile` opened it before hosts kept their names as paths; and a title
+/// given with it names no tab, since it opened none.
+#[test]
+fn a_hosts_swatch_library_opens_from_its_bytes_and_titles_no_tab() {
+    let inbox = crate::Inbox::default();
+    let services = crate::Services { inbox: Some(inbox.clone()), ..Default::default() };
+    let mut app = crate::VectorcraftApp::new(Session::new(), services);
+    app.run("file.new", json!({"width": 100, "height": 100})).unwrap();
+    let gpl = b"GIMP Palette\nName: Brand\n255 0 0\tRed\n".to_vec();
+    inbox.lock().unwrap().push(crate::OpenArrival::hosted("Brand.gpl", gpl, Some("Brand Colors".into())));
+    app.drain_inbox();
+    let open = crate::panels::library_panel::last_open(&app.ui).cloned();
+    assert!(open.is_some_and(|p| p.id.starts_with("loaded/")), "the library opened: {}", app.ui.status);
+    assert_eq!(app.session.documents().len(), 1, "not opened as a document");
+    let d = &app.session.documents()[0];
+    assert_eq!(crate::state::host_title(&app.ui.host_titles, d), None, "the document already open keeps its own tab");
 }
 
 /// One headless frame of the Control bar; returns the isolation button's rectangle, if it shows.

@@ -624,7 +624,13 @@ fn write_plan(
         report_saved(app, &path, &r);
         Ok(r)
     };
-    let mut r = background::run(app, enabled, label, Some(uid), work, then)?;
+    // The document's own save (not a copy) is written as its: a host handing it to a page says
+    // whose it is ([`crate::unsaved::saving_document`]).
+    let mut r = if retargets {
+        crate::unsaved::writing_document(uid, || background::run(app, enabled, label, Some(uid), work, then))?
+    } else {
+        background::run(app, enabled, label, Some(uid), work, then)?
+    };
     if let Some(path) = target.filter(|_| r.get("path").is_none()) {
         r["path"] = json!(path);
     }

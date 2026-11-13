@@ -609,7 +609,8 @@ pub fn control_bar_details(app: &mut VectorcraftApp, ui: &mut egui::Ui) -> bool 
         (tl!("Crop Image"), "ui.cropImage", 84.0),
         (tl!("Remove Background"), crate::addons::image::REMOVE_BACKGROUND, 128.0),
     ] {
-        if widgets::flat_button(ui, label, w).clicked() {
+        // One an embedding page hid is left out, as its menu item is.
+        if !crate::menus::host_hidden(app, cmd) && widgets::flat_button(ui, label, w).clicked() {
             crate::menus::invoke(app, cmd, json!({}));
         }
     }
