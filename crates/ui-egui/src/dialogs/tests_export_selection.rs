@@ -28,8 +28,16 @@ fn picking(app: &mut VectorcraftApp, path: &str) {
 }
 
 /// How many paths a native document's JSON (or the input an exporter plug-in is given) holds.
+/// Counted as the nodes of type `path` in its JSON, whatever notation their geometry is saved in.
 fn paths_in(bytes: &[u8]) -> usize {
-    String::from_utf8_lossy(vectorcraft_format::json_part(bytes)).matches("\"anchors\"").count()
+    fn count(v: &serde_json::Value) -> usize {
+        match v {
+            serde_json::Value::Object(m) => usize::from(m.get("type").is_some_and(|t| t == "path")) + m.values().map(count).sum::<usize>(),
+            serde_json::Value::Array(a) => a.iter().map(count).sum(),
+            _ => 0,
+        }
+    }
+    count(&serde_json::from_slice(vectorcraft_format::json_part(bytes)).expect("JSON"))
 }
 
 /// A PDF continues in Save PDF, without its artboard choice, and its options apply: the page is

@@ -10,6 +10,8 @@ pub struct ImageObject {
     pub width: u32,
     pub height: u32,
     /// Maps pixel space (0..w, 0..h) into the document.
+    #[serde(with = "vectorcraft_geom::notation::affine")]
+    #[schemars(with = "vectorcraft_geom::notation::Transform")]
     pub xf: Affine,
     /// The file a linked image shows (File → Place with Link); `None`: embedded. Files saved
     /// before links had details hold just the path.
@@ -57,6 +59,10 @@ pub enum NodeKind {
         clip: bool,
     },
     Path {
+        /// Left out of a saved file when `live` rebuilds it bit for bit ([`LiveShape::to_path`]);
+        /// a live shape read without it is rebuilt from its parameters. Only a live shape may
+        /// leave it out.
+        #[serde(default)]
         path: PathData,
         #[serde(default, skip_serializing_if = "crate::skip::is_default")]
         rule: FillRule,
@@ -81,6 +87,8 @@ pub enum NodeKind {
     Image(Box<ImageObject>),
     SymbolInstance {
         symbol: String,
+        #[serde(with = "vectorcraft_geom::notation::affine")]
+        #[schemars(with = "vectorcraft_geom::notation::Transform")]
         xf: Affine,
     },
     /// Live blend: the key objects (paint order) plus spacing/orientation/spine; the intermediate
@@ -106,7 +114,8 @@ pub enum NodeKind {
         /// The envelope's own axes (→ the document): the transforms it took since it was made that
         /// the page axes can't stand for (rotation, shear, reflection). The content maps from its
         /// bounds in this frame, and a warp bends along it.
-        #[serde(default, skip_serializing_if = "crate::skip::is_default")]
+        #[serde(with = "vectorcraft_geom::notation::affine", default, skip_serializing_if = "crate::skip::is_default")]
+        #[schemars(with = "vectorcraft_geom::notation::Transform")]
         frame: Box<Affine>,
     },
     /// Gradient mesh.
@@ -182,6 +191,7 @@ mod kind_de {
             clip: bool,
         },
         Path {
+            #[serde(default = "path_left_out")]
             path: PathData,
             #[serde(default)]
             rule: FillRule,
@@ -201,6 +211,8 @@ mod kind_de {
         Image(Box<super::ImageObject>),
         SymbolInstance {
             symbol: String,
+            #[serde(with = "vectorcraft_geom::notation::affine")]
+            #[schemars(with = "vectorcraft_geom::notation::Transform")]
             xf: Affine,
         },
         Blend {
@@ -217,7 +229,8 @@ mod kind_de {
             editing: bool,
             #[serde(default)]
             options: crate::live::EnvelopeOptions,
-            #[serde(default)]
+            #[serde(with = "vectorcraft_geom::notation::affine", default)]
+            #[schemars(with = "vectorcraft_geom::notation::Transform")]
             frame: Box<Affine>,
         },
         Mesh(GradientMesh),
@@ -232,6 +245,13 @@ mod kind_de {
             #[serde(default)]
             artboard: Option<u32>,
         },
+    }
+
+    /// A path read without its `path`, counted so the reader can tell it from an empty one: only a
+    /// live shape may leave it out.
+    fn path_left_out() -> PathData {
+        PATHS_LEFT_OUT.set(PATHS_LEFT_OUT.get().wrapping_add(1));
+        PathData::default()
     }
 
     impl<'de> Deserialize<'de> for NodeKind {
@@ -254,7 +274,31 @@ mod kind_de {
             while let Some(key) = map.next_key::<String>()? {
                 if key == "type" {
                     let tag: String = map.next_value()?;
-                    return KindDef::deserialize(Tagged { tag, map: Buffered { before: before.into_iter(), value: None, map } });
+                    let left_out = PATHS_LEFT_OUT.get();
+                    let mut kind = KindDef::deserialize(Tagged { tag, map: Buffered { before: before.into_iter(), value: None, map } })?;
+                    // A path saved without `path` (a path reads no other kind, so the count moved
+                    // for this one): a live shape's, rebuilt from the shape's parameters.
+                    if let NodeKind::Path { path, live, .. } = &mut kind
+                        && PATHS_LEFT_OUT.get() != left_out
+                    {
+                        let Some(live) = live else {
+                            return Err(de::Error::custom(
+                                "missing field `path`: a path gives its anchors in `path` (SVG path data in a saved file); only a live shape (with `live`) may leave it out, rebuilt from the shape's parameters",
+                            ));
+                        };
+                        let rebuilt = live.to_path();
+                        // A file holds only finite numbers: parameters that rebuild no finite path
+                        // were never saved without it.
+                        if !vectorcraft_geom::notation::is_finite(&rebuilt) {
+                            return Err(de::Error::custom("a live shape saved without its path has parameters that make no finite path"));
+                        }
+                        // As many anchors as the path would have had, read with the file's budget.
+                        // The shape makes at most twice its outline's (2,000 for a polygon) or its
+                        // base path's, which was spent as it was read: built, then spent.
+                        vectorcraft_geom::path::spend_anchor_budget(rebuilt.anchor_count()).map_err(de::Error::custom)?;
+                        *path = rebuilt;
+                    }
+                    return Ok(kind);
                 }
                 before.push((key, map.next_value::<Counted>()?.0));
             }
@@ -271,6 +315,9 @@ mod kind_de {
     pub const MAX_BUFFERED_VALUES: usize = if cfg!(target_arch = "wasm32") { 4 << 20 } else { 32 << 20 };
 
     std::thread_local! {
+        /// How many paths have been read without their `path` on this thread, ever
+        /// ([`path_left_out`]).
+        static PATHS_LEFT_OUT: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
         /// Values the fields buffered on this thread may still hold, and the budget they come from.
         static VALUES_LEFT: std::cell::Cell<Option<(usize, usize)>> = const { std::cell::Cell::new(None) };
         /// Buffered fields being read back: what they hold was counted when it was buffered.
