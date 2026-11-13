@@ -174,6 +174,10 @@ fn deleting_five_brushes_uses_one_selection_question() {
     let five: Vec<String> = names(&mut app).into_iter().take(5).collect();
     assert_eq!(five.len(), 5);
     let previous = crate::i18n::current();
+    // The rest reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let polish = crate::i18n::Lang::from_code("pl").unwrap();
     crate::i18n::set_current(polish);
     delete(&mut app, &five, false);

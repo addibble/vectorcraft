@@ -381,6 +381,10 @@ mod tests {
     /// the count.
     #[test]
     fn the_modified_links_question_uses_each_count_form() {
+        // Reads catalogs other than English, compiled in with `translations`.
+        if !cfg!(feature = "translations") {
+            return;
+        }
         let mut app = VectorcraftApp::new(Session::new(), Default::default());
         let mut question = |code: &str, n: u64| {
             crate::i18n::set_current(crate::i18n::Lang::from_code(code).unwrap());

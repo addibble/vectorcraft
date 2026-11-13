@@ -463,6 +463,10 @@ mod tests {
         let named = StylisticSet { number: 1, name: Some("Curved Capitals".into()) };
         let numbered = StylisticSet { number: 3, name: None };
         assert_eq!(set_label(&numbered), "Set 3");
+        // The rest reads catalogs other than English, compiled in with `translations`.
+        if !cfg!(feature = "translations") {
+            return;
+        }
         let Some(de) = crate::i18n::Lang::from_code("de") else { panic!("no German catalog") };
         crate::i18n::set_current(de);
         let (named_de, numbered_de) = (set_label(&named), set_label(&numbered));

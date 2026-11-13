@@ -372,14 +372,18 @@ fn cmd_ci() -> Result<(), String> {
                 // The egui panels and the MCP server as such an embedder builds them: nothing turns
                 // the fonts back on.
                 libraries_without_bundled_fonts()?;
-                // The panels without their interface faces lint clean and still bind every family
-                // they draw in.
+                // The panels without their interface faces or any language (English only), as
+                // such an embedder builds them: they lint clean, still bind every family they draw
+                // in, and offer English alone, a saved language they leave out read as Automatic.
                 let mut c = cargo();
                 c.args(["clippy", "-p", "vectorcraft-ui-egui", "--no-default-features", "--all-targets", "--", "-D", "warnings"]);
                 run(c, "cargo clippy -p vectorcraft-ui-egui --no-default-features --all-targets -- -D warnings")?;
                 let mut c = cargo();
                 c.args(["test", "-p", "vectorcraft-ui-egui", "--no-default-features", "--test", "install_fonts"]);
-                run(c, "cargo test -p vectorcraft-ui-egui --no-default-features --test install_fonts")
+                run(c, "cargo test -p vectorcraft-ui-egui --no-default-features --test install_fonts")?;
+                let mut c = cargo();
+                c.args(["test", "-p", "vectorcraft-ui-egui", "--no-default-features", "--lib", "i18n::tests_compiled_in"]);
+                run(c, "cargo test -p vectorcraft-ui-egui --no-default-features --lib i18n::tests_compiled_in")
             }),
         ),
         ("no-js-engine", Box::new(engine_without_javascript)),

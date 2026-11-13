@@ -150,6 +150,10 @@ fn built_in_library_brushes_are_listed_in_the_ui_language() {
     std::fs::create_dir_all(&dir).unwrap();
     let mut app = app();
     let ctx = context();
+    // The rest reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     crate::i18n::set_current(crate::i18n::Lang::from_code("fr").expect("fr registered"));
     let list = |app: &mut VectorcraftApp, t: f64| {
         let panel = last_open(&app.ui).map(LibraryPanel::panel).unwrap_or_default();

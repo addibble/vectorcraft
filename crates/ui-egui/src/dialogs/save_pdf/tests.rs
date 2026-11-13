@@ -623,6 +623,10 @@ fn warnings_reach_the_status_and_errors_keep_the_dialog_open() {
 /// keeps its words, and a colon in it can still take the catalog's punctuation.
 #[test]
 fn summary_warnings_are_translated() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let fr = crate::i18n::Lang::from_code("fr").unwrap();
     let shown = warning_line(fr, vectorcraft_engine::cmd::fileio::pdf::BLEED_LEFT_OUT);
     assert!(shown.starts_with("⚠ ") && !shown.contains("leaves out"), "{shown}");
@@ -636,6 +640,10 @@ fn summary_warnings_are_translated() {
 /// long side needs.
 #[test]
 fn long_page_notes_are_translated() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let mut s = Session::new();
     s.execute("file.new", &json!({"width": 56_692.91, "height": 2_834.65})).unwrap();
     let mut notes: Vec<String> = vec![];
