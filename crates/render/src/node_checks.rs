@@ -168,3 +168,43 @@ pub(crate) fn stain_bits(stain: Option<(vectorcraft_color::Color, f32)>) -> [u32
     };
     [model, p.to_bits(), q.to_bits(), r.to_bits(), s.to_bits(), amount.to_bits()]
 }
+
+/// What places the symbols' art besides the art itself, as `doc` holds it: their 9-slice guides
+/// and their natural sizes ([`vectorcraft_doc::SYMBOL_SIZES`]), which the guides' map and inline
+/// graphics read.
+pub(crate) type SymbolPlacing<'a> = [Option<&'a vectorcraft_brush::serde_json::Value>; 2];
+
+pub(crate) fn symbol_placing(doc: &Document) -> SymbolPlacing<'_> {
+    [doc.unknown.get(vectorcraft_doc::SYMBOL_NINE_SLICE), doc.unknown.get(vectorcraft_doc::SYMBOL_SIZES)]
+}
+
+/// A copy of [`symbol_placing`]'s values, which the renderer keeps, and their hash.
+pub(crate) fn kept_placing(placing: SymbolPlacing) -> ([Option<vectorcraft_brush::serde_json::Value>; 2], u64) {
+    use std::hash::{Hash, Hasher};
+    /// Hashes what JSON writes of a value as it is written, with no copy of it as text.
+    struct Feed<'a>(&'a mut std::hash::DefaultHasher);
+    impl std::io::Write for Feed<'_> {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0.write(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut h = std::hash::DefaultHasher::new();
+    for v in placing {
+        v.is_some().hash(&mut h);
+        if let Some(v) = v {
+            // Writing to a hasher can't fail; each value ends with a byte JSON never writes.
+            let _ = vectorcraft_brush::serde_json::to_writer(Feed(&mut h), v);
+            h.write_u8(0xff);
+        }
+    }
+    (placing.map(|v| v.cloned()), h.finish())
+}
+
+/// Do the values a renderer `kept` ([`kept_placing`]) equal `placing`?
+pub(crate) fn same_placing(kept: &[Option<vectorcraft_brush::serde_json::Value>; 2], placing: SymbolPlacing) -> bool {
+    kept.iter().map(Option::as_ref).eq(placing)
+}

@@ -99,15 +99,20 @@ impl Renderer {
     }
 
     /// Drop the cached bounds of symbol instances and of the objects that hold them when `doc`'s
-    /// symbols are not those of the document last drawn (by name and art): those bounds measured
-    /// the instances by their symbol's art. Likewise drop those of objects measured by a 3D
+    /// symbols are not those of the document last drawn (by name and art, and by the 9-slice guides
+    /// and natural sizes that place the art): those bounds measured the instances by their
+    /// symbol's art as placed. Likewise drop those of objects measured by a 3D
     /// effect's art, and of the objects that hold them, when the brush library has changed.
     pub(crate) fn check_symbols(&mut self, doc: &Document) {
+        // The 9-slice guides and natural sizes place the symbols' art too.
+        let placing = crate::node_checks::symbol_placing(doc);
         let same = self.symbols.len() == doc.symbols.len()
-            && self.symbols.iter().zip(&doc.symbols).all(|((name, art), s)| *name == s.name && std::ptr::eq(art.as_ptr(), Arc::as_ptr(&s.art)));
+            && self.symbols.iter().zip(&doc.symbols).all(|((name, art), s)| *name == s.name && std::ptr::eq(art.as_ptr(), Arc::as_ptr(&s.art)))
+            && crate::node_checks::same_placing(&self.symbol_placing.0, placing);
         if !same {
             self.geom.retain(|_, e| !holds_instance(&e.node));
             self.symbols = doc.symbols.iter().map(|s| (s.name.clone(), Arc::downgrade(&s.art))).collect();
+            self.symbol_placing = crate::node_checks::kept_placing(placing);
         }
         // That art is measured with the art its brushed strokes draw ([`Self::bounds_of`]). Without
         // such bounds, nothing is checked.
