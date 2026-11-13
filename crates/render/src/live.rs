@@ -168,7 +168,8 @@ struct Shown {
 
 /// Hash into `h` what the evaluation of `n` reads from the document and from placed files: the
 /// tilings ([`crate::pattern::hash_tiling`]) of the patterns in the fills and strokes of its
-/// objects and of type's characters, the address of each symbol instance's art, and the address of
+/// objects and of type's characters, the address of each symbol instance's art and its 9-slice
+/// guides, and the address of
 /// the read of each placed file that [`vectorcraft_doc::PlacedDocument::art`] shows (none before
 /// the file is read), and the address of the document's pixels for each image whose
 /// own fills or strokes follow them ([`crate::effects::follows_image_pixels`]). It walks `n` and
@@ -199,6 +200,8 @@ fn hash_resources<'a>(doc: &'a Document, n: &'a Node, shown: &mut Shown, h: &mut
                 NodeKind::SymbolInstance { symbol, .. } => {
                     if let Some(s) = doc.symbols.iter().find(|s| s.name == *symbol) {
                         (Arc::as_ptr(&s.art) as usize).hash(h);
+                        // The 9-slice guides that place the art.
+                        doc.symbol_nine_slice(symbol).map(|g| [g.left, g.top, g.right, g.bottom].map(f64::to_bits)).hash(h);
                         if first_seen(&mut shown.seen, Arc::as_ptr(&s.art) as usize) {
                             todo.push(&s.art);
                         }
