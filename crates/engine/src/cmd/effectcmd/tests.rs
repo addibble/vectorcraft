@@ -1276,3 +1276,33 @@ fn crop_marks_the_raster_budget_leaves_keep_their_random_move() {
     assert_eq!(d.images.keys().cloned().collect::<Vec<_>>(), keys, "no image is added");
     assert_eq!((budget.images, budget.pixels), (0, u64::MAX), "the budget is as it was");
 }
+
+/// A stained symbol instance with no effects exports its stain in the ink it is: stained in full
+/// by a spot color or by Registration, its art is in that ink in PDF, not a process mix.
+#[test]
+fn a_stained_instance_exports_spot_and_registration_stains_in_their_ink() {
+    use vectorcraft_color::{Color, Paint, Swatch};
+    let mut s = Session::new();
+    s.execute("file.new", &json!({"width": 200, "height": 200})).unwrap();
+    s.execute("paint.setStroke", &json!({"none": true})).unwrap();
+    s.execute("paint.setFill", &json!({"color": "#ff0000"})).unwrap();
+    let a = s.execute("path.create", &json!({"d": "M50 50L150 50L150 150L50 150Z"})).unwrap()["id"].clone();
+    s.execute("select.set", &json!({"ids": [a]})).unwrap();
+    let id = NodeId(s.execute("symbol.new", &json!({"name": "Mark"})).unwrap()["id"].as_u64().unwrap());
+    for (stain, ink) in
+        [(Paint::Solid { color: Color::cmyk(0.0, 1.0, 1.0, 0.0), swatch: Some("Ink".into()), tint: 1.0 }, "/Ink"), (Paint::registration(), "/All")]
+    {
+        let st = s.doc_mut().unwrap();
+        let d = std::sync::Arc::make_mut(&mut st.doc);
+        if !d.swatches.iter().any(|w| w.name == "Ink") {
+            d.swatches.push(Swatch { name: "Ink".into(), paint: Paint::solid(Color::cmyk(0.0, 1.0, 1.0, 0.0)), global: true, spot: true });
+        }
+        let n = d.node_mut(id).unwrap();
+        n.appearance.set_fill(stain);
+        n.appearance.fill_mut().unwrap().opacity = 1.0;
+        let r = s.execute("document.export", &json!({"format": "pdf", "preserveEditing": false, "compatibility": "1.4"})).unwrap();
+        let bytes = vectorcraft_format::base64_decode(r["dataBase64"].as_str().unwrap()).unwrap();
+        let has = |what: &[u8]| bytes.windows(what.len()).any(|w| w == what);
+        assert!(has(b"/Separation") && has(ink.as_bytes()), "the art is in {ink}");
+    }
+}
