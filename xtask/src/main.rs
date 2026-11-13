@@ -35,8 +35,11 @@ commands:
   pdf-deps        verify immutable shared PDF writer and patched Krilla sources
   layers          enforce the crate dependency layering (plan/architecture.md §3)
   wasm            cargo check --target wasm32-unknown-unknown for the wasm-safe crates and the web app
+  no-js-engine    the engine without default features: clippy and its .doc refusal test on the host,
+                  and for wasm32 no wasm-bindgen or web-time in its tree and clippy (with plug-ins'
+                  clock-less arm) with getrandom's custom source
   test            the workspace tests (cargo nextest when installed, else cargo test), then the doctests
-  ci              fmt --check, clippy -D warnings, test, doctests, no-bundled-fonts, pdf-deps, assets, brands, cursors (warnings only), ui-commands --check, layers, wasm (stops at first failure)
+  ci              fmt --check, clippy -D warnings, test, doctests, no-bundled-fonts, no-js-engine, pdf-deps, assets, brands, cursors (warnings only), ui-commands --check, layers, wasm (stops at first failure)
   corpus [--download] [--affinity]
                   show where test corpora live; --download fetches PngSuite into corpus/pngsuite,
                   --affinity the pinned public Affinity documents into corpus/affinity
@@ -65,6 +68,7 @@ fn main() -> ExitCode {
         Some("layers") => cmd_layers(),
         Some("pdf-deps") => pdf_deps::run(&root()),
         Some("wasm") => cmd_wasm(),
+        Some("no-js-engine") => engine_without_javascript(),
         Some("test") => cmd_test().and_then(|()| cmd_doctests()),
         Some("ci") => cmd_ci(),
         Some("corpus") if rest.contains(&"--affinity") => affinity_corpus::fetch(),
@@ -158,6 +162,76 @@ fn without_bundled_fonts(package: &str) -> Result<(), String> {
         return Err(format!("{package} without default features still bundles the fonts:\n{without}"));
     }
     Ok(())
+}
+
+/// The engine as an embedder without JavaScript builds it (docs/development.md › The wasm32 random
+/// source and clock): without its default features it lints clean with its tests on the host, and
+/// its refusal of Word 97-2003 documents (the test only such a build compiles) passes; for wasm32
+/// its dependencies hold no wasm-bindgen and no web-time (which import the page's JavaScript), and
+/// it and vectorcraft-plugins (whose clock-less arm only wasm32 compiles) lint clean with
+/// getrandom's custom source, in a target directory of its own, so the flag doesn't rebuild the
+/// `wasm` step's crates. Its tree with the default features must show web-time (through cfb, the
+/// `word-doc` feature's), so a change in cargo tree's output can't make the check pass by finding
+/// nothing.
+fn engine_without_javascript() -> Result<(), String> {
+    const PACKAGE: &str = "vectorcraft-engine";
+    const WASM: &str = "wasm32-unknown-unknown";
+    let mut c = cargo();
+    c.args(["clippy", "-p", PACKAGE, "--no-default-features", "--all-targets", "--", "-D", "warnings"]);
+    run(c, "cargo clippy -p vectorcraft-engine --no-default-features --all-targets -- -D warnings")?;
+    // The refusal test is compiled only without `word-doc`, which the workspace's own test run turns
+    // on (vectorcraft-ui-egui and vectorcraft-mcp ask for it): run it here, and make sure it ran.
+    const REFUSAL: &str = "tests::textimport::a_build_without_the_word_reader_refuses_doc_files";
+    let what = format!("cargo test -p {PACKAGE} --no-default-features --lib -- --exact {REFUSAL}");
+    eprintln!("$ {what}");
+    let out = cargo()
+        .args(["test", "-p", PACKAGE, "--no-default-features", "--lib", "--", "--exact", REFUSAL])
+        .output()
+        .map_err(|e| format!("{what}: failed to spawn: {e}"))?;
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    if !out.status.success() || !stdout.contains("test result: ok. 1 passed") {
+        return Err(format!("{what}: exited with {} and didn't pass its one test:\n{stdout}{}", out.status, String::from_utf8_lossy(&out.stderr)));
+    }
+    let tree = |defaults: bool| -> Result<String, String> {
+        let mut args = vec!["tree", "-p", PACKAGE, "--target", WASM, "-e", "normal", "--prefix", "none"];
+        if !defaults {
+            args.push("--no-default-features");
+        }
+        let what = format!("cargo {}", args.join(" "));
+        eprintln!("$ {what}");
+        let out = cargo().args(&args).output().map_err(|e| format!("{what}: failed to spawn: {e}"))?;
+        if !out.status.success() {
+            return Err(format!("{what}: exited with {}:\n{}", out.status, String::from_utf8_lossy(&out.stderr)));
+        }
+        Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+    };
+    let crates = |tree: &str| -> Vec<String> { tree.lines().filter_map(|l| l.split_whitespace().next()).map(str::to_string).collect() };
+    let with = crates(&tree(true)?);
+    if !with.iter().any(|c| c == "web-time") {
+        return Err(format!(
+            "{PACKAGE} with its default features shows no web-time for {WASM} (has cfb dropped it, or cargo tree's output changed?)"
+        ));
+    }
+    let without = crates(&tree(false)?);
+    let javascript: Vec<&String> = without.iter().filter(|c| ["wasm-bindgen", "web-time", "js-sys"].contains(&c.as_str())).collect();
+    if !javascript.is_empty() {
+        return Err(format!("{PACKAGE} without default features still imports JavaScript on {WASM} through {javascript:?}"));
+    }
+    let target = metadata()?["target_directory"].as_str().map(|t| Path::new(t).join("no-js-engine")).ok_or("cargo metadata: no target_directory")?;
+    let mut c = cargo();
+    c.args(["clippy", "-p", PACKAGE, "-p", "vectorcraft-plugins", "--no-default-features", "--target", WASM, "--target-dir"]).arg(&target);
+    // The custom source joins the wasm32 flags .cargo/config.toml gives every web build (+simd128):
+    // `--config` arrays are added to the config files' ones, and RUSTFLAGS, which would replace them
+    // both, is left out.
+    c.args(["--config", r#"target.wasm32-unknown-unknown.rustflags=["--cfg", "getrandom_backend=\"custom\""]"#]);
+    c.env_remove("RUSTFLAGS").env_remove("CARGO_ENCODED_RUSTFLAGS");
+    c.args(["--", "-D", "warnings"]);
+    run(
+        c,
+        &format!(
+            "cargo clippy -p {PACKAGE} -p vectorcraft-plugins --no-default-features --target {WASM} (getrandom_backend=\"custom\") -- -D warnings"
+        ),
+    )
 }
 
 /// `cargo metadata --no-deps` for the workspace, as JSON.
@@ -308,6 +382,7 @@ fn cmd_ci() -> Result<(), String> {
                 run(c, "cargo test -p vectorcraft-ui-egui --no-default-features --test install_fonts")
             }),
         ),
+        ("no-js-engine", Box::new(engine_without_javascript)),
         ("pdf-deps", Box::new(|| pdf_deps::run(&root()))),
         ("assets", Box::new(|| assets::run(&root()))),
         ("brands", Box::new(|| brands::run(&root()))),

@@ -1,5 +1,6 @@
 # Development
 
+> **Last updated:** 2026-11-14 · **Change:** Web build › The wasm32 random source and clock: the binary picks getrandom's source and the plug-ins' clock; the engine's `word-doc` feature.
 > **Last updated:** 2026-11-12 · **Change:** Tests canonicalize temporary roots and normalize Windows verbatim prefixes before comparing preset refusal paths or probing a case-variant script folder (#6860); production access checks unchanged.
 > **Last updated:** 2026-11-12 · **Change:** minor (clipboard failure helper follows its Linux/BSD and test callers; previously: Hindi catalog and zero/one plural rule; desktop Devanagari fallback and optional craft-fonts UI face; native review pending).
 > **Last updated:** 2026-11-01 · **Change:** Linux: Automatic Linux Display Server opens the window through XWayland when a pen is attached on a Wayland session, so the pen draws (#4967); `VECTORCRAFT_NATIVE_WAYLAND=1` keeps Wayland.
@@ -33,6 +34,18 @@ craft-fonts checkout adds the fonts the site serves beside the wasm: Trunk's `po
 [Arabic fonts and the web build](#arabic-fonts-and-the-web-build).
 
 Any static file server works for `dist/web`, for example `python3 -m http.server 8766` inside that directory. The release `.wasm` is about 17.5 MB, or 7.1 MB gzipped, so serve it with compression.
+
+**The wasm32 random source and clock.** On `wasm32-unknown-unknown` the binary, not a library,
+picks getrandom's random source (PDF encryption's keys in vectorcraft-pdf, the script engine's
+`Math.random` seed in vectorcraft-js) and the plug-ins' clock for their run deadlines
+(vectorcraft-plugins' `web-clock` feature, the page's `performance.now()`), so a module with no
+imports can be built. The web app turns on getrandom's `wasm_js` and `web-clock`, and so does
+vectorcraft-ui-egui on wasm32, for any page that draws its panels. An embedder that builds the
+engine alone into a module without JavaScript gives getrandom a source of its own
+(`--cfg getrandom_backend="custom"`), leaves `web-clock` off (plug-in runs then have no wall-clock
+limit; fuel and memory still stop them) and builds the engine without its `word-doc` feature,
+whose compound-file reader (cfb) keeps its clock in JavaScript: such a build refuses `.doc` files.
+`cargo xtask ci`'s `no-js-engine` step builds it so.
 
 URL flag: `?webgl` forces the WebGL2 backend.
 
@@ -188,6 +201,11 @@ embedder that brings every font itself at run time (`FontDb::add_font`, say a we
 own font catalogue) depends on the engine with `default-features = false` and doesn't ship them
 twice. Its font database starts without them: on the web and without craft-fonts it starts empty,
 and text has no glyphs until a font is added.
+
+`default-features = false` leaves out the engine's other default features too: `heif` and
+`word-doc` (Word 97-2003 documents placed as type). Such an embedder lists them among the features
+it turns on, `features = ["heif", "word-doc"]`, unless it means to refuse those files; on
+`vectorcraft-ui-egui` and `vectorcraft-mcp`, which pass `word-doc` through, it lists `word-doc`.
 
 An embedder that also hosts the egui panels depends on `vectorcraft-ui-egui` with
 `default-features = false` as well: its own `bundled-fonts` feature, on by default, turns the
@@ -560,6 +578,7 @@ Scores and hour estimates are unchanged.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-14 | minor | Web build › The wasm32 random source and clock: what the binary picks on wasm32 (getrandom's source, vectorcraft-plugins' `web-clock`), the engine's `word-doc` feature, and the `no-js-engine` step of `cargo xtask ci`. |
 | 2026-11-12 | minor | Tests (#6860): compare preset refusal roots after canonicalization and Windows display normalization; canonicalize the script fixture base before constructing `MAIN`. This keeps macOS `/var` → `/private/var` aliases from masking the case-sensitivity checks; no production-code change. |
 | 2026-11-12 | minor | Compile the clipboard failure helper only for Linux/BSD worker callers and unit tests; keep production macOS free of the unused helper without suppressing workspace dead-code warnings. |
 | 2026-11-06 | minor | Localisation: Hindi catalog, zero/one plurals, desktop and web font requirements; AI/MT draft, native review pending. |

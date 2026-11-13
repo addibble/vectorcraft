@@ -40,7 +40,14 @@
 
 pub(crate) mod adopt;
 pub(crate) mod dcs;
+#[cfg(feature = "word-doc")]
 mod doc;
+/// Without the `word-doc` feature (vectorcraft-engine's Cargo.toml) there is no Word 97-2003
+/// reader: a Word 97-2003 document is recognized and refused.
+#[cfg(not(feature = "word-doc"))]
+#[path = "place/doc_refused.rs"]
+mod doc;
+mod doc_format;
 pub(crate) mod document;
 pub(crate) mod docx;
 mod rtf;
