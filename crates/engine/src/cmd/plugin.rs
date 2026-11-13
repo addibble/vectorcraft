@@ -885,6 +885,8 @@ fn install(s: &mut Session, p: &Value) -> Result<Value> {
     if changed {
         s.store_disabled_plugins_in(&turn);
     }
+    // Ends the turn before describing; on wasm32 a `File` has no `Drop`, so the lint fires there.
+    #[cfg_attr(target_arch = "wasm32", allow(clippy::drop_non_drop))]
     drop(turn);
     let mut v = describe_installed(&installed);
     if !unknown.is_empty() {

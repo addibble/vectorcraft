@@ -10,6 +10,9 @@ use super::names::{norm, norm_chars, script_families};
 #[cfg(not(target_arch = "wasm32"))]
 use super::scan::{enumerate_faces, font_files};
 use super::traits::{Alias, FontMatch, FontTraits, regular_rank};
+// `MetadataProvider` serves the system font lookups, which a wasm32 build without default features
+// leaves out.
+#[cfg_attr(target_arch = "wasm32", allow(unused_imports))]
 use super::{Arc, BezPath, CANONICAL_CACHE_MAX, Color, ColourContent, FontDb, GlyphImage, MetadataProvider, NEXT_ID, OUTLINE_CACHE_MAX, Ordering};
 
 /// The most faces [`FontDb::postscript_faces`] gives, and the most families it loads.

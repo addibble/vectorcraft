@@ -15,11 +15,9 @@ chrono = { workspace = true }
 # which is not on the license allowlist, so the version is exact.
 unicode-properties = { version = "=0.1.4", default-features = false, features = ["general-category"] }
 # The seed of Math.random (interp.rs).
+# On wasm32 the binary picks getrandom's source, as getrandom asks of libraries: the web app the
+# browser's crypto.getRandomValues (its `wasm_js` feature), an embedder without JavaScript its own.
 getrandom = "0.4"
-
-[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
-# The browser's crypto.getRandomValues.
-getrandom = { version = "0.4", features = ["wasm_js"] }
 
 [dev-dependencies]
 proptest = { workspace = true }
