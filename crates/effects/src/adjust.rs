@@ -2,12 +2,13 @@
 //! Hue/Saturation, Shift to Color and Temperature/Tint.
 //!
 //! They recolour what an object paints with, non-destructively: its fills and strokes (solid
-//! colours and gradient stops), type, gradient meshes, embedded images and, on a group or layer,
-//! every member — through the colour visitor the Edit Colors commands use
+//! colours and gradient stops), type, gradient meshes, images (linked ones too) and, on a group or
+//! layer, every member — through the colour visitor the Edit Colors commands use
 //! ([`vectorcraft_doc::recolor`]). Each colour keeps its colour model. An effect on one fill or
 //! stroke recolours that paint only. [`adjust`] evaluates them, innermost first and each list in
-//! stack order; the renderer draws the result (caching recoloured copies of embedded images) and
-//! [`crate::bake_document`] writes it for export, recoloured images as new embedded images.
+//! stack order; the renderer draws the result (caching recoloured copies of images, and of the
+//! pixels a host supplied for a linked one) and [`crate::bake_document`] writes it for export,
+//! recoloured images as new embedded images.
 //! Pattern tiles, and the shadows and glows of raster effects, keep their colours.
 
 use std::sync::Arc;
@@ -402,11 +403,11 @@ fn from_hsl([h, s, l]: [f32; 3]) -> [f32; 3] {
     [hue(h + 1.0 / 3.0), hue(h), hue(h - 1.0 / 3.0)]
 }
 
-/// Gives the key of an embedded image recoloured by a map (`None`: leave it as it is).
+/// Gives the key of an image recoloured by a map (`None`: leave it as it is).
 pub type ImageHook<'a> = dyn FnMut(&str, &ColorMap) -> Option<String> + 'a;
 
 /// The live visitor: every colour through `map` (paints with their swatch links, the document's
-/// swatches being `swatches`), embedded images through the hook.
+/// swatches being `swatches`), images through the hook.
 struct Live<'a, 'b> {
     map: &'a ColorMap,
     swatches: &'a SwatchKinds<'b>,
@@ -433,7 +434,7 @@ impl ColorVisitor for Live<'_, '_> {
 /// `n` with the colour adjustments in it applied, `None` when it has none: its members' first,
 /// then those of its fills and strokes on their paints, then its own followed by `outer` (the
 /// adjustments of an object `n` is the art of) on everything it paints. The adjustment effects
-/// are gone from the result; embedded images take the keys `images` gives. `swatches` tells the
+/// are gone from the result; images take the keys `images` gives. `swatches` tells the
 /// document's global and spot swatches apart ([`crate::addons::duotone::swatch_kind`]).
 /// `has_image` tells whether the document holds an image: an image whose color mask's pixels are
 /// missing is recoloured from its own pixels, as it is drawn without the adjustment.
@@ -521,9 +522,11 @@ fn color_mask_keys<'a>(n: &'a Node, out: &mut Vec<&'a str>) {
     }
 }
 
-/// [`adjust`] for export and Expand Appearance: recoloured embedded images become new images in
+/// [`adjust`] for export and Expand Appearance: recoloured images become new embedded images in
 /// `d` (named by their content), and a symbol instance stands for its symbol's art: `symbol_art`
-/// when given, otherwise the symbol's art with the instance's own appearance changes.
+/// when given, otherwise the symbol's art with the instance's own appearance changes. A linked
+/// image is recoloured from its file's pixels (output swaps in what a link source supplied), never
+/// from its preview.
 pub fn adjust_in_document(d: &mut Document, n: &Node, symbol_art: Option<Node>) -> Option<Node> {
     let art;
     let src = match &n.kind {
@@ -540,7 +543,9 @@ pub fn adjust_in_document(d: &mut Document, n: &Node, symbol_art: Option<Node>) 
     color_mask_keys(src, &mut masked);
     masked.retain(|k| d.images.contains_key(*k));
     let mut hook = |key: &str, map: &ColorMap| -> Option<String> {
-        let blob = d.images.get(key)?.map_rgb(|rgb| map.apply_rgb8(rgb))?;
+        // A linked image's preview stands for pixels not loaded: recoloured, it would take the
+        // file's place at the preview's size, so the image keeps its file (and its colours).
+        let blob = d.images.get(key).filter(|b| !b.is_proxy())?.map_rgb(|rgb| map.apply_rgb8(rgb))?;
         let k = blob.content_key();
         d.images.entry(k.clone()).or_insert(blob);
         Some(k)
