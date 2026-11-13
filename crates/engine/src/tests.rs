@@ -2992,6 +2992,41 @@ fn document_query_and_schema_read_the_model_a_part_at_a_time() {
     assert!(list["properties"].as_array().unwrap().iter().any(|p| p["name"] == "number"), "a numbered list's style too: {list}");
 }
 
+/// A paint's schema is one choice of five forms (a global swatch's name, or a paint object of one
+/// of four kinds), so `document.schema` answers the form a paint is, whichever form a saved file
+/// gives it, and the path walks into it.
+#[test]
+fn document_schema_walks_into_a_paint() {
+    let mut s = session();
+    s.execute("swatch.new", &json!({"name": "Accent", "color": "#cc3319", "global": true})).unwrap();
+    let plain = rect(&mut s, 0.0, 0.0, 10.0, 10.0);
+    s.execute("paint.setFill", &json!({"color": "#336699"})).unwrap();
+    let named = rect(&mut s, 20.0, 0.0, 10.0, 10.0);
+    s.execute("paint.setFill", &json!({"swatch": "Accent"})).unwrap();
+    let tinted = rect(&mut s, 40.0, 0.0, 10.0, 10.0);
+    s.execute("paint.setFill", &json!({"swatch": "Accent", "tint": 40})).unwrap();
+    let at = |s: &mut Session, id: NodeId, rest: &str| {
+        s.execute("document.schema", &json!({"at": format!("$.layers..[?@.id == {}].appearance.items[0].paint{rest}", id.0)}))
+    };
+    // The fill (the first item) with a colour of its own: the solid object, and the colour in it.
+    let paint = at(&mut s, plain, "").unwrap();
+    let names: Vec<&str> = paint["properties"].as_array().unwrap().iter().filter_map(|p| p["name"].as_str()).collect();
+    assert!(names.contains(&"color") && names.contains(&"swatch"), "the solid variant itself: {paint}");
+    assert_eq!(at(&mut s, plain, ".color").unwrap()["type"], "Color");
+    // Linked at 100%, the saved file holds the swatch's name: the string branch.
+    let by_name = at(&mut s, named, "").unwrap();
+    assert_eq!((&by_name["valueType"], &by_name["shape"]), (&json!("string"), &json!("string")), "the name branch itself: {by_name}");
+    assert!(by_name["variants"].is_null(), "{by_name}");
+    // Linked at a tint, the solid object without its colour, which the swatch gives.
+    let at_tint = at(&mut s, tinted, "").unwrap();
+    assert_eq!(at_tint["tag"], "solid", "{at_tint}");
+    let missing = at(&mut s, tinted, ".color").unwrap_err().to_string();
+    assert!(missing.contains("nothing in the document matches"), "a linked colour leaves its value to the swatch: {missing}");
+    assert_eq!(at(&mut s, tinted, ".swatch").unwrap()["valueType"], "string");
+    let kinds = s.execute("document.schema", &json!({"type": "Paint"})).unwrap();
+    assert_eq!(kinds["variants"].as_array().map(Vec::len), Some(5), "{kinds}");
+}
+
 /// `document.patch` edits the model by JSON Patch at the pointers `document.query` answers: one
 /// undo step, journaled, all or none, with fresh ids for what is added or copied.
 #[test]
