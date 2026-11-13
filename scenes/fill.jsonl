@@ -1,0 +1,5 @@
+{"command": "file.new", "params": {"width": 300, "height": 90}}
+{"command": "text.create", "params": {"x": 10, "y": 40, "text": "SAMPLE TYPE", "size": 24, "color": "#8899aa"}}
+{"command": "paint.setFill", "params": {"color": "#8899aa"}}
+{"command": "paint.setStroke", "params": {"none": true}}
+{"command": "effect.apply", "params": {"effect": "threeD.extrude", "item": null, "params": {"ambient": 25, "bevelHeight": 0.9, "bevelInside": true, "bevelWidth": 0.9, "cap": true, "depth": 40.2, "lightColor": "#ffffff", "lightHeight": 59.76, "lightIntensity": 40.1, "lightRotation": 54.0, "lightSoftness": 0, "perspectiveAngle": 0, "rotationX": 27.19, "rotationY": 11.07, "rotationZ": 1, "shade": true, "taper": 47.5, "twist": 0, "bevel": "none"}}}
