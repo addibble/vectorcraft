@@ -669,6 +669,10 @@ fn menu_parameter_dialogs_are_compact() {
 #[test]
 fn mixed_lists_translate_only_their_built_in_entries() {
     use crate::i18n::{Lang, tr};
+    // The rest reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let zh = Lang::from_code("zh-hant").unwrap();
     for key in ["None", "Black", "Regular", "Default"] {
         assert_ne!(tr(zh, key), key, "{key} must be a catalog key for this test");

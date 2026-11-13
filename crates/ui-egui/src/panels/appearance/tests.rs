@@ -545,6 +545,10 @@ fn the_effect_editor_picks_choices_their_own_dialogs_list() {
 /// row does, not the plain row. Rasterize names the document's color mode.
 #[test]
 fn the_effect_editor_shows_those_choices_as_their_dialogs_do() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let fr = crate::i18n::Lang::from_code("fr").unwrap();
     crate::i18n::set_current(fr);
     let (mut app, ctx, _) = editing("adjust.levels");

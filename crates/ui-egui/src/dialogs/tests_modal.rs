@@ -827,6 +827,10 @@ fn simplify_dialog_show_original_path_outlines_the_paths_before_the_preview() {
 
 #[test]
 fn printer_mark_labels_are_distinct_from_language_names() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let cs = crate::i18n::Lang::from_code("cs").unwrap();
     assert_eq!(save_pdf::choice_label(cs, "marks.kind", "Japanese"), crate::i18n::tr_ctx(cs, "mark-style", "Japanese"));
     assert_eq!(save_pdf::choice_label(cs, "language", "Japanese"), crate::i18n::tr(cs, "Japanese"));

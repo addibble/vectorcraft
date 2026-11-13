@@ -198,6 +198,10 @@ fn batch_trace_folder_asks_for_both_folders() {
     click(&mut app, "Batch Trace Folder");
     assert!(out.join("a.vectorcraft").exists(), "{}", app.ui.status);
     assert_eq!(app.ui.status, "Traced 1 image; not traced: 1");
+    // The rest reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let de = crate::i18n::Lang::from_code("de").unwrap();
     assert_eq!(crate::i18n::message(de, &app.ui.status), "1 Bild nachgezeichnet; nicht nachgezeichnet: 1");
     assert_eq!(crate::i18n::message(de, "Traced 2 images"), "2 Bilder nachgezeichnet");
