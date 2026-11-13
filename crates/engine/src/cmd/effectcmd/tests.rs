@@ -1306,3 +1306,137 @@ fn a_stained_instance_exports_spot_and_registration_stains_in_their_ink() {
         assert!(has(b"/Separation") && has(ink.as_bytes()), "the art is in {ink}");
     }
 }
+
+/// `d` drawn at 400 × 400.
+fn drawn(d: &vectorcraft_doc::Document) -> Vec<u8> {
+    vectorcraft_render::Renderer::new().render(d, 400, 400, vectorcraft_geom::Affine::IDENTITY, &Default::default()).pixels
+}
+
+/// How many channels of two drawings differ visibly.
+fn differ(a: &[u8], b: &[u8]) -> usize {
+    a.iter().zip(b).filter(|(x, y)| x.abs_diff(**y) > 8).count()
+}
+
+/// How many visible effects under `d`'s layers (their fills' and strokes' too) `which` picks.
+fn live_effects(d: &vectorcraft_doc::Document, which: fn(&str) -> bool) -> usize {
+    let mut live = 0;
+    for layer in &d.layers {
+        layer.walk(&mut |n| {
+            let items = n.appearance.items.iter().flat_map(|i| i.effects());
+            live += n.appearance.effects.iter().chain(items).filter(|e| e.visible && which(&e.id)).count();
+        });
+    }
+    live
+}
+
+/// A session with a 400 pt document holding `what` (a path, type, or a group of two paths),
+/// selected.
+fn three_d_subject(what: &str, size: f64) -> Session {
+    let mut s = Session::new();
+    s.execute("file.new", &json!({"width": 400, "height": 400})).unwrap();
+    s.execute("paint.setFill", &json!({"color": "#3366cc"})).unwrap();
+    let id = match what {
+        "type" => s.execute("text.create", &json!({"x": 100, "y": 220, "text": "Kw", "size": size, "color": "#3366cc"})).unwrap()["id"].clone(),
+        _ => s.execute("path.create", &json!({"d": "M100 100L240 100L240 240L100 240Z"})).unwrap()["id"].clone(),
+    };
+    s.execute("select.set", &json!({"ids": [id]})).unwrap();
+    if what == "group" {
+        let b = s.execute("path.create", &json!({"d": "M250 120L300 120L300 180L250 180Z"})).unwrap()["id"].clone();
+        s.execute("select.set", &json!({"ids": [id, b]})).unwrap();
+        s.execute("object.group", &json!({})).unwrap();
+    }
+    s
+}
+
+/// A color adjustment after a 3D effect recolors the shaded faces, as the canvas draws them:
+/// exported and expanded alike, for a path, type and a group, with an adjustment that shading
+/// doesn't commute with.
+#[test]
+fn an_adjustment_after_3d_recolors_the_shaded_faces_everywhere() {
+    for what in ["path", "type", "group"] {
+        let mut s = three_d_subject(what, 60.0);
+        s.execute("effect.apply", &json!({"effect": "threeD.extrude", "item": null, "params": {"depth": 30.0}})).unwrap();
+        s.execute("effect.apply", &json!({"effect": "adjust.brightnessContrast", "item": null, "params": {"brightness": 60, "contrast": 60}}))
+            .unwrap();
+        let canvas = drawn(&s.doc().unwrap().doc);
+        let baked = drawn(&effects::bake_document(&s.doc().unwrap().doc).unwrap());
+        s.execute("effect.expandAppearance", &json!({})).unwrap();
+        let expanded = drawn(&s.doc().unwrap().doc);
+        assert!(differ(&canvas, &baked) < canvas.len() / 400, "{what}: exported {}", differ(&canvas, &baked));
+        assert!(differ(&canvas, &expanded) < canvas.len() / 400, "{what}: expanded {}", differ(&canvas, &expanded));
+    }
+}
+
+/// A 3D effect with Vector Halftone after it exports and expands as the canvas draws it: as the
+/// halftone's dots when they can be made, and as the solid when the screen is too fine for the
+/// object (300 lpi over 140 pt takes more cells than the effect makes), for a path, type and a
+/// group; with a color adjustment after them too, which recolors the shaded faces, and the dots
+/// sampled from them. The halftone that made no dots is left off the exported solid, as the canvas
+/// leaves it.
+#[test]
+fn a_3d_effect_with_vector_halftone_exports_and_expands_as_drawn() {
+    for (adjusted, frequencies) in [(false, &[20.0, 300.0][..]), (true, &[20.0, 300.0][..])] {
+        for &frequency in frequencies {
+            for what in ["path", "type", "group"] {
+                let mut s = three_d_subject(what, 120.0);
+                s.execute("effect.apply", &json!({"effect": "threeD.extrude", "item": null, "params": {"depth": 30.0}})).unwrap();
+                s.execute("effect.apply", &json!({"effect": effects::addons::halftone::HALFTONE, "item": null, "params": {"frequency": frequency}}))
+                    .unwrap();
+                if adjusted {
+                    let params = json!({"brightness": 60, "contrast": 60});
+                    s.execute("effect.apply", &json!({"effect": "adjust.brightnessContrast", "item": null, "params": params})).unwrap();
+                }
+                let what = format!("{what} at {frequency} lpi, adjusted {adjusted}");
+                let canvas = drawn(&s.doc().unwrap().doc);
+                let baked = effects::bake_document(&s.doc().unwrap().doc).unwrap();
+                // Exports draw what bake leaves: a 3D effect left live there is drawn flat.
+                assert_eq!(live_effects(&baked, effects::is_three_d), 0, "{what}: no 3D effect left live in the export");
+                assert_eq!(live_effects(&baked, |id| id == effects::addons::halftone::HALFTONE), 0, "{what}: no halftone left live");
+                let baked = drawn(&baked);
+                assert!(differ(&canvas, &baked) < canvas.len() / 400, "{what}: exported {}", differ(&canvas, &baked));
+                s.execute("effect.expandAppearance", &json!({})).unwrap();
+                let expanded = drawn(&s.doc().unwrap().doc);
+                assert!(differ(&canvas, &expanded) < canvas.len() / 400, "{what}: expanded {}", differ(&canvas, &expanded));
+            }
+        }
+    }
+}
+
+/// A fill's raster effect after its own 3D effect (Drop Shadow, Outer Glow) is drawn into the image
+/// Expand Appearance puts below the shaded faces, once, and left out of the faces: nothing raster
+/// stays live in the expanded art, which would draw it again.
+#[test]
+fn a_fills_raster_effect_after_its_3d_effect_expands_once() {
+    for (effect, params) in [("stylize.dropShadow", json!({})), ("stylize.outerGlow", json!({}))] {
+        let mut s = Session::new();
+        s.execute("file.new", &json!({"width": 400, "height": 400})).unwrap();
+        let id = s.execute("path.create", &json!({"d": "M100 100L200 100L200 200L100 200Z"})).unwrap()["id"].clone();
+        s.execute("select.set", &json!({"ids": [id]})).unwrap();
+        s.execute("paint.setFill", &json!({"color": "#3366cc"})).unwrap();
+        s.execute("effect.apply", &json!({"effect": "threeD.extrude", "item": 0, "params": {"depth": 30.0}})).unwrap();
+        s.execute("effect.apply", &json!({"effect": effect, "item": 0, "params": params})).unwrap();
+        s.execute("effect.expandAppearance", &json!({})).unwrap();
+        let d = &s.doc().unwrap().doc;
+        assert_eq!(live_effects(d, effects::is_raster), 0, "{effect}: no raster effect left live");
+        let mut images = 0;
+        for layer in &d.layers {
+            layer.walk(&mut |n| images += usize::from(matches!(n.kind, NodeKind::Image(_))));
+        }
+        assert_eq!(images, 1, "{effect}: drawn into one image");
+    }
+}
+
+/// Crop Marks with Vector Halftone and a color adjustment draw the halftone's dots adjusted once on
+/// the canvas, as exports draw them: the dots are sampled with the adjustment, which isn't applied
+/// to them again.
+#[test]
+fn crop_marks_beside_a_halftone_adjust_its_dots_once() {
+    let mut s = three_d_subject("path", 120.0);
+    s.execute("effect.apply", &json!({"effect": effects::CROP_MARKS, "item": null, "params": {}})).unwrap();
+    s.execute("effect.apply", &json!({"effect": effects::addons::halftone::HALFTONE, "item": null, "params": {"frequency": 20.0}})).unwrap();
+    let params = json!({"brightness": 60, "contrast": 60});
+    s.execute("effect.apply", &json!({"effect": "adjust.brightnessContrast", "item": null, "params": params})).unwrap();
+    let canvas = drawn(&s.doc().unwrap().doc);
+    let baked = drawn(&effects::bake_document(&s.doc().unwrap().doc).unwrap());
+    assert!(differ(&canvas, &baked) < canvas.len() / 400, "exported {}", differ(&canvas, &baked));
+}

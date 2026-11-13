@@ -1455,6 +1455,27 @@ fn export_and_expand_bake_faces_with_their_own_ids() {
     }
 }
 
+/// Expanding a path with Crop Marks before its 3D effect (art for Expand Appearance, as a group's
+/// own fills make) builds the 3D effect: it isn't left live on the expanded art, where it would
+/// draw again.
+#[test]
+fn expand_leaf_builds_a_3d_effect_beside_crop_marks() {
+    let mut d = Document::new(400.0, 400.0);
+    let mut n = square_node();
+    n.id = d.alloc_id();
+    n.appearance.effects.push(fx(crate::CROP_MARKS, json!({})));
+    n.appearance.effects.push(fx(EXTRUDE, json!({})));
+    let mut stroke = |_: &mut Document, _: &PathData, _: FillRule, _: &StrokeLayer| None;
+    let art = crate::expand_leaf(&mut d, &n, &mut stroke).unwrap();
+    fn visit(n: &Node) {
+        assert!(!has_solid(n), "a 3D effect left live on {:?}", n.id);
+        for c in n.children().into_iter().flatten() {
+            visit(c);
+        }
+    }
+    visit(&art);
+}
+
 /// A twisted, tapered, hollow Inflate (both sides) exports and expands like the others: faces with
 /// their own ids, no 3D effect left on them.
 #[test]
