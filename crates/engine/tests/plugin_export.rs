@@ -124,7 +124,8 @@ fn the_exporter_is_given_the_native_file_s_json() {
     let r = s.execute("document.export", &json!({"format": "plugin.test.input"})).unwrap();
     assert_eq!(r["format"], "plugin.test.input");
     let given = exported(&r);
-    let saved = exported(&s.execute("document.save", &json!({})).unwrap());
+    // The file VectorCraft's releases write (RELEASED_VERSION), which exporters have always read.
+    let saved = exported(&s.execute("document.save", &json!({"version": vectorcraft_format::RELEASED_VERSION})).unwrap());
     assert!(saved.len() > given.len() + png.len(), "the image data follows the JSON in the saved file");
     let doc: Value = serde_json::from_slice(&given).unwrap();
     let mut saved_json: Value = serde_json::from_slice(vectorcraft_format::json_part(&saved)).unwrap();
@@ -136,11 +137,53 @@ fn the_exporter_is_given_the_native_file_s_json() {
     saved_members.remove("pdfCompatible");
     assert_eq!(doc, saved_json, "the native document JSON without optional save members");
     assert!(!given.contains(&b'\n'), "without indentation");
-    assert_eq!((&doc["format"], &doc["version"]), (&json!("vectorcraft"), &json!(vectorcraft_format::VERSION)));
+    assert_eq!((&doc["format"], &doc["version"]), (&json!("vectorcraft"), &json!(vectorcraft_format::RELEASED_VERSION)));
     let images = doc["images"].as_object().unwrap();
     let image = images.values().next().unwrap();
     assert_eq!(images.len(), 1);
     assert!(image.get("blob").is_some() && image.get("data").is_none(), "{image}");
+}
+
+/// A colour linked to a global swatch reaches an exporter whole, with its link, as plug-ins have
+/// always read it, though a saved file writes it by the swatch's name.
+#[test]
+fn an_exporter_is_given_linked_colours_whole() {
+    let mut s = session();
+    s.execute("swatch.new", &json!({"name": "Accent", "color": "#cc3319", "global": true})).unwrap();
+    s.execute("paint.setFill", &json!({"swatch": "Accent"})).unwrap();
+    install(&mut s, &tpl::echo_exporter(&tpl::exporter("test.whole", r#"["tsw"]"#, "{}"), Echo::Input));
+    let doc: Value = serde_json::from_slice(&exported(&s.execute("document.export", &json!({"format": "plugin.test.whole"})).unwrap())).unwrap();
+    let rect = &doc["document"]["layers"][0]["kind"]["children"][0];
+    let fill = &rect["appearance"]["items"][0]["paint"];
+    assert_eq!((&fill["type"], &fill["swatch"]), (&json!("solid"), &json!("Accent")), "{rect}");
+    assert_eq!(fill["color"]["model"], "rgb", "the colour itself: {fill}");
+    // A saved file writes it by name.
+    let saved: Value = serde_json::from_slice(vectorcraft_format::json_part(&exported(&s.execute("document.save", &json!({})).unwrap()))).unwrap();
+    assert_eq!(saved["document"]["layers"][0]["kind"]["children"][0]["appearance"]["items"][0]["paint"], "Accent");
+}
+
+/// An exporter reads geometry as it always has, whatever a saved file writes: a path's anchors and
+/// a transform's matrix, a live shape with its path. Not SVG's notation, which a version 6 file
+/// writes.
+#[test]
+fn an_exporter_is_given_structured_geometry() {
+    let mut s = session();
+    s.execute("shape.ellipse", &json!({"x": 200, "y": 10, "width": 50, "height": 50})).unwrap();
+    install(&mut s, &tpl::echo_exporter(&tpl::exporter("test.geometry", r#"["tsg"]"#, "{}"), Echo::Input));
+    let doc: Value = serde_json::from_slice(&exported(&s.execute("document.export", &json!({"format": "plugin.test.geometry"})).unwrap())).unwrap();
+    assert_eq!(doc["version"], vectorcraft_format::RELEASED_VERSION);
+    let children = doc["document"]["layers"][0]["kind"]["children"].as_array().unwrap();
+    assert_eq!(children.len(), 2);
+    for child in children {
+        let kind = &child["kind"];
+        assert!(kind["path"]["subpaths"][0]["anchors"].is_array(), "anchors, not path data: {kind}");
+    }
+    let live = children.iter().find(|c| c["kind"].get("live").is_some()).expect("the ellipse is a live shape");
+    assert!(live["kind"]["live"]["xf"].is_array(), "a transform's matrix: {live}");
+    // A saved file writes the notation, and the live rectangle without its path.
+    let saved: Value = serde_json::from_slice(vectorcraft_format::json_part(&exported(&s.execute("document.save", &json!({})).unwrap()))).unwrap();
+    let saved_kind = &saved["document"]["layers"][0]["kind"]["children"][0]["kind"];
+    assert!(saved_kind["live"]["xf"].is_string() && saved_kind.get("path").is_none(), "{saved_kind}");
 }
 
 /// What filter plug-ins keep with the document reaches an exporter with the rest of the document:
@@ -214,7 +257,7 @@ fn selected_only_hands_over_the_selection() {
     install(&mut s, &tpl::echo_exporter(&tpl::exporter("test.selection", r#"["tse"]"#, "{}"), Echo::Input));
     let ellipse = s.execute("shape.ellipse", &json!({"x": 200, "y": 10, "width": 50, "height": 50})).unwrap()["id"].clone();
     s.execute("select.set", &json!({"ids": [ellipse]})).unwrap();
-    let count = |r: &Value| String::from_utf8(exported(r)).unwrap().matches("\"anchors\"").count();
+    let count = |r: &Value| String::from_utf8(exported(r)).unwrap().matches("\"type\":\"path\"").count();
     let all = count(&s.execute("document.export", &json!({"format": "plugin.test.selection"})).unwrap());
     let selected = count(&s.execute("document.export", &json!({"format": "plugin.test.selection", "selectedOnly": true})).unwrap());
     assert!(selected >= 1 && selected < all, "{selected} of {all} paths");

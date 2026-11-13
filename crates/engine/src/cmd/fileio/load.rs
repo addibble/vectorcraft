@@ -30,6 +30,10 @@ pub struct Loaded {
     pub editing_data: bool,
     /// Whether the native source declared a PDF; other formats carry no native save preference.
     pub native_pdf_compatible: Option<bool>,
+    /// A native file's version when it is older than the one this build writes but not converted
+    /// (one VectorCraft's releases read, [`vectorcraft_format::RELEASED_VERSION`], or later): Save
+    /// writes it at that version, so the app that wrote it still opens it.
+    pub native_version: Option<u32>,
 }
 
 impl Loaded {
@@ -407,6 +411,7 @@ pub fn load_with(name: &str, bytes: &[u8], opts: &LoadOptions) -> Result<Loaded>
     let mut preview_only = false;
     let mut editing_data = false;
     let mut native_pdf_compatible = None;
+    let mut native_version = None;
     let (mut doc, mut warnings, restored) = match format.id {
         // EPS, .ps and PostScript .ai: the document our EPS files carry, else the PostScript read.
         _ if matches!(format.id, "eps" | "ps") || vectorcraft_pdf::is_postscript(bytes) => {
@@ -426,6 +431,7 @@ pub fn load_with(name: &str, bytes: &[u8], opts: &LoadOptions) -> Result<Loaded>
         "vectorcraft" | "template" => {
             let (d, info, warnings) = native_file(bytes)?;
             native_pdf_compatible = Some(info.pdf_compatible);
+            native_version = (!info.is_old() && info.version < vectorcraft_format::VERSION).then_some(info.version);
             converted = info.is_old() || super::extension(name) == vectorcraft_format::LEGACY_EXTENSION;
             (d, warnings, false)
         }
@@ -624,7 +630,7 @@ pub fn load_with(name: &str, bytes: &[u8], opts: &LoadOptions) -> Result<Loaded>
         doc.title = title;
     }
     warnings.extend(doc.images.values().filter_map(|b| size_note(&b.bytes)));
-    Ok(Loaded { doc, format, warnings, restored, converted, preview_only, editing_data, native_pdf_compatible })
+    Ok(Loaded { doc, format, warnings, restored, converted, preview_only, editing_data, native_pdf_compatible, native_version })
 }
 
 /// Import SVG text, reading the files its images link to (relative links from `folder`, the SVG's
@@ -899,7 +905,17 @@ fn linked_pages(name: &str, bytes: &[u8], path: Option<&str>, opts: &LoadOptions
     let (mut doc, warnings) = super::pdfimport::linked_pages(name, bytes, path, opts)?;
     doc.title = file_name(name);
     let format = detect(name, bytes).ok_or_else(|| err(format!("can't open `{}`: not a PDF", file_name(name))))?;
-    Ok(Loaded { doc, format, warnings, restored: false, converted: false, preview_only: false, editing_data: false, native_pdf_compatible: None })
+    Ok(Loaded {
+        doc,
+        format,
+        warnings,
+        restored: false,
+        converted: false,
+        preview_only: false,
+        editing_data: false,
+        native_pdf_compatible: None,
+        native_version: None,
+    })
 }
 
 /// The second half of [`open_bytes_with`]: open a file [`read_for_open`] read as the new active
@@ -942,7 +958,7 @@ fn open_loaded(
     as_template: bool,
     policy_changed: bool,
 ) -> Result<Value> {
-    let Loaded { mut doc, format, warnings, restored, converted, native_pdf_compatible, .. } =
+    let Loaded { mut doc, format, warnings, restored, converted, native_pdf_compatible, native_version, .. } =
         loaded.with_grid_prefs(&s.prefs).with_unit_prefs(&s.prefs);
     // EPS now has an ordinary Save path. Its preview, partial-program and damaged-editing
     // fallbacks must ask before overwriting the richer source they could not fully read. Every
@@ -989,6 +1005,9 @@ fn open_loaded(
     }
     if let Some(pdf) = native_pdf_compatible {
         st.save_options.insert("pdfCompatible".into(), json!(pdf));
+    }
+    if let Some(version) = native_version {
+        st.save_options.insert("version".into(), json!(version));
     }
     if saves_back {
         st.format = format.id;
