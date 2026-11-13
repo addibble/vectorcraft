@@ -658,6 +658,7 @@ impl VectorcraftApp {
         crate::toasts::show(self, &ctx);
         // After every panel had its chance to draw in this pass.
         crate::panels::three_d::end_stale_drag(self, &ctx);
+        crate::host_panels::end_stale_focus(self, &ctx);
         if self.custom_titlebar {
             titlebar::resize_zones(ui);
         }
