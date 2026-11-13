@@ -92,6 +92,7 @@ proptest! {
         prop_assert!(r.is_ok(), "panicked: {:?}", r.err());
     }
 
+    #[cfg(feature = "word-doc")]
     #[test]
     fn any_doc_places_without_panics(
         text in prop::collection::vec(prop::sample::select(DOC_CHARS.chars().collect::<Vec<_>>()), 1..60),
@@ -128,6 +129,7 @@ proptest! {
         prop_assert!(r.is_ok(), "panicked: {:?}", r.err());
     }
 
+    #[cfg(feature = "word-doc")]
     #[test]
     fn any_damaged_doc_container_places_without_panics(
         text in prop::collection::vec(prop::sample::select(DOC_CHARS.chars().collect::<Vec<_>>()), 1..60),
@@ -177,6 +179,7 @@ fn no_panic(r: Result<serde_json::Value, vectorcraft_engine::EngineError>) -> Re
 }
 
 /// A compound file of `version` holding the WordDocument stream `wd` and the table stream `table`.
+#[cfg(feature = "word-doc")]
 fn compound_file(wd: &[u8], table: &[u8], version: cfb::Version) -> Vec<u8> {
     let mut cf = cfb::CompoundFile::create_with_version(version, std::io::Cursor::new(Vec::new())).unwrap();
     std::io::Write::write_all(&mut cf.create_stream("WordDocument").unwrap(), wd).unwrap();
@@ -186,6 +189,7 @@ fn compound_file(wd: &[u8], table: &[u8], version: cfb::Version) -> Vec<u8> {
 }
 
 /// The compound file header's fields (\[MS-CFB\] §2.2) a damage changes: their offset and width.
+#[cfg(feature = "word-doc")]
 const CFB_HEADER: [(usize, usize); 17] = [
     (0, 4),  // signature
     (24, 2), // minor version
@@ -207,6 +211,7 @@ const CFB_HEADER: [(usize, usize); 17] = [
 ];
 
 /// A directory entry's fields (\[MS-CFB\] §2.6.1) a damage changes: their offset and width.
+#[cfg(feature = "word-doc")]
 const CFB_ENTRY: [(usize, usize); 10] = [
     (0, 2),   // first character of the name
     (64, 2),  // name length
@@ -221,6 +226,7 @@ const CFB_ENTRY: [(usize, usize); 10] = [
 ];
 
 /// Where an undamaged compound file keeps its directory, FAT and mini FAT.
+#[cfg(feature = "word-doc")]
 struct CfbLayout {
     /// The bytes of one sector.
     sector: usize,
@@ -231,6 +237,7 @@ struct CfbLayout {
     mini_fat: usize,
 }
 
+#[cfg(feature = "word-doc")]
 impl CfbLayout {
     fn of(data: &[u8]) -> Self {
         let u32_at = |at: usize| u32::from_le_bytes(data[at..at + 4].try_into().unwrap()) as usize;
@@ -247,6 +254,7 @@ impl CfbLayout {
 }
 
 /// A change to the container of a compound file rather than to the bytes of its streams.
+#[cfg(feature = "word-doc")]
 #[derive(Clone, Debug)]
 enum CfbDamage {
     /// A header field set to a value.
@@ -263,6 +271,7 @@ enum CfbDamage {
     Truncate(prop::sample::Index),
 }
 
+#[cfg(feature = "word-doc")]
 impl CfbDamage {
     fn apply(&self, data: &mut Vec<u8>, layout: &CfbLayout) {
         let mut put = |at: usize, width: usize, value: u32| {
@@ -294,6 +303,7 @@ impl CfbDamage {
 
 /// A sector number, size, count or shift: the special sector numbers (\[MS-CFB\] §2.1), small and
 /// huge values, or any.
+#[cfg(feature = "word-doc")]
 fn arb_cfb_value() -> impl Strategy<Value = u32> {
     prop_oneof![
         3 => prop::sample::select(vec![
@@ -324,6 +334,7 @@ fn arb_cfb_value() -> impl Strategy<Value = u32> {
 }
 
 /// A [`CfbDamage`].
+#[cfg(feature = "word-doc")]
 fn arb_cfb_damage() -> impl Strategy<Value = CfbDamage> {
     let index = any::<prop::sample::Index>;
     prop_oneof![
@@ -338,10 +349,12 @@ fn arb_cfb_damage() -> impl Strategy<Value = CfbDamage> {
 
 /// Characters of a Word document's text: letters, marks of paragraphs, cells and breaks, fields,
 /// pictures, hyphens and surrogate-free Unicode.
+#[cfg(feature = "word-doc")]
 const DOC_CHARS: &str = "ab \r\u{7}\u{B}\u{C}\u{13}\u{14}\u{15}\u{1}\u{8}\t\u{1E}\u{1F}(é“✓";
 
 /// Character and paragraph properties: Prls the Word 97-2003 reader knows, with operands in and out
 /// of range, and raw bytes.
+#[cfg(feature = "word-doc")]
 fn arb_grpprl() -> impl Strategy<Value = Vec<u8>> {
     let prl = prop_oneof![
         prop::sample::select(vec![
@@ -377,6 +390,7 @@ fn arb_grpprl() -> impl Strategy<Value = Vec<u8>> {
 
 /// A style sheet of up to four styles (paragraph or character, based on another or none) with
 /// properties of [`arb_grpprl`], or empty slots.
+#[cfg(feature = "word-doc")]
 fn arb_stsh() -> impl Strategy<Value = Vec<u8>> {
     let style = prop::option::of((1u16..3, prop_oneof![Just(0x0FFFu16), 0u16..5], arb_grpprl(), arb_grpprl()));
     prop::collection::vec(style, 0..5).prop_map(|styles| {
@@ -401,6 +415,7 @@ fn arb_stsh() -> impl Strategy<Value = Vec<u8>> {
 /// The WordDocument and table streams of a Word 97-2003 document whose main text is `text` in one
 /// piece, with one page of character properties `chpx` and one of paragraph properties `papx` of
 /// style `istd` covering it, and the style sheet `stsh` and font table `ffn`.
+#[cfg(feature = "word-doc")]
 fn word97(text: &str, compressed: bool, chpx: &[u8], istd: u16, papx: &[u8], stsh: &[u8], ffn: &[u8]) -> (Vec<u8>, Vec<u8>) {
     let mut wd = vec![0u8; 1024];
     let at = wd.len() as u32;

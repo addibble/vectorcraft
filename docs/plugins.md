@@ -117,8 +117,12 @@ the object is drawn as if the effect weren't there, and the record is kept for w
 ## The sandbox
 
 The host is [`wasmi`](https://github.com/wasmi-labs/wasmi), a pure-Rust WebAssembly interpreter (MIT OR Apache-2.0). It
-builds for `wasm32-unknown-unknown` too, so plug-ins also run in the web build. Limits (`vectorcraft_plugins::Limits`,
-defaults):
+builds for `wasm32-unknown-unknown` too, so plug-ins also run in the web build. On that target the wall clock is the
+binary's to pick: `vectorcraft-plugins`' `web-clock` feature reads the page's `performance.now()`. The web app and
+`vectorcraft-ui-egui` turn it on; any other browser embedder of the engine turns it on itself
+(`vectorcraft-plugins = { version = "…", features = ["web-clock"] }`), or its plug-in runs have no wall-clock limit.
+It is off by default so that an embedder without JavaScript, whose module must import nothing, can build the
+engine. Limits (`vectorcraft_plugins::Limits`, defaults):
 
 | Limit | Default | On violation |
 |---|---|---|
@@ -127,7 +131,7 @@ defaults):
 | Linear memory | 512 MiB per instance (input and parameters: at most half) | `memory.grow` returns -1; oversized input or initial memory fails |
 | Output | 64 MiB of JSON | `Limit("output size")` |
 | Instructions (fuel) | 50 M per call + 4,000 per input byte for `vc_run`; a [heavy filter](#heavy-filters) 1 G + 4,000 per byte; an export or import 10 G + 4,000 per byte | `Limit("instruction budget")` |
-| Wall clock | 60 s per filter run, 5 s per live-effect run, 300 s per heavy filter run, export or import (checked every 20 M instructions; the web build reads the page's `performance.now()`) | `Limit("time budget")` |
+| Wall clock | 60 s per filter run, 5 s per live-effect run, 300 s per heavy filter run, export or import (checked every 20 M instructions; the web build reads the page's `performance.now()`; a wasm32 build without vectorcraft-plugins' `web-clock` feature has no clock and so no wall-clock limit, only the instruction and memory budgets) | `Limit("time budget")` |
 | Import input | 128 MiB of the file (`vectorcraft_plugins::import::MAX_INPUT_BYTES`) | the file doesn't open; a larger file named by `path` is not read past that |
 | Call depth | 1,024 frames | trap |
 | Module shape | wasmi's strict limits (≤ 10,000 functions, 1 memory, …) | rejected |

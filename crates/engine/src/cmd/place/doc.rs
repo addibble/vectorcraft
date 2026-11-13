@@ -53,20 +53,9 @@ use vectorcraft_doc::{CharPosition, CharStyle, Justify, ParaDirection, ParaStyle
 use super::text::{self, Story};
 use super::{EngineError, Paint, Result, bad, fileio};
 
-/// Word 97-2003 documents as `file.place` reports them (not a format `document.open` reads).
-pub(super) const FORMAT: fileio::Format = fileio::Format {
-    id: "doc",
-    label: "Word 97-2003",
-    extensions: fileio::DOC_EXTS,
-    mime: "application/msword",
-    read: true,
-    write: false,
-    raster: false,
-    options: &[],
-};
+pub(super) use super::doc_format::FORMAT;
+use super::doc_format::SIGNATURE;
 
-/// The first bytes of a compound file (\[MS-CFB\] §2.2).
-const SIGNATURE: [u8; 8] = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
 /// The most bytes a stream read from the compound file may hold.
 const MAX_STREAM: u64 = 64 << 20;
 /// The most pieces the main text may be made of.
@@ -105,7 +94,7 @@ const FC_LCB_97: u16 = 0x005D;
 /// that holds a `WordDocument` stream?
 pub(super) fn is_doc(name: &str, bytes: &[u8]) -> bool {
     bytes.starts_with(&SIGNATURE)
-        && (fileio::DOC_EXTS.contains(&fileio::extension(name).as_str())
+        && (FORMAT.extensions.contains(&fileio::extension(name).as_str())
             || cfb::CompoundFile::open(Cursor::new(bytes)).is_ok_and(|f| f.is_stream("/WordDocument")))
 }
 

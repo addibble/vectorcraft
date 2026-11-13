@@ -614,11 +614,19 @@ pub const RTF_EXTS: &[&str] = &["rtf"];
 /// Word documents: File → Place sets them as area type with their formatting.
 pub const DOCX_EXTS: &[&str] = &["docx"];
 
-/// Word 97-2003 documents: File → Place sets them as area type with their formatting.
-pub const DOC_EXTS: &[&str] = &["doc"];
+/// Word 97-2003 documents: File → Place sets them as area type with their formatting. None in a
+/// build without the engine's `word-doc` feature, which refuses them.
+pub const DOC_EXTS: &[&str] = &[
+    #[cfg(feature = "word-doc")]
+    "doc",
+];
 
 /// The Place dialog's Word filter: Word documents and Word 97-2003 documents.
-const WORD_EXTS: &[&str] = &["docx", "doc"];
+const WORD_EXTS: &[&str] = &[
+    "docx",
+    #[cfg(feature = "word-doc")]
+    "doc",
+];
 
 /// Every extension File → Place reads: [`OPEN_EXTS`], [`TEXT_EXTS`], [`RTF_EXTS`],
 /// [`DOCX_EXTS`] and [`DOC_EXTS`].
@@ -679,6 +687,7 @@ pub const PLACE_EXTS: &[&str] = &[
     "txt",
     "rtf",
     "docx",
+    #[cfg(feature = "word-doc")]
     "doc",
 ];
 

@@ -511,18 +511,21 @@ fn malformed_docx_fails_cleanly() {
 }
 
 /// The bytes of the Prls `prls`: each sprm and its operand.
+#[cfg(feature = "word-doc")]
 fn prls(prls: &[(u16, &[u8])]) -> Vec<u8> {
     prls.iter().flat_map(|(sprm, op)| sprm.to_le_bytes().into_iter().chain(op.iter().copied())).collect()
 }
 
 /// A style of a [`Word97`] document: its kind (1 paragraph, 2 character), the style it is based
 /// on, and its paragraph and character properties.
+#[cfg(feature = "word-doc")]
 type Word97Style = (u16, u16, Vec<u8>, Vec<u8>);
 
 /// A Word 97-2003 document, built as \[MS-DOC\] lays one out: a file information block, the main
 /// text's pieces stored last first, one property page per run of up to 16 character or paragraph
 /// property runs, the piece table, style sheet and font table in the table stream, all in a
 /// compound file.
+#[cfg(feature = "word-doc")]
 #[derive(Default)]
 struct Word97 {
     /// The main text's pieces: their text and whether it is stored compressed.
@@ -556,6 +559,7 @@ struct Word97 {
 
 /// One 512-byte property page of `runs` (file positions and properties), written to `wd`; its
 /// page number.
+#[cfg(feature = "word-doc")]
 fn property_page(runs: &[(u32, u32, Vec<u8>)], papx: bool, wd: &mut Vec<u8>) -> u32 {
     let mut page = [0u8; 512];
     let n = runs.len();
@@ -583,6 +587,7 @@ fn property_page(runs: &[(u32, u32, Vec<u8>)], papx: bool, wd: &mut Vec<u8>) -> 
     pn
 }
 
+#[cfg(feature = "word-doc")]
 impl Word97 {
     fn build(&self) -> Vec<u8> {
         let mut wd = vec![0u8; 900];
@@ -710,6 +715,7 @@ impl Word97 {
 }
 
 /// A compound file holding `streams`.
+#[cfg(feature = "word-doc")]
 fn compound_file(streams: &[(&str, &[u8])]) -> Vec<u8> {
     let mut cf = cfb::CompoundFile::create(std::io::Cursor::new(Vec::new())).unwrap();
     for (name, bytes) in streams {
@@ -719,6 +725,7 @@ fn compound_file(streams: &[(&str, &[u8])]) -> Vec<u8> {
     cf.into_inner().into_inner()
 }
 
+#[cfg(feature = "word-doc")]
 #[test]
 fn doc_places_as_area_type_with_its_styles_and_formatting() {
     let navy: &[u8] = &[0x1F, 0x38, 0x64, 0];
@@ -796,6 +803,7 @@ fn doc_places_as_area_type_with_its_styles_and_formatting() {
     assert_eq!((q["count"].as_u64(), q["files"][0]["format"].as_str()), (Some(1), Some("doc")));
 }
 
+#[cfg(feature = "word-doc")]
 #[test]
 fn doc_indents_set_later_hold_over_the_styles_physical_or_logical_ones() {
     let twips = |v: i16| v.to_le_bytes();
@@ -823,6 +831,7 @@ fn doc_indents_set_later_hold_over_the_styles_physical_or_logical_ones() {
     assert_eq!(summary, [(18.0, 0.0), (9.0, 0.0), (0.0, 27.0)]);
 }
 
+#[cfg(feature = "word-doc")]
 #[test]
 fn doc_tables_breaks_and_other_stories_place_as_paragraphs_and_tabs_with_warnings() {
     let in_table = prls(&[(0x2416, &[1])]);
@@ -868,6 +877,7 @@ fn doc_tables_breaks_and_other_stories_place_as_paragraphs_and_tabs_with_warning
     );
 }
 
+#[cfg(feature = "word-doc")]
 #[test]
 fn malformed_doc_fails_cleanly() {
     let mut s = session();
@@ -941,6 +951,56 @@ fn malformed_doc_fails_cleanly() {
     assert_eq!(s.doc().unwrap().history.undo.len(), 5, "failed places leave no undo step");
 }
 
+/// On wasm32 cfb keeps its clock in JavaScript (web-time), so the Word 97-2003 reader is a default
+/// feature an embedder without JavaScript leaves out, and the apps, which build the engine without
+/// its defaults, turn it on.
+#[test]
+fn the_word_reader_is_a_feature_the_apps_turn_on() {
+    let manifest = include_str!("../../Cargo.toml");
+    assert!(manifest.contains(r#"cfb = { version = "0.15", optional = true }"#), "cfb is the word-doc feature's");
+    assert!(manifest.contains(r#"default = ["bundled-fonts", "heif", "word-doc"]"#), "the engine reads Word documents by default");
+    let apps = [
+        include_str!("../../../../apps/vectorcraft/Cargo.toml"),
+        include_str!("../../../../apps/vectorcraft-cli/Cargo.toml"),
+        include_str!("../../../../apps/vectorcraft-web/Cargo.toml"),
+    ];
+    for app in apps {
+        assert!(
+            app.contains(r#"vectorcraft-engine = { workspace = true, features = ["bundled-fonts", "heif", "word-doc"] }"#),
+            "an app places no Word documents"
+        );
+    }
+    // The libraries an app builds on pass the feature through, on by default, as `bundled-fonts`.
+    for library in [include_str!("../../../ui-egui/Cargo.toml"), include_str!("../../../mcp/Cargo.toml")] {
+        assert!(library.contains(r#"word-doc = ["vectorcraft-engine/word-doc"]"#), "a library leaves the Word reader out");
+    }
+}
+
+/// A build without the Word 97-2003 reader still knows a `.doc` file and refuses it with a message
+/// naming the format, leaving no undo step.
+#[cfg(not(feature = "word-doc"))]
+#[test]
+fn a_build_without_the_word_reader_refuses_doc_files() {
+    let mut s = session();
+    let compound = [&[0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1][..], &[0; 600]].concat();
+    let file = json!({"name": "report.doc", "dataBase64": vectorcraft_format::base64_encode(&compound)});
+    let e = s.execute("file.place", &file).unwrap_err().to_string();
+    assert!(e.contains("doesn't read Word 97-2003 documents"), "{e}");
+    assert!(!e.contains("feature"), "the message names a Cargo feature: {e}");
+    assert_eq!(s.doc().unwrap().history.undo.len(), 0, "a refused place leaves no undo step");
+    // A Word template (or a Word document named otherwise) is known by its WordDocument stream, as
+    // the reader knows it: its directory entry's UTF-16 name.
+    let name: Vec<u8> = "WordDocument".encode_utf16().flat_map(u16::to_le_bytes).collect();
+    let template = [&compound[..], &name, &[0; 64]].concat();
+    let file = json!({"name": "letter.dot", "dataBase64": vectorcraft_format::base64_encode(&template)});
+    let e = s.execute("file.place", &file).unwrap_err().to_string();
+    assert!(e.contains("doesn't read Word 97-2003 documents"), "{e}");
+    // Place offers no `.doc` files it would refuse.
+    assert!(!cmd::fileio::PLACE_EXTS.contains(&"doc"), "Place lists .doc files");
+    assert!(!cmd::fileio::place_filters().any(|(_, exts)| exts.contains(&"doc")), "a Place filter lists .doc files");
+}
+
+#[cfg(feature = "word-doc")]
 #[test]
 fn doc_styles_are_worked_out_once_however_many_paragraphs_use_them() {
     // Two chains of 32 styles, each with 21,000 character properties: paragraph styles 0 to 31
@@ -986,6 +1046,7 @@ fn doc_styles_are_worked_out_once_however_many_paragraphs_use_them() {
     assert_eq!(t.runs.iter().map(|r| (r.text.as_str(), r.style.size)).collect::<Vec<_>>(), [("a\nb", 12.0)]);
 }
 
+#[cfg(feature = "word-doc")]
 #[test]
 fn doc_property_runs_paragraphs_and_properties_read_are_limited() {
     let mut s = session();
@@ -1025,7 +1086,7 @@ fn place_reads_what_open_reads_and_text_files() {
     use cmd::fileio::{DOC_EXTS, DOCX_EXTS, OPEN_EXTS, PLACE_EXTS, RTF_EXTS, TEXT_EXTS};
     assert_eq!(PLACE_EXTS, [OPEN_EXTS, TEXT_EXTS, RTF_EXTS, DOCX_EXTS, DOC_EXTS].concat());
     let filters: Vec<_> = cmd::fileio::place_filters().collect();
-    let word: (&str, &[&str]) = ("Word", &["docx", "doc"]);
+    let word: (&str, &[&str]) = ("Word", if cfg!(feature = "word-doc") { &["docx", "doc"] } else { &["docx"] });
     assert_eq!((filters.first(), filters.last()), (Some(&("All placeable files", PLACE_EXTS)), Some(&word)));
     assert_eq!(filters.get(filters.len() - 3..), Some(&[("Text", TEXT_EXTS), ("RTF", RTF_EXTS), word][..]));
     assert!(
