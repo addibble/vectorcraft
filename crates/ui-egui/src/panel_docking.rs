@@ -372,12 +372,18 @@ fn place_panel(app: &mut VectorcraftApp, panel: &str) -> Result<Value, String> {
         return Ok(json!({"open": app.ui.open_panel}));
     }
     // A floating panel in front of its window hides again, as an icon panel's flyout does: its
-    // shortcut shows and hides it.
-    if was_visible && floating_window(&layout, panel).is_some() {
+    // shortcut shows and hides it. A host page's panel only comes forward: the page shows it from a
+    // button, which a person presses again to see it, never to hide it.
+    if was_visible && floating_window(&layout, panel).is_some() && !crate::host_panels::is_host(panel) {
         return shared_command(app, "window.panel.close", &json!({"panel": panel}));
     }
     if !layout.contains(&panel.to_string()) && !app.ui.docking_hidden.contains_key(panel) && crate::panels::library_panel::parse(panel).is_some() {
         return crate::panels::library_panel::float(app, panel);
+    }
+    // A host page's panel floats the first time it shows, as a library panel does, tall enough for
+    // a form of a dozen controls (it scrolls past that).
+    if !layout.contains(&panel.to_string()) && !app.ui.docking_hidden.contains_key(panel) && crate::host_panels::is_host(panel) {
+        return app.run("window.panel.float", json!({ "panel": panel, "height": HOST_PANEL_HEIGHT }));
     }
     let value = if app.ui.docking_hidden.contains_key(panel) {
         restore_hidden_group(app, panel)?
@@ -390,6 +396,9 @@ fn place_panel(app: &mut VectorcraftApp, panel: &str) -> Result<Value, String> {
         None => value,
     })
 }
+
+/// A host page's panel's height the first time it floats, in points.
+pub const HOST_PANEL_HEIGHT: f64 = 560.0;
 
 /// Hides the group holding an active panel and records each tab's return location.
 pub(crate) fn hide_group(app: &mut VectorcraftApp, panel: &str) -> Result<Value, String> {
@@ -1426,6 +1435,7 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
             return tl!("Canvas").to_string();
         }
         crate::panels::library_panel::tab_label(self.app, id)
+            .or_else(|| crate::host_panels::docked(self.app, id).map(|p| p.title))
             .or_else(|| crate::state::all_panels().find(|p| p.0 == id).map(|p| tl!(p.1).to_string()))
             .unwrap_or_else(|| id.clone())
     }

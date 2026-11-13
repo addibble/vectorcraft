@@ -13,6 +13,7 @@ mod font_menu;
 mod fonts;
 mod guide_escape;
 mod home;
+mod host_panels;
 pub(super) mod labels;
 mod lifecycle;
 mod nativemenu;
