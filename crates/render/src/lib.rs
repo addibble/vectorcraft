@@ -88,6 +88,10 @@ pub struct Renderer {
     /// keeps the art's allocation, so no other art can get its address, and does not keep the
     /// art's content.
     symbols: Vec<(String, std::sync::Weak<Node>)>,
+    /// What places the art of the symbols in `symbols` besides the art (their 9-slice guides and
+    /// natural sizes, [`node_checks::symbol_placing`]), as the document holds it, and its hash for
+    /// the key of what raster effects read from the document ([`Self::doc_inputs`]).
+    symbol_placing: ([Option<vectorcraft_brush::serde_json::Value>; 2], u64),
     /// The plug-in revision ([`effects::plugin_revision`]) that `geom`, `fx_geom` and `fx_arts` were
     /// last checked against (see [`Self::check_plugins`]).
     plugin_revision: u64,
