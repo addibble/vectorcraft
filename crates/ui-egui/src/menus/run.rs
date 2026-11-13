@@ -736,17 +736,31 @@ fn run_ui_part7(app: &mut VectorcraftApp, id: &str, p: &Value) -> Option<Result<
             app.ui.palette_query.clear();
             Ok(Value::Null)
         }
-        // Closing asks Save / Don't Save / Cancel for modified documents first (`unsaved`).
-        // Without an `index`, the current window closes: one of several views of a document closes
-        // without closing the document (Window › New Window).
-        "file.close" => match opt_index(p, "index") {
-            Err(e) => Err(e),
-            Ok(Some(i)) => crate::unsaved::close(app, i),
-            Ok(None) => {
-                app.session.active_index()?;
-                crate::doc_windows::close_current(app)
+        // Closing asks Save / Don't Save / Cancel for modified documents first (`unsaved`), unless
+        // the caller said to discard them (`discard`: the document closes unsaved). Without an
+        // `index`, the current window closes: one of several views of a document closes without
+        // closing the document (Window › New Window).
+        "file.close" => {
+            let discard = match p.get("discard") {
+                None | Some(Value::Null | Value::Bool(false)) => Some(false),
+                Some(Value::Bool(true)) => Some(true),
+                Some(_) => None,
+            };
+            match (opt_index(p, "index"), discard) {
+                (Err(e), _) => Err(e),
+                (_, None) => Err("`discard` must be true or false".into()),
+                (Ok(Some(i)), Some(false)) => crate::unsaved::close(app, i),
+                (Ok(Some(i)), Some(true)) => crate::unsaved::discard(app, i),
+                (Ok(None), Some(true)) => {
+                    let i = app.session.active_index()?;
+                    crate::unsaved::discard(app, i)
+                }
+                (Ok(None), Some(false)) => {
+                    app.session.active_index()?;
+                    crate::doc_windows::close_current(app)
+                }
             }
-        },
+        }
         "file.closeAll" => crate::unsaved::close_all(app, "closeAll"),
         "app.quit" => crate::unsaved::close_all(app, "quit"),
         "ui.swatchOptions" => match s("name") {

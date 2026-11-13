@@ -27,7 +27,9 @@ pub fn menu_bar(app: &mut VectorcraftApp, ui: &mut egui::Ui) -> f32 {
     let tree = menu_tree_named(app.session.prefs.font_names_in_english);
     // No application menu in the window (as in Illustrator): the bar starts at File on every
     // platform. The VectorCraft menu stays in the tree: the native Mac bar takes it from there.
-    let tree: Vec<(&str, Vec<Item>)> = tree.into_iter().filter(|(title, _)| *title != "VectorCraft").collect();
+    // An embedding page's hidden menus leave the bar too (their commands still run).
+    let tree: Vec<(&str, Vec<Item>)> =
+        tree.into_iter().filter(|(title, _)| *title != "VectorCraft" && !app.ui.host_hidden_menus.iter().any(|m| m == title)).collect();
     // A menu bar for its layout and menu-button style, but the titles use `Popup::menu` directly:
     // egui 0.37's `MenuButton` opens the title under a resting pointer while another menu is open,
     // and the app switches titles on movement only (`switch_on_hover`, the native behaviour).
@@ -211,7 +213,8 @@ pub(crate) fn home_key(app: &VectorcraftApp) -> (Option<u64>, usize) {
 
 /// Whether the Home screen is up: chosen with the Home button (`app.home`), or no document is open
 /// and Preferences › General › Show The Home Screen When No Documents Are Open is on (#394). Off,
-/// an app with no document shows an empty window, and the Home button still opens the screen.
+/// an app with no document shows an empty window, and the Home button still opens the screen. An
+/// embedding page's message for the empty window (`vectorcraft:configure`) stands in for it.
 pub(crate) fn home_showing(app: &VectorcraftApp) -> bool {
-    app.ui.home.is_some() || (app.session.active().is_none() && app.session.prefs.show_home_screen)
+    app.ui.home.is_some() || (app.session.active().is_none() && app.session.prefs.show_home_screen && app.ui.host_empty_message.is_none())
 }

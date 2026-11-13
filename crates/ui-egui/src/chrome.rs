@@ -62,14 +62,15 @@ pub fn app_bar(app: &mut VectorcraftApp, ui: &mut Ui) {
             titlebar::drag_area(ui, ui.max_rect());
         }
         ui.horizontal_centered(|ui| {
-            // With the system title bar the OS draws its own icon: no in-app brand mark.
-            if !system {
+            // With the system title bar the OS draws its own icon: no in-app brand mark; nor when
+            // an embedding page hid it.
+            if !system && !app.ui.host_hide_mark {
                 let (r, _) = ui.allocate_exact_size(vec2(MARK, MARK), Sense::hover());
                 crate::brand::paint_mark(ui, r);
                 ui.add_space(6.0);
             }
             let on_home = menus::home_showing(app);
-            if widgets::icon_button(ui, "house", tl!("Home"), on_home, 20.0).clicked() {
+            if !menus::host_hidden(app, "app.home") && widgets::icon_button(ui, "house", tl!("Home"), on_home, 20.0).clicked() {
                 app.run("app.home", json!({})).ok();
             }
             ui.add_space(2.0);
@@ -142,7 +143,7 @@ pub fn app_bar(app: &mut VectorcraftApp, ui: &mut Ui) {
                     app.ui.status = e;
                 }
             }
-            if discord {
+            if discord && !menus::host_hidden(app, "help.discord") {
                 ui.add_space(10.0);
                 crate::community::discord_button(app, ui, false);
             }

@@ -62,19 +62,71 @@ fn to_the_app(e: &web_sys::KeyboardEvent) -> bool {
         .is_some_and(|before| before.has_type::<web_sys::HtmlCanvasElement>())
 }
 
+/// Whether nothing on the page has the keyboard: the event went to its body (or the document),
+/// as it does once a text field lets go of the focus without giving it back to the canvas. The
+/// page holds nothing but the app, so such a key is the app's.
+#[cfg(target_arch = "wasm32")]
+fn to_the_page(e: &web_sys::KeyboardEvent) -> bool {
+    use wasm_bindgen::JsCast as _;
+    let Some(target) = e.target() else { return false };
+    target.has_type::<web_sys::Document>() || target.dyn_ref::<web_sys::Element>().is_some_and(|el| matches!(el.tag_name().as_str(), "BODY" | "HTML"))
+}
+
+/// The app's canvas given the keyboard and the press `e` pressed on it again, so egui runs it
+/// (eframe reads keys only from the canvas and its text input).
+#[cfg(target_arch = "wasm32")]
+fn press_on_canvas(e: &web_sys::KeyboardEvent) {
+    use wasm_bindgen::JsCast as _;
+    let Some(canvas) = web_sys::window()
+        .and_then(|w| w.document())
+        .and_then(|d| d.query_selector("canvas").ok().flatten())
+        .and_then(|c| c.dyn_into::<web_sys::HtmlCanvasElement>().ok())
+    else {
+        return;
+    };
+    // Focus failing only leaves the key unpressed, as it was.
+    let _ = canvas.focus();
+    let init = web_sys::KeyboardEventInit::new();
+    init.set_key(&e.key());
+    init.set_code(&e.code());
+    init.set_location(e.location());
+    init.set_repeat(e.repeat());
+    init.set_ctrl_key(e.ctrl_key());
+    init.set_meta_key(e.meta_key());
+    init.set_alt_key(e.alt_key());
+    init.set_shift_key(e.shift_key());
+    init.set_bubbles(true);
+    init.set_cancelable(true);
+    init.set_composed(true);
+    if let Ok(press) = web_sys::KeyboardEvent::new_with_keyboard_event_init_dict("keydown", &init) {
+        // Whether egui took it is the canvas's own business; the browser's action is cancelled.
+        let _ = canvas.dispatch_event(&press);
+    }
+}
+
 /// Cancel the page's default action for [`kept_from_browser`] presses, before eframe's listener
-/// sees the event (it doesn't stop it).
+/// sees the event (it doesn't stop it). Such a press with nothing on the page holding the keyboard
+/// ([`to_the_page`]: Cmd+S after a text field let go) is pressed on the canvas instead, so it saves
+/// rather than the browser's Save Page.
 #[cfg(target_arch = "wasm32")]
 pub(crate) fn keep_app_keys() {
     use wasm_bindgen::JsCast as _;
     let Some(window) = web_sys::window() else { return };
     let on_key = wasm_bindgen::closure::Closure::<dyn FnMut(web_sys::KeyboardEvent)>::new(|e: web_sys::KeyboardEvent| {
         // An IME's keys are its own until it commits.
-        if e.is_composing() || !to_the_app(&e) {
+        if e.is_composing() {
             return;
         }
-        if kept_from_browser(&e.key(), &e.code(), modifiers(&e), e.get_modifier_state("AltGraph")) {
-            e.prevent_default();
+        let app = to_the_app(&e);
+        if !(app || to_the_page(&e)) || !kept_from_browser(&e.key(), &e.code(), modifiers(&e), e.get_modifier_state("AltGraph")) {
+            return;
+        }
+        e.prevent_default();
+        if !app {
+            // Pressed again once this listener has returned: the press on the canvas reaches this
+            // listener too, which can't run inside itself.
+            let press = e.clone();
+            wasm_bindgen_futures::spawn_local(async move { press_on_canvas(&press) });
         }
     });
     if let Err(e) = window.add_event_listener_with_callback_and_bool("keydown", on_key.as_ref().unchecked_ref(), true) {
