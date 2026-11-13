@@ -230,6 +230,10 @@ fn is_collinear(p: Point, a: Point, b: Point) -> bool {
     cross.abs() <= 1e-6 * va.hypot().max(1.0) * vb.hypot().max(1.0) && va.dot(vb) < 0.0
 }
 
+/// How near the first anchor's point a last anchor of path data written by hand (SVG's, a
+/// command's) is the end of the closing segment, not an anchor ([`SubPath::fold_closing`]).
+pub const CLOSE_FOLD: f64 = 1e-7;
+
 /// Most anchors [`with_anchor_budget`] lets paths read together: 32M (about 1.5 GB), 4M in the web
 /// build.
 pub const MAX_READ_ANCHORS: usize = if cfg!(target_arch = "wasm32") { 4 << 20 } else { 32 << 20 };
@@ -241,16 +245,37 @@ std::thread_local! {
 
 /// Run `f` (which reads paths with serde) letting the paths it reads have at most `max` anchors
 /// together; reading more fails. A compressed file of repeated anchors stays small while its paths
-/// take gigabytes once read, past what the web build can address.
+/// take gigabytes once read, past what the web build can address. Run within another, it lets
+/// `f` have no more than the outer read has left, and what `f` reads is charged to the outer
+/// read too.
 pub fn with_anchor_budget<T>(max: usize, f: impl FnOnce() -> T) -> T {
-    struct Restore(Option<usize>);
+    struct Restore {
+        outer: Option<usize>,
+        cap: usize,
+    }
     impl Drop for Restore {
         fn drop(&mut self) {
-            ANCHORS_LEFT.set(self.0);
+            let spent = self.cap.saturating_sub(ANCHORS_LEFT.get().unwrap_or(self.cap));
+            ANCHORS_LEFT.set(self.outer.map(|left| left.saturating_sub(spent)));
         }
     }
-    let _restore = Restore(ANCHORS_LEFT.replace(Some(max)));
+    let outer = ANCHORS_LEFT.get();
+    let cap = outer.map_or(max, |left| left.min(max));
+    let _restore = Restore { outer, cap };
+    ANCHORS_LEFT.set(Some(cap));
     f()
+}
+
+/// Spend `n` anchors of what [`with_anchor_budget`] lets the paths being read have, if it is in
+/// force: anchors read from SVG path data (`d`), and those a live shape saved without its path
+/// rebuilds, count as those read one by one do.
+pub fn spend_anchor_budget(n: usize) -> Result<(), String> {
+    if let Some(left) = ANCHORS_LEFT.get() {
+        // Files are read with MAX_READ_ANCHORS, the one budget outside tests.
+        let left = left.checked_sub(n).ok_or_else(|| format!("the paths have more than {MAX_READ_ANCHORS} anchors"))?;
+        ANCHORS_LEFT.set(Some(left));
+    }
+    Ok(())
 }
 
 /// A subpath's anchors read within [`with_anchor_budget`].
@@ -264,12 +289,7 @@ fn anchors_within<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<Anchor>,
         fn visit_seq<A: serde::de::SeqAccess<'de>>(self, mut a: A) -> Result<Vec<Anchor>, A::Error> {
             let mut out = Vec::new();
             while let Some(anchor) = a.next_element::<Anchor>()? {
-                if let Some(left) = ANCHORS_LEFT.get() {
-                    let left = left
-                        .checked_sub(1)
-                        .ok_or_else(|| serde::de::Error::custom(format!("the paths have more than {MAX_READ_ANCHORS} anchors")))?;
-                    ANCHORS_LEFT.set(Some(left));
-                }
+                spend_anchor_budget(1).map_err(serde::de::Error::custom)?;
                 out.push(anchor);
             }
             Ok(out)
@@ -290,6 +310,33 @@ pub struct SubPath {
 impl SubPath {
     pub fn new(anchors: Vec<Anchor>, closed: bool) -> Self {
         Self { anchors, closed }
+    }
+    /// On closing: a last anchor at the first anchor's point (`within`: `None`, the same point
+    /// bit for bit; `Some(t)`, nearer than `t`) is the end of the closing segment, not an anchor.
+    /// It is dropped and its in handle given to the first anchor. Whether one was.
+    pub fn fold_closing(&mut self, within: Option<f64>) -> bool {
+        let at_start = |a: Point, b: Point| match within {
+            None => crate::notation::same(a, b),
+            Some(t) => a.distance(b) < t,
+        };
+        if self.anchors.len() > 1
+            && let (Some(first), Some(last)) = (self.anchors.first(), self.anchors.last())
+            && at_start(first.p, last.p)
+            && let Some(end) = self.anchors.pop()
+            && let Some(first) = self.anchors.first_mut()
+        {
+            first.h_in = end.h_in;
+            return true;
+        }
+        false
+    }
+    /// A cubic segment from the last anchor (whose out handle becomes `c1`) to a new corner
+    /// anchor at `p` with in handle `c2`.
+    pub(crate) fn push_cubic(&mut self, c1: Point, c2: Point, p: Point) {
+        if let Some(a) = self.anchors.last_mut() {
+            a.h_out = c1;
+        }
+        self.anchors.push(Anchor { p, h_in: c2, h_out: p, kind: AnchorKind::Corner });
     }
     /// Polyline from points.
     pub fn polyline(points: &[Point], closed: bool) -> Self {
@@ -492,8 +539,9 @@ impl SubPath {
     }
 }
 
-/// A (possibly multi-subpath) path.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+/// A (possibly multi-subpath) path. Serialized as `{"subpaths": […]}`, or, in a saved file, as SVG
+/// path data (`{"d": …, "kinds"?: …}`, see [`crate::notation`]); either is read.
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct PathData {
     pub subpaths: Vec<SubPath>,
 }
@@ -540,8 +588,7 @@ impl PathData {
                     last = p;
                 }
                 PathEl::QuadTo(q, p) => {
-                    let c1 = last + (q - last) * (2.0 / 3.0);
-                    let c2 = p + (q - p) * (2.0 / 3.0);
+                    let (c1, c2) = quad_handles(last, q, p);
                     push_curve(&mut cur, last, c1, c2, p);
                     last = p;
                 }
@@ -552,33 +599,36 @@ impl PathData {
                 PathEl::ClosePath => {
                     if let Some(mut sp) = cur.take() {
                         // Merge a closing anchor that duplicates the start.
-                        if sp.anchors.len() > 1
-                            && let (Some(first), Some(lastp)) = (sp.anchors.first().map(|a| a.p), sp.anchors.last().map(|a| a.p))
-                            && first.distance(lastp) < 1e-7
-                            && let Some(l) = sp.anchors.pop()
-                            && let Some(a0) = sp.anchors.first_mut()
-                        {
-                            a0.h_in = l.h_in;
-                        }
+                        sp.fold_closing(Some(CLOSE_FOLD));
                         sp.closed = true;
-                        for a in &mut sp.anchors {
-                            *a = Anchor::with_handles(a.p, a.h_in, a.h_out);
-                        }
                         last = sp.anchors.first().map(|a| a.p).unwrap_or(last);
                         subpaths.push(sp);
                     }
                 }
             }
         }
-        if let Some(mut sp) = cur
+        if let Some(sp) = cur
             && !sp.anchors.is_empty()
         {
-            for a in &mut sp.anchors {
-                *a = Anchor::with_handles(a.p, a.h_in, a.h_out);
-            }
             subpaths.push(sp);
         }
-        Self { subpaths }
+        let mut path = Self { subpaths };
+        path.infer_kinds_from_handles();
+        path
+    }
+
+    /// The anchors' kinds as [`PathData::from_bezpath`] gives them, for path data that says
+    /// nothing of kinds, such as SVG's: in every closed subpath and in an open last one, from the
+    /// handles ([`Anchor::with_handles`]: smooth where they line up on opposite sides); in an
+    /// open subpath a later one follows, corners.
+    pub fn infer_kinds_from_handles(&mut self) {
+        let last = self.subpaths.len().saturating_sub(1);
+        for (i, sp) in self.subpaths.iter_mut().enumerate() {
+            let from_handles = sp.closed || i == last;
+            for a in &mut sp.anchors {
+                *a = if from_handles { Anchor::with_handles(a.p, a.h_in, a.h_out) } else { Anchor { kind: AnchorKind::Corner, ..*a } };
+            }
+        }
     }
     /// Tight geometric bounds (curve extrema, not control points), measured by [`curve_bounds`]: a
     /// segment with a control point that is not finite or past `f64::MAX / 16` in x or y is measured
@@ -771,11 +821,13 @@ pub fn segment_bounds(seg: PathSeg) -> Rect {
 }
 
 fn push_curve(cur: &mut Option<SubPath>, last: Point, c1: Point, c2: Point, p: Point) {
-    let sp = cur.get_or_insert_with(|| SubPath { anchors: vec![Anchor::corner(last)], closed: false });
-    if let Some(a) = sp.anchors.last_mut() {
-        a.h_out = c1;
-    }
-    sp.anchors.push(Anchor { p, h_in: c2, h_out: p, kind: AnchorKind::Corner });
+    cur.get_or_insert_with(|| SubPath { anchors: vec![Anchor::corner(last)], closed: false }).push_cubic(c1, c2, p);
+}
+
+/// The handles of the cubic that draws the quadratic from `from` through control point `q` to
+/// `to`: two thirds of the way from each end to `q` (the same curve, exactly).
+pub(crate) fn quad_handles(from: Point, q: Point, to: Point) -> (Point, Point) {
+    (from + (q - from) * (2.0 / 3.0), to + (q - to) * (2.0 / 3.0))
 }
 
 #[cfg(test)]

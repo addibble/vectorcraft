@@ -11,9 +11,11 @@ pub mod arc;
 pub mod bez;
 pub mod corners;
 pub mod hit;
+pub mod notation;
 pub mod path;
 pub mod projective;
 pub mod recognize;
+pub mod saved;
 pub mod shapes;
 pub mod snap;
 
@@ -133,36 +135,56 @@ pub fn constrain_axes(deg: f64) -> Option<Affine> {
         return None;
     }
     let d = normalize_deg(deg);
-    let (cos, sin) = if d == 0.0 {
-        return None;
-    } else if d == 90.0 {
-        (0.0, 1.0)
-    } else if d == 180.0 {
-        (-1.0, 0.0)
-    } else if d == -90.0 {
-        (0.0, -1.0)
-    } else {
-        let r = d.to_radians();
-        (r.cos(), r.sin())
+    let (cos, sin) = match quarter_turn(d) {
+        Some((_, 1.0)) => return None,
+        // A half turn's sine as these axes always had it: positive zero.
+        Some((sin, cos)) => (cos, if sin == 0.0 { 0.0 } else { sin }),
+        None => {
+            let r = d.to_radians();
+            (r.cos(), r.sin())
+        }
     };
     // Counter-clockwise on a y-down page is a negative rotation of the coordinates.
     Some(Affine::new([cos, -sin, sin, cos, 0.0, 0.0]))
+}
+
+/// The sine and cosine of `deg` degrees when it is a whole number of quarter turns (finite):
+/// exact, a whole turn's sine positive zero and a half turn's negative zero. `None` otherwise.
+pub fn quarter_turn(deg: f64) -> Option<(f64, f64)> {
+    if !deg.is_finite() {
+        return None;
+    }
+    let d = normalize_deg(deg);
+    if d == 0.0 {
+        Some((0.0, 1.0))
+    } else if d == 90.0 {
+        Some((1.0, 0.0))
+    } else if d == 180.0 {
+        Some((-0.0, -1.0))
+    } else if d == -90.0 {
+        Some((-1.0, 0.0))
+    } else {
+        None
+    }
+}
+
+/// The sine and cosine of `deg` degrees: exact at quarter turns ([`quarter_turn`]), else those
+/// of `deg.to_radians()` bit for bit.
+pub fn sin_cos_deg(deg: f64) -> (f64, f64) {
+    quarter_turn(deg).unwrap_or_else(|| deg.to_radians().sin_cos())
 }
 
 /// A rotation by `deg` (clockwise as seen on the y-down page, as [`Affine::rotate`] takes it in
 /// radians), exact at quarter turns and the identity at whole turns; 0 is `Affine::rotate(0.0)`
 /// as before, and any other angle is `Affine::rotate` itself.
 pub fn rotate_deg(deg: f64) -> Affine {
-    if deg.is_finite() && deg != 0.0 {
-        let d = normalize_deg(deg);
-        if d == 0.0 {
+    if deg != 0.0
+        && let Some((sin, cos)) = quarter_turn(deg)
+    {
+        if cos == 1.0 {
             return Affine::IDENTITY;
         }
-        if d % 90.0 == 0.0
-            && let Some(a) = constrain_axes(-d)
-        {
-            return a;
-        }
+        return Affine::new([cos, sin, -sin, cos, 0.0, 0.0]);
     }
     Affine::rotate(deg.to_radians())
 }
@@ -249,6 +271,12 @@ mod tests {
         assert_eq!(rotate_deg(360.0) * v, v);
         assert_eq!(rotate_deg(0.0), Affine::rotate(0.0));
         assert_eq!(rotate_deg(30.0), Affine::rotate(30f64.to_radians()));
+        // A half turn's zeros keep their signs, bit for bit, as saved transforms depend on them.
+        let bits = |a: Affine| a.as_coeffs().map(f64::to_bits);
+        let half = [-1.0, -0.0, 0.0, -1.0, 0.0, 0.0].map(f64::to_bits);
+        assert_eq!(bits(rotate_deg(180.0)), half);
+        assert_eq!(bits(rotate_deg(-180.0)), half);
+        assert_eq!(bits(constrain_axes(180.0).unwrap()), half);
         assert_eq!(constrain_rotation(30.0), Some(-30.0));
         assert_eq!(constrain_rotation(0.0), None);
         assert_eq!(constrain_rotation(-360.0), None);

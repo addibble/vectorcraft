@@ -7,5 +7,6 @@ mod native_guides;
 mod native_v3;
 mod native_v4;
 mod native_v5;
+mod native_v6;
 mod save_options;
 mod streaming;

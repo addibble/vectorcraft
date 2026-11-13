@@ -1,24 +1,6 @@
-use std::cell::Cell;
-
-thread_local! {
-    static SAVING: Cell<bool> = const { Cell::new(false) };
-}
-
 /// Whether the model is being serialized as a saved file holds it, on this thread ([`crate::as_saved`]).
 pub fn saving() -> bool {
-    SAVING.with(Cell::get)
-}
-
-/// Restores the previous mode when dropped, so a panic inside [`crate::as_saved`] cannot
-/// leave it on.
-pub(crate) struct Restore(pub(crate) bool);
-impl Drop for Restore {
-    fn drop(&mut self) {
-        SAVING.with(|c| c.set(self.0));
-    }
-}
-pub(crate) fn enter() -> Restore {
-    Restore(SAVING.with(|c| c.replace(true)))
+    vectorcraft_geom::saved::saving()
 }
 
 pub fn left_out<T: Default + PartialEq>(v: &T) -> bool {

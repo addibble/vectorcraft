@@ -2,8 +2,9 @@ use super::attributes::ObjectAttributes;
 use super::extras::{Extras, NO_EXTRAS, NodeExtras};
 use super::ids::NodeId;
 use super::kind::NodeKind;
+use super::live_shape::LiveShape;
 use super::opacity::{Knockout, OpacityMask};
-use super::{Appearance, BlendMode, Deserialize, Node, PathData, Serialize, one, yes};
+use super::{Appearance, BlendMode, Deserialize, FillRule, Node, PathData, Serialize, one, yes};
 
 /// Field `name` of a [`Node`] written as `v`, or skipped. A function of its own, so the long field
 /// list stays one straight run of calls.
@@ -83,7 +84,14 @@ impl Serialize for Node {
         field!("type_outlines", &e.type_outlines);
         field!("pixelated", &e.pixelated);
         field!("shaper", &e.shaper);
-        field!("kind", &self.kind);
+        match LiveKind::saved(&self.kind) {
+            Some(live) => {
+                field!("kind", &live);
+            }
+            None => {
+                field!("kind", &self.kind);
+            }
+        }
         field!("graphic_style", &e.graphic_style);
         field!("attrs", &e.attrs);
         field!("slice", &e.slice);
@@ -169,6 +177,34 @@ pub(crate) fn counted_list<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>
         }
     }
     d.deserialize_seq(Items(std::marker::PhantomData))
+}
+
+/// A live shape's [`NodeKind::Path`] as a saved file holds it: without the path, which the shape's
+/// parameters rebuild exactly ([`LiveShape::to_path`]). The fields and their order are the
+/// variant's, `path` left out.
+#[derive(Serialize)]
+#[serde(tag = "type", rename = "path")]
+struct LiveKind<'a> {
+    #[serde(skip_serializing_if = "LiveKind::default_rule")]
+    rule: FillRule,
+    live: &'a LiveShape,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    clipping: bool,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    guide: bool,
+}
+
+impl<'a> LiveKind<'a> {
+    /// `kind` as saved without its path, while geometry is saved in SVG's notation
+    /// ([`vectorcraft_geom::saved::svg_geometry`]: readers of older versions require the path) and
+    /// `kind` is a live shape whose path its parameters rebuild exactly.
+    fn saved(kind: &'a NodeKind) -> Option<Self> {
+        let NodeKind::Path { path, rule, live: Some(live), clipping, guide } = kind else { return None };
+        (vectorcraft_geom::saved::svg_geometry() && live.to_path() == *path).then_some(Self { rule: *rule, live, clipping: *clipping, guide: *guide })
+    }
+    fn default_rule(rule: &FillRule) -> bool {
+        *rule == FillRule::default()
+    }
 }
 
 /// How a [`Node`] is read: the flat field list of the file format. Fields move into the node
