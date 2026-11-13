@@ -8,7 +8,7 @@ use crate::{Node, NodeKind};
 
 /// How a compound shape's member combines with the area of the members below it. The backmost
 /// member's mode does not matter: it starts the area.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum ShapeMode {
     /// Adds the member's area.

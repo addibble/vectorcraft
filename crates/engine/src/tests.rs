@@ -2998,6 +2998,416 @@ fn document_inspect_scopes_by_ids_kind_and_page() {
     }
 }
 
+/// `document.query` counts its answer as its caller writes it: compact unless `layout` says
+/// pretty, which the MCP server always does. A match past the limit is refused either way, and
+/// the refusal says which layout it counted.
+#[test]
+fn document_query_counts_the_answer_in_the_callers_layout() {
+    let mut s = session();
+    let a = rect(&mut s, 0.0, 0.0, 10.0, 10.0).0;
+    let long = "x".repeat(crate::query::MAX_BYTES + 1);
+    s.execute("object.setProps", &json!({"ids": [a], "name": long})).unwrap();
+    let path = "$.layers[0].kind.children[0].name";
+    let compact = s.execute("document.query", &json!({"path": path})).unwrap_err().to_string();
+    assert!(compact.contains("more than 1 MiB, the most") && !compact.contains("pretty"), "{compact}");
+    let pretty = s.execute("document.query", &json!({"path": path, "layout": "pretty"})).unwrap_err().to_string();
+    assert!(pretty.contains("more than 1 MiB pretty-printed"), "{pretty}");
+    assert_eq!(s.execute("document.query", &json!({"path": path, "limit": 0, "layout": "pretty"})).unwrap()["total"], 1);
+    let bad = s.execute("document.query", &json!({"path": path, "layout": "sideways"})).unwrap_err().to_string();
+    assert!(bad.contains("`layout` must be compact or pretty"), "{bad}");
+}
+
+/// `document.query` and `document.schema` read a large model a part at a time: a JSONPath's
+/// matches with their normalized paths, bounded by `limit` and `depth`; one type's schema, or
+/// the type of the value at a path.
+#[test]
+fn document_query_and_schema_read_the_model_a_part_at_a_time() {
+    let mut s = session();
+    let a = rect(&mut s, 0.0, 0.0, 10.0, 10.0).0;
+    s.execute("object.setProps", &json!({"ids": [a], "name": "Hero Banner"})).unwrap();
+    let v = s.execute("document.query", &json!({"path": "$..[?@.name == 'Hero Banner'].id"})).unwrap();
+    assert_eq!(v["total"], 1);
+    assert_eq!(v["matches"][0]["value"], a);
+    let v = s.execute("document.query", &json!({"path": "$.layers[0]", "depth": 2})).unwrap();
+    assert_eq!(v["matches"][0]["value"]["kind"]["children"], "[…1 items]", "{v}");
+    assert!(s.execute("document.query", &json!({})).is_err());
+    assert!(s.execute("document.query", &json!({"path": "$.x", "limit": "many"})).is_err());
+
+    let v = s.execute("document.schema", &json!({})).unwrap();
+    assert_eq!(v["type"], "Document");
+    let v = s.execute("document.schema", &json!({"at": "$.layers[0].kind.children[0].kind"})).unwrap();
+    assert!(v["properties"].as_array().unwrap().iter().any(|p| p["name"] == "path"), "{v}");
+    assert!(v["variants"].is_null(), "the value's variant alone, not every kind: {v}");
+    assert!(s.execute("document.schema", &json!({"type": "Node", "at": "$"})).is_err());
+    assert!(s.execute("document.schema", &json!({"type": 5})).is_err());
+    assert_eq!(s.execute("document.schema", &json!({"index": true})).unwrap()["start"], "Document");
+    // Another application's attributes on a node have a schema too (`Node.foreign`).
+    let foreign = s.execute("document.schema", &json!({"type": "ForeignAttribute"})).unwrap();
+    assert!(foreign["properties"].as_array().unwrap().iter().any(|p| p["name"] == "ns"), "{foreign}");
+    // A paragraph's list (Paragraph panel › Bullets) has a schema too (`ParaStyle.list`).
+    let list = s.execute("document.schema", &json!({"type": "ParaList"})).unwrap();
+    assert!(list["properties"].as_array().unwrap().iter().any(|p| p["name"] == "bullet"), "{list}");
+    assert!(list["properties"].as_array().unwrap().iter().any(|p| p["name"] == "number"), "a numbered list's style too: {list}");
+}
+
+/// `document.patch` edits the model by JSON Patch at the pointers `document.query` answers: one
+/// undo step, journaled, all or none, with fresh ids for what is added or copied.
+#[test]
+fn document_patch_edits_the_model_at_query_pointers_as_one_undo_step() {
+    let mut s = session();
+    let a = rect(&mut s, 0.0, 0.0, 10.0, 10.0).0;
+    let v = s.execute("document.query", &json!({"path": format!("$.layers[0].kind.children[?@.id == {a}]")})).unwrap();
+    let pointer = v["matches"][0]["pointer"].as_str().unwrap().to_string();
+    assert_eq!(pointer, "/layers/0/kind/children/0");
+    let journal = s.journal.len();
+    let r = s
+        .execute(
+            "document.patch",
+            &json!({"label": "Fade and copy", "patch": [
+                {"op": "add", "path": format!("{pointer}/opacity"), "value": 0.5},
+                {"op": "copy", "from": pointer, "path": "/layers/0/kind/children/-"},
+                {"op": "replace", "path": "/artboards/0/name", "value": "ace"}
+            ]}),
+        )
+        .unwrap();
+    let copy_id = s.doc().unwrap().doc.layers[0].children().unwrap()[1].id.0;
+    assert_eq!(r, json!({"applied": 3, "freshIds": 1, "newIds": [copy_id], "newArtboardIds": []}));
+    let d = s.doc().unwrap().doc.clone();
+    assert_eq!(d.node(NodeId(a)).unwrap().opacity, 0.5);
+    let copy = d.layers[0].children().unwrap()[1].clone();
+    assert_ne!(copy.id.0, a, "the copy has its own id");
+    assert_eq!(copy.opacity, 0.5);
+    assert_eq!(d.artboards[0].name, "ace");
+    assert!(d.peek_next_id() > copy.id.0);
+    assert_eq!(s.journal.len(), journal + 1, "one journal entry");
+    assert_eq!(s.doc().unwrap().history.undo.last().unwrap().label, "Fade and copy");
+    s.execute("edit.undo", &json!({})).unwrap();
+    let d = s.doc().unwrap().doc.clone();
+    assert_eq!((d.node(NodeId(a)).unwrap().opacity, d.layers[0].children().unwrap().len(), d.artboards[0].name.as_str()), (1.0, 1, "Artboard 1"));
+
+    // All or none: a failing `test` leaves the document as it was, naming the operation.
+    let before = s.doc().unwrap().doc.clone();
+    let err = s.execute("document.patch", &json!({"patch": [{"op": "replace", "path": "/artboards/0/name", "value": "x"}, {"op": "test", "path": "/artboards/0/name", "value": "nope"}]})).unwrap_err().to_string();
+    assert!(err.contains("'/1'"), "{err}");
+    assert_eq!(s.doc().unwrap().doc, before);
+    // What the model refuses is refused whole.
+    let err =
+        s.execute("document.patch", &json!({"patch": [{"op": "replace", "path": "/artboards", "value": "not a list"}]})).unwrap_err().to_string();
+    assert!(err.contains("does not load"), "{err}");
+    assert_eq!(s.doc().unwrap().doc, before);
+    assert!(s.execute("document.patch", &json!({"patch": []})).is_err());
+    assert!(s.execute("document.patch", &json!({"patch": [{"op": "frobnicate", "path": "/x"}]})).is_err());
+}
+
+/// `document.query`, `document.patch` and `document.schema` read the document as a saved file
+/// holds it: a pointer a query answers resolves in the file's JSON, a field left out at its
+/// default is absent from both and set with `add`, and `document.json` still gives every field a reader would fill in.
+#[test]
+fn query_pointers_resolve_in_the_saved_file() {
+    let mut s = session();
+    let t =
+        s.execute("text.create", &json!({"x": 10, "y": 10, "text": "Ace", "area": {"width": 100, "height": 40}})).unwrap()["id"].as_u64().unwrap();
+    let v = s.execute("document.query", &json!({"path": format!("$..[?@.id == {t}].kind")})).unwrap();
+    let pointer = v["matches"][0]["pointer"].as_str().unwrap().to_string();
+    let saved: Value = serde_json::from_slice(&vectorcraft_format::save(&s.doc().unwrap().doc, false)).unwrap();
+    let in_file = saved["document"].pointer(&pointer).expect("the query's pointer is in the file");
+    assert_eq!(in_file, &v["matches"][0]["value"], "the query reads what the file holds");
+    // A run's scale at its default is left out of both; document.json keeps it.
+    assert_eq!(in_file.pointer("/runs/0/style/h_scale"), None, "{in_file}");
+    let full = s.execute("document.json", &json!({})).unwrap();
+    assert_eq!(full.pointer(&format!("{pointer}/runs/0/style/h_scale")), Some(&json!(100.0)));
+    // Area options at their defaults are left out too, and set with add.
+    assert!(in_file.get("area").is_none(), "{in_file}");
+    // A field left out is set with add; replace finds nothing to replace.
+    let err = s.execute("document.patch", &json!({"patch": [{"op": "replace", "path": format!("{pointer}/area/gutter"), "value": 12}]})).unwrap_err();
+    assert!(err.to_string().contains("area"), "{err}");
+    s.execute("document.patch", &json!({"patch": [{"op": "add", "path": format!("{pointer}/area"), "value": {"gutter": 12}}]})).unwrap();
+    let NodeKind::Text(text) = &s.doc().unwrap().doc.node(NodeId(t)).unwrap().kind else { panic!("text") };
+    assert_eq!(text.area.gutter, 12.0);
+    // The schema says why a key may be missing: the field is optional, with its default.
+    let schema = s.execute("document.schema", &json!({"type": "AreaOptions"})).unwrap();
+    let gutter = schema["properties"].as_array().unwrap().iter().find(|p| p["name"] == "gutter").unwrap().clone();
+    assert_eq!((gutter.get("required").and_then(Value::as_bool).unwrap_or(false), &gutter["default"]), (false, &json!(18.0)), "{gutter}");
+}
+
+/// A copy placed before what it copies, in the layer or in a mask's art, takes the fresh id: the
+/// original keeps its own, and the answer names the new ids. An artboard copied gets an id of its
+/// own too, and one the patch removes is never given out again.
+#[test]
+fn document_patch_gives_the_copy_the_fresh_id_and_the_original_keeps_its_own() {
+    let mut s = session();
+    let a = rect(&mut s, 0.0, 0.0, 10.0, 10.0).0;
+    let r = s
+        .execute("document.patch", &json!({"patch": [{"op": "copy", "from": "/layers/0/kind/children/0", "path": "/layers/0/kind/children/0"}]}))
+        .unwrap();
+    let d = s.doc().unwrap().doc.clone();
+    let ids: Vec<u64> = d.layers[0].children().unwrap().iter().map(|c| c.id.0).collect();
+    assert_eq!(ids[1], a, "the original keeps its id: {ids:?}");
+    assert_ne!(ids[0], a);
+    assert_eq!(r["newIds"], json!([ids[0]]));
+    let first = d.artboards[0].id;
+    let r = s.execute("document.patch", &json!({"patch": [{"op": "copy", "from": "/artboards/0", "path": "/artboards/0"}]})).unwrap();
+    let d = s.doc().unwrap().doc.clone();
+    assert_eq!(d.artboards[1].id, first, "the original artboard keeps its id");
+    let copy = d.artboards[0].id;
+    assert_ne!(copy, first);
+    assert_eq!(r["newArtboardIds"], json!([copy]));
+    // An artboard removed by a patch leaves its id retired: the next copy gets another.
+    s.execute("document.patch", &json!({"patch": [{"op": "remove", "path": "/artboards/0"}]})).unwrap();
+    s.execute("document.patch", &json!({"patch": [{"op": "copy", "from": "/artboards/0", "path": "/artboards/-"}]})).unwrap();
+    let d = s.doc().unwrap().doc.clone();
+    assert!(d.artboards.iter().all(|a| a.id != copy), "{:?}", d.artboards.iter().map(|a| a.id).collect::<Vec<_>>());
+}
+
+/// What reading the saved file would change is refused: a value out of its range, art too deep.
+/// An object a saved selection names may still be removed, as Delete removes it.
+#[test]
+fn document_patch_refuses_what_a_file_would_read_back_otherwise() {
+    let mut s = session();
+    let a = rect(&mut s, 0.0, 0.0, 10.0, 10.0).0;
+    let before = s.doc().unwrap().doc.clone();
+    let err = s.execute("document.patch", &json!({"patch": [{"op": "add", "path": "/raster_effects_ppi", "value": 5000}]})).unwrap_err().to_string();
+    assert!(err.contains("/raster_effects_ppi"), "{err}");
+    assert_eq!(s.doc().unwrap().doc, before);
+    // Groups nested past what the model holds, well within the levels of JSON a file holds: the
+    // depth limit reading applies refuses them.
+    let mut deep = json!({"kind": {"type": "group", "children": []}});
+    for _ in 0..vectorcraft_doc::depth::MAX_DEPTH + 2 {
+        deep = json!({"kind": {"type": "group", "children": [deep]}});
+    }
+    let err =
+        s.execute("document.patch", &json!({"patch": [{"op": "add", "path": "/layers/0/kind/children/-", "value": deep}]})).unwrap_err().to_string();
+    assert!(err.contains("not one a file can hold"), "{err}");
+    assert_eq!(s.doc().unwrap().doc, before);
+    s.execute("select.set", &json!({"ids": [a]})).unwrap();
+    s.execute("select.save", &json!({"name": "Mark"})).unwrap();
+    s.execute("document.patch", &json!({"patch": [{"op": "remove", "path": "/layers/0/kind/children/0"}]})).unwrap();
+    assert!(s.doc().unwrap().doc.node(NodeId(a)).is_none());
+}
+
+/// While symbol editing is on, the document's JSON does not hold the art being edited: a patch
+/// waits until it ends. Nor may a patch start opacity-mask editing by writing its state.
+#[test]
+fn document_patch_waits_for_editing_modes_and_cannot_start_one() {
+    let mut s = session();
+    let a = rect(&mut s, 0.0, 0.0, 10.0, 10.0).0;
+    s.execute("symbol.new", &json!({"name": "Mark", "ids": [a]})).unwrap();
+    s.execute("symbol.edit", &json!({"name": "Mark"})).unwrap();
+    let patch = json!({"patch": [{"op": "replace", "path": "/artboards/0/name", "value": "x"}]});
+    let err = s.execute("document.patch", &patch).unwrap_err().to_string();
+    assert!(err.contains("symbol"), "{err}");
+    s.execute("symbol.exitEditing", &json!({})).unwrap();
+    s.execute("document.patch", &patch).unwrap();
+    // Puppet Warp's pins are kept outside the JSON too.
+    let b = rect(&mut s, 20.0, 0.0, 10.0, 10.0).0;
+    s.execute("object.puppetWarp", &json!({"id": b, "pins": [[25, 5]], "moved": [[25, 5]], "rest": true})).unwrap();
+    assert!(s.doc().unwrap().doc.puppet.is_some());
+    let err = s.execute("document.patch", &patch).unwrap_err().to_string();
+    assert!(err.contains("Puppet Warp"), "{err}");
+    s.execute("select.none", &json!({})).unwrap();
+    s.execute("document.patch", &patch).unwrap();
+    let layer = s.doc().unwrap().doc.layers[0].id.0;
+    let err = s
+        .execute("document.patch", &json!({"patch": [{"op": "add", "path": "/mask_edit", "value": {"layer": layer, "object": layer}}]}))
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("mask_edit"), "{err}");
+}
+
+/// `replace` and `test` take a field a saved file leaves out as holding its default.
+#[test]
+fn document_patch_replaces_and_tests_a_field_left_out_at_its_default() {
+    let mut s = session();
+    let a = rect(&mut s, 0.0, 0.0, 10.0, 10.0).0;
+    let pointer = "/layers/0/kind/children/0/opacity";
+    let v = s.execute("document.query", &json!({"path": "$.layers[0].kind.children[0]"})).unwrap();
+    assert!(v["matches"][0]["value"].get("opacity").is_none(), "{v}");
+    s.execute(
+        "document.patch",
+        &json!({"patch": [{"op": "test", "path": pointer, "value": 1.0}, {"op": "replace", "path": pointer, "value": 0.25}]}),
+    )
+    .unwrap();
+    assert_eq!(s.doc().unwrap().doc.node(NodeId(a)).unwrap().opacity, 0.25);
+    let err = s
+        .execute("document.patch", &json!({"patch": [{"op": "test", "path": "/layers/0/kind/children/0/locked", "value": true}]}))
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("default"), "{err}");
+}
+
+/// `document.schema {at}` takes an enum tagged in `kind` (an appearance item) as the variant its
+/// tag names, as it does one tagged in `type`; and the schema gives the defaults of fields every
+/// serialization leaves out at them.
+#[test]
+fn document_schema_at_follows_kind_tags_and_gives_every_default() {
+    let mut s = session();
+    let a = rect(&mut s, 0.0, 0.0, 10.0, 10.0).0;
+    let doc = s.execute("document.query", &json!({"path": format!("$..[?@.id == {a}].appearance.items[*].kind")})).unwrap();
+    let kinds: Vec<&str> = doc["matches"].as_array().unwrap().iter().filter_map(|m| m["value"].as_str()).collect();
+    assert!(kinds.len() >= 2 && kinds[0] != kinds[1], "{doc}");
+    for (i, kind) in kinds.iter().enumerate().take(2) {
+        let at = s.execute("document.schema", &json!({"at": format!("$..[?@.id == {a}].appearance.items[{i}]")})).unwrap();
+        assert_eq!(at["tag"], json!(kind), "{at}");
+    }
+    let artboard = s.execute("document.schema", &json!({"type": "Artboard"})).unwrap();
+    let locked = artboard["properties"].as_array().unwrap().iter().find(|p| p["name"] == "locked").unwrap().clone();
+    assert_eq!(locked["default"], json!(false), "{locked}");
+    let root = s.execute("document.schema", &json!({})).unwrap();
+    let rulers = root["properties"].as_array().unwrap().iter().find(|p| p["name"] == "rulers").unwrap().clone();
+    assert_eq!(rulers["default"], json!("global"), "{rulers}");
+}
+
+/// Art added at the end of a layer that holds ruler guides (as a deck's guides layer does) goes
+/// below them, where reading a file would put it; a ruler guide put in a group is refused.
+#[test]
+fn document_patch_appends_art_to_a_layer_holding_ruler_guides() {
+    let mut s = session();
+    let a = rect(&mut s, 0.0, 0.0, 10.0, 10.0).0;
+    s.execute("guide.add", &json!({"pos": 50})).unwrap();
+    let v = s.execute("document.query", &json!({"path": format!("$.layers[0].kind.children[?@.id == {a}]")})).unwrap();
+    let mut art = v["matches"][0]["value"].clone();
+    art.as_object_mut().unwrap().remove("id");
+    let r = s.execute("document.patch", &json!({"patch": [{"op": "add", "path": "/layers/0/kind/children/-", "value": art}]})).unwrap();
+    let new = r["newIds"][0].as_u64().unwrap();
+    let d = s.doc().unwrap().doc.clone();
+    let kids: Vec<(u64, bool)> = d.layers[0].children().unwrap().iter().map(|c| (c.id.0, c.is_ruler_guide())).collect();
+    assert_eq!(kids.iter().map(|k| k.1).collect::<Vec<_>>(), [false, false, true], "{kids:?}");
+    assert_eq!(kids[1].0, new, "the new art goes below the guide: {kids:?}");
+    // A guide moved into a group is refused, not dropped.
+    s.execute("select.set", &json!({"ids": [a, new]})).unwrap();
+    s.execute("object.group", &json!({})).unwrap();
+    let before = s.doc().unwrap().doc.clone();
+    let err = s
+        .execute(
+            "document.patch",
+            &json!({"patch": [{"op": "move", "from": "/layers/0/kind/children/1", "path": "/layers/0/kind/children/0/kind/children/-"}]}),
+        )
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("ruler guide"), "{err}");
+    assert_eq!(s.doc().unwrap().doc, before);
+}
+
+/// An artboard added without an `id` gets a fresh one, as an object does.
+#[test]
+fn document_patch_gives_an_artboard_added_without_an_id_a_fresh_one() {
+    let mut s = session();
+    let v = s.execute("document.query", &json!({"path": "$.artboards[0]"})).unwrap();
+    let mut board = v["matches"][0]["value"].clone();
+    board.as_object_mut().unwrap().remove("id");
+    board["name"] = json!("Two");
+    let r = s.execute("document.patch", &json!({"patch": [{"op": "add", "path": "/artboards/-", "value": board}]})).unwrap();
+    let d = s.doc().unwrap().doc.clone();
+    assert_eq!(d.artboards.len(), 2);
+    assert_ne!(d.artboards[1].id, d.artboards[0].id);
+    assert_eq!(r["newArtboardIds"], json!([d.artboards[1].id]));
+}
+
+/// A document that reads back otherwise than it is (an imported one, made before a range was
+/// checked) is patched as reading makes it, said in the answer's `notes`; a value the patch
+/// itself puts out of its range is still refused.
+#[test]
+fn document_patch_on_a_document_reading_would_change_notes_it_and_refuses_the_patchs_own_out_of_range_values() {
+    let mut s = session();
+    rect(&mut s, 0.0, 0.0, 10.0, 10.0);
+    Arc::make_mut(&mut s.doc_mut().unwrap().doc).raster_effects_ppi = 5000.0;
+    let r = s.execute("document.patch", &json!({"patch": [{"op": "replace", "path": "/artboards/0/name", "value": "ace"}]})).unwrap();
+    assert!(r["notes"].to_string().contains("/raster_effects_ppi"), "{r}");
+    let d = s.doc().unwrap().doc.clone();
+    assert_eq!((d.raster_effects_ppi, d.artboards[0].name.as_str()), (2400.0, "ace"));
+    Arc::make_mut(&mut s.doc_mut().unwrap().doc).raster_effects_ppi = 5000.0;
+    let before = s.doc().unwrap().doc.clone();
+    let err = s
+        .execute("document.patch", &json!({"patch": [{"op": "add", "path": "/raster_effects", "value": {"add_around": 1.0e9}}]}))
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("add_around"), "{err}");
+    assert_eq!(s.doc().unwrap().doc, before);
+}
+
+/// A key no field of the model has is refused, not dropped: on an object, inside a value added,
+/// or at the top level (where a newer version's keys are kept). Foreign data stays open.
+#[test]
+fn document_patch_refuses_a_key_the_model_does_not_have() {
+    let mut s = session();
+    let a = rect(&mut s, 0.0, 0.0, 10.0, 10.0).0;
+    s.execute("object.setProps", &json!({"ids": [a], "name": "Named"})).unwrap();
+    let before = s.doc().unwrap().doc.clone();
+    let v = s.execute("document.query", &json!({"path": format!("$.layers[0].kind.children[?@.id == {a}]")})).unwrap();
+    let mut art = v["matches"][0]["value"].clone();
+    art.as_object_mut().unwrap().remove("id");
+    art["nmae"] = json!("typo");
+    for (op, key) in [
+        (json!({"op": "add", "path": "/layers/0/kind/children/0/opacty", "value": 0.5}), "/layers/0/kind/children/0/opacty"),
+        (json!({"op": "add", "path": "/layers/0/kind/children/-", "value": art}), "/layers/0/kind/children/1/nmae"),
+        (json!({"op": "add", "path": "/raster_effect_ppi", "value": 300}), "/raster_effect_ppi"),
+        (json!({"op": "move", "from": "/layers/0/kind/children/0/name", "path": "/layers/0/kind/children/0/nmae"}), "/layers/0/kind/children/0/nmae"),
+    ] {
+        let err = s.execute("document.patch", &json!({"patch": [op]})).unwrap_err().to_string();
+        assert!(err.contains(key) && err.contains("not a field"), "{err}");
+    }
+    assert_eq!(s.doc().unwrap().doc.layers, before.layers);
+    s.execute("document.patch", &json!({"patch": [{"op": "add", "path": "/unknown", "value": {"vendor": {"any": [1]}}}]})).unwrap();
+    assert_eq!(s.doc().unwrap().doc.unknown.get("vendor"), Some(&json!({"any": [1]})));
+}
+
+/// A patch never gives an id out again: not by lowering the document's counter, nor by naming a
+/// deleted artboard's id.
+#[test]
+fn document_patch_never_gives_an_id_out_again() {
+    let mut s = session();
+    let a = rect(&mut s, 0.0, 0.0, 10.0, 10.0).0;
+    let b = rect(&mut s, 20.0, 0.0, 10.0, 10.0).0;
+    let next = s.doc().unwrap().doc.peek_next_id();
+    let v = s.execute("document.query", &json!({"path": format!("$.layers[0].kind.children[?@.id == {a}]")})).unwrap();
+    let mut art = v["matches"][0]["value"].clone();
+    art.as_object_mut().unwrap().remove("id");
+    let r = s
+        .execute(
+            "document.patch",
+            &json!({"patch": [
+                {"op": "remove", "path": "/layers/0/kind/children/1"},
+                {"op": "replace", "path": "/next_id", "value": 1},
+                {"op": "add", "path": "/layers/0/kind/children/-", "value": art}
+            ]}),
+        )
+        .unwrap();
+    let new = r["newIds"][0].as_u64().unwrap();
+    assert!(new >= next && new != b, "{new}: the removed object's id {b} is not given out again");
+    assert!(s.doc().unwrap().doc.peek_next_id() > new);
+    let r = s.execute("document.patch", &json!({"patch": [{"op": "copy", "from": "/artboards/0", "path": "/artboards/-"}]})).unwrap();
+    let copy = r["newArtboardIds"][0].as_u64().unwrap();
+    s.execute("document.patch", &json!({"patch": [{"op": "remove", "path": "/artboards/1"}]})).unwrap();
+    let v = s.execute("document.query", &json!({"path": "$.artboards[0]"})).unwrap();
+    let mut board = v["matches"][0]["value"].clone();
+    board["id"] = json!(copy);
+    let r = s.execute("document.patch", &json!({"patch": [{"op": "add", "path": "/artboards/-", "value": board}]})).unwrap();
+    let d = s.doc().unwrap().doc.clone();
+    assert_ne!(u64::from(d.artboards[1].id), copy, "the deleted artboard's id is retired");
+    assert_eq!(r["newArtboardIds"], json!([d.artboards[1].id]));
+}
+
+/// The last artboard cannot be patched away; isolation mode ends with the object isolated gone;
+/// `document.schema` describes the model with no document open (only `at` reads one).
+#[test]
+fn document_patch_keeps_an_artboard_and_leaves_isolation_and_schema_needs_no_document() {
+    let mut s = session();
+    let a = rect(&mut s, 0.0, 0.0, 10.0, 10.0).0;
+    let b = rect(&mut s, 20.0, 0.0, 10.0, 10.0).0;
+    let err = s.execute("document.patch", &json!({"patch": [{"op": "remove", "path": "/artboards/0"}]})).unwrap_err().to_string();
+    assert!(err.contains("at least one artboard"), "{err}");
+    s.execute("select.set", &json!({"ids": [a, b]})).unwrap();
+    let g = s.execute("object.group", &json!({})).unwrap()["id"].as_u64().unwrap();
+    s.execute("object.isolate", &json!({"id": g})).unwrap();
+    assert!(s.doc().unwrap().isolation.is_some());
+    s.execute("document.patch", &json!({"patch": [{"op": "remove", "path": "/layers/0/kind/children/0"}]})).unwrap();
+    assert_eq!(s.doc().unwrap().isolation, None);
+
+    let mut bare = Session::new();
+    assert_eq!(bare.execute("document.schema", &json!({"type": "Artboard"})).unwrap()["type"], "Artboard");
+    assert!(bare.execute("document.schema", &json!({"at": "$.artboards[0]"})).is_err());
+}
+
 /// `document.find` searches names, kinds and type content across the whole tree and
 /// answers ids with ancestor paths plus the total, so capped replies stay explicit.
 #[test]

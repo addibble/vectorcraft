@@ -1648,6 +1648,60 @@ fn document_json_checks_brush_art_and_relative_paths_against_the_read_roots() {
     assert!(stored.contains("Broken Band") && stored.contains(&json!(pic).to_string()), "{stored}");
 }
 
+/// `document.query` and `document.schema {at}` for a confined caller: a linked file outside the
+/// read roots is named by its file name as `document.json` names it.
+#[test]
+fn document_queries_name_links_outside_the_read_roots_as_document_json_does() {
+    let away = Folder::new("doc-query-away");
+    let home = Folder::new("doc-query-home");
+    let pic = away.file("photo.png");
+    write(&pic, &crate::tests_links::png(60, 30, BLUE));
+    let mut s = session();
+    let r = s.execute("file.place", &json!({"path": pic, "at": [50, 50]})).unwrap();
+    assert_eq!(r["linked"], true, "{r}");
+    let image = r["ids"][0].as_u64().unwrap();
+    let roots = crate::file_access::AutomationRoots::new(&[&home.0], &[]).unwrap().unwrap();
+    let confined = |s: &mut Session, command: &str, p: Value| crate::file_access::confine(Some(&roots), || s.execute(command, &p));
+    let found = confined(&mut s, "document.query", json!({"path": format!("$.layers..[?@.id == {image}]")})).unwrap();
+    let text = found.to_string();
+    assert!(!text.contains("doc-query-away") && text.contains("photo.png"), "{text}");
+    let at = confined(&mut s, "document.schema", json!({"at": format!("$.layers..[?@.id == {image}].kind")})).unwrap();
+    assert!(!at.to_string().contains("doc-query-away"), "{at}");
+}
+
+/// `document.patch` is not offered to a caller confined to read roots: the document's JSON names
+/// linked files it may not read by file name only, so every patch is refused, the document left
+/// as it was, whether or not it touches a link. Without roots the same patch applies.
+#[test]
+fn document_patch_is_refused_under_read_roots_and_changes_nothing() {
+    let away = Folder::new("doc-patch-away");
+    let home = Folder::new("doc-patch-home");
+    let pic = away.file("photo.png");
+    write(&pic, &crate::tests_links::png(60, 30, BLUE));
+    let mut s = session();
+    let r = s.execute("file.place", &json!({"path": pic, "at": [50, 50]})).unwrap();
+    let image = r["ids"][0].as_u64().unwrap();
+    let pointer = s.execute("document.query", &json!({"path": format!("$.layers..[?@.id == {image}]")})).unwrap()["matches"][0]["pointer"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let roots = crate::file_access::AutomationRoots::new(&[&home.0], &[]).unwrap().unwrap();
+    let before = s.doc().unwrap().doc.clone();
+    let undo_before = s.doc().unwrap().history.undo.len();
+    for patch in [
+        json!([{"op": "add", "path": format!("{pointer}/name"), "value": "Photo"}]),
+        json!([{"op": "replace", "path": "/artboards/0/name", "value": "Ace"}]),
+        json!([{"op": "copy", "from": pointer.clone(), "path": "/layers/0/kind/children/-"}]),
+    ] {
+        let err = crate::file_access::confine(Some(&roots), || s.execute("document.patch", &json!({"patch": patch}))).unwrap_err().to_string();
+        assert!(err.contains("read roots") && err.contains("commands"), "{err}");
+        assert_eq!(s.doc().unwrap().doc, before, "a refused patch changes nothing");
+        assert_eq!(s.doc().unwrap().history.undo.len(), undo_before, "nor the undo history");
+    }
+    s.execute("document.patch", &json!({"patch": [{"op": "add", "path": format!("{pointer}/name"), "value": "Photo"}]})).unwrap();
+    assert_eq!(s.doc().unwrap().doc.node(NodeId(image)).unwrap().name.as_deref(), Some("Photo"));
+}
+
 /// Save As reads its defaults from the catalog; using them must retain current editable links.
 #[test]
 fn native_save_catalog_defaults_keep_placed_documents_editable() {
