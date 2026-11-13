@@ -140,7 +140,7 @@ pub(crate) fn enter(s: &mut Session, p: &Value) -> Result<Value> {
     }
     s.end_text_edit();
     let st = s.doc()?;
-    let back = Return { redo: Arc::new(st.history.redo.clone()), before: Some(st.doc.clone()) };
+    let back = Return::of(st);
     let (isolation, active_layer) = (st.isolation, st.active_layer);
     let layer = s.edit(ENTER, |d, sel| {
         let layer = begin(d, sel, &name, xf, instance)?;
@@ -150,7 +150,8 @@ pub(crate) fn enter(s: &mut Session, p: &Value) -> Result<Value> {
         }
         Ok(layer)
     })?;
-    s.doc_mut()?.symbol_edit_return = back;
+    let st = s.doc_mut()?;
+    st.symbol_edit_return = back.after_entering(st);
     show_editing(s, layer)?;
     let mut out = json!({ "name": name, "layer": layer.0 });
     if let Some(i) = instance {
@@ -198,40 +199,17 @@ fn begin(d: &mut Document, sel: &mut Selection, name: &str, xf: Affine, instance
 /// instead of a step being added, so the document and its redo steps are as they were.
 pub(crate) fn leave(s: &mut Session, _: &Value) -> Result<Value> {
     let Some(se) = s.doc()?.doc.symbol_edit.clone() else { return ok() };
-    super::settle_interaction(s)?;
+    keep_typing(s)?;
     super::distortcmds::finish_edit_text(s.doc_mut()?, se.layer);
     s.end_text_edit();
     let st = s.doc_mut()?;
     let unchanged = !st.doc.symbol_edit.as_ref().is_some_and(|e| e.changed);
-    let Return { redo, before } = std::mem::take(&mut st.symbol_edit_return);
+    let back = std::mem::take(&mut st.symbol_edit_return);
     // Saved while editing: the saved file holds no editing layer, so leaving keeps it saved.
     let saved_here = st.saved_doc.symbol_edit.as_ref().is_some_and(|e| e.layer == se.layer);
     let clean = !st.is_dirty();
-    // Not after edits that were undone (their redo steps hold the editing layer), nor after a save
-    // (taking the entering step back would undo what the save changed). The last step is the
-    // entering step only when it starts from the document entering started from: a batch step
-    // that entered after other edits starts from before them.
-    if unchanged
-        && !saved_here
-        && st.history.redo.is_empty()
-        && let Some(entry) = st.history.undo.last()
-        && before.as_ref().is_some_and(|b| Arc::ptr_eq(b, &entry.doc))
-        && let Some(entry) = st.history.undo.pop()
-    {
-        let now = std::mem::replace(&mut st.doc, entry.doc);
-        // What changed outside the undo history while editing (the current symbol and brush, the
-        // perspective grid's view, export settings, the grid preferences) stays as it is now.
-        if st.doc.unknown != now.unknown || st.doc.export_settings != now.export_settings || st.doc.grid != now.grid {
-            let d = Arc::make_mut(&mut st.doc);
-            d.unknown = now.unknown.clone();
-            d.export_settings = now.export_settings.clone();
-            d.grid = now.grid.clone();
-        }
-        st.selection = Arc::unwrap_or_clone(entry.selection);
-        st.selection.prune(&st.doc);
-        st.history.redo = Arc::unwrap_or_clone(redo);
-        st.revision += 1;
-    } else {
+    // Not after a save: taking the entering step back would undo what the save changed.
+    if !(unchanged && !saved_here && back.take_back(st)) {
         s.edit("Exit Symbol Editing Mode", |d, sel| {
             finish(d, sel);
             Ok(())
@@ -255,13 +233,91 @@ pub(crate) fn finish(d: &mut Document, sel: &mut Selection) {
     }
 }
 
-/// The redo steps entering symbol editing mode cleared, which leaving without an edit gives back,
-/// and the document entering started from, which tells the entering step apart from any other.
-/// Copies of the document's state share the redo steps.
+/// Keep typing in progress before entering or leaving an editing mode, as an edit would keep it
+/// ([`Session::edit`]): it is an edit to save. Only typing: the interaction a batch
+/// (`command.batch`) runs its steps in stays open, so the batch stays one undo step.
+pub(crate) fn keep_typing(s: &mut Session) -> Result<()> {
+    if !s.previewing && super::typing_in_progress(s) {
+        super::settle_interaction(s)?;
+    }
+    Ok(())
+}
+
+/// The redo steps entering an editing mode (symbol editing, opacity mask editing) cleared, which
+/// leaving without an edit gives back, the document entering started from, which tells the
+/// entering step apart from any other, and the document entering made. Copies of the document's
+/// state share the redo steps.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Return {
     redo: Arc<Vec<crate::HistoryEntry>>,
     before: Option<Arc<Document>>,
+    entered: Option<Arc<Document>>,
+}
+
+impl Return {
+    /// What entering an editing mode from `st` as it is now leaves to go back to.
+    pub(crate) fn of(st: &crate::DocState) -> Self {
+        Return { redo: Arc::new(st.history.redo.clone()), before: Some(st.doc.clone()), entered: None }
+    }
+
+    /// Note the document entering made (`st`'s now): only while it is still the document can the
+    /// entering step be taken back.
+    pub(crate) fn after_entering(mut self, st: &crate::DocState) -> Self {
+        self.entered = Some(st.doc.clone());
+        self
+    }
+
+    /// The document entering made ([`Return::after_entering`]).
+    pub(crate) fn entered(&self) -> Option<&Arc<Document>> {
+        self.entered.as_ref()
+    }
+
+    /// The document the mode was entered from.
+    pub(crate) fn before(&self) -> Option<&Arc<Document>> {
+        self.before.as_ref()
+    }
+
+    /// Leave the mode by taking its entering step back, so the document, its selection and its redo
+    /// steps are as they were before it; false, and nothing changed, when that step isn't the last
+    /// one or the document changed since entering. Not after edits that were undone (their redo
+    /// steps hold the editing layer). The last step is the entering step only when it starts from
+    /// the document entering started from: a batch step that entered after other edits starts from
+    /// before them. Edits that made no step of their own (in an undo group, as the entering step's
+    /// part) are kept. What changed outside the undo history meanwhile (the current symbol and
+    /// brush, the perspective grid's view, export settings, the grid preferences) stays as it is
+    /// now.
+    pub(crate) fn take_back(self, st: &mut crate::DocState) -> bool {
+        let Return { redo, before, entered } = self;
+        if !st.history.redo.is_empty() || !entered.is_some_and(|e| changed_outside_history_only(&e, &st.doc)) {
+            return false;
+        }
+        let Some(entry) = st.history.undo.pop_if(|entry| before.as_ref().is_some_and(|b| Arc::ptr_eq(b, &entry.doc))) else { return false };
+        let now = std::mem::replace(&mut st.doc, entry.doc);
+        if st.doc.unknown != now.unknown || st.doc.export_settings != now.export_settings || st.doc.grid != now.grid {
+            let d = Arc::make_mut(&mut st.doc);
+            d.unknown = now.unknown.clone();
+            d.export_settings = now.export_settings.clone();
+            d.grid = now.grid.clone();
+        }
+        st.selection = Arc::unwrap_or_clone(entry.selection);
+        st.selection.prune(&st.doc);
+        st.history.redo = Arc::unwrap_or_clone(redo);
+        st.revision += 1;
+        true
+    }
+}
+
+/// Whether `now` is `then` but for what changes outside the undo history (the document's
+/// preferences, export settings and grid), which [`Return::take_back`] keeps.
+fn changed_outside_history_only(then: &Arc<Document>, now: &Arc<Document>) -> bool {
+    if Arc::ptr_eq(then, now) {
+        return true;
+    }
+    let mut probe = Document::clone(now);
+    probe.unknown.clone_from(&then.unknown);
+    probe.export_settings.clone_from(&then.export_settings);
+    probe.grid.clone_from(&then.grid);
+    probe == **then
 }
 
 /// Isolate the editing layer `layer` and draw into it.

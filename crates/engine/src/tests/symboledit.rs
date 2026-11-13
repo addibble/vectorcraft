@@ -740,3 +740,19 @@ fn moving_a_wrap_object_in_the_edit_gives_the_symbol_the_new_text_wrap() {
     run(&mut s, "symbol.exitEditing", json!({}));
     assert_eq!(symbol_wrap(&s), on_layer);
 }
+
+/// Entering and leaving symbol editing in a batch (`command.batch`) keep the batch one undo step.
+#[test]
+fn a_batch_that_edits_a_symbol_is_one_step() {
+    let (mut s, first, _) = two_instances();
+    let steps = s.doc().unwrap().history.undo.len();
+    let commands = json!([
+        {"command": "select.set", "params": {"ids": [first.0]}},
+        {"command": "symbol.edit", "params": {}},
+        {"command": "shape.ellipse", "params": {"x": 100, "y": 50, "width": 20, "height": 20}},
+        {"command": "symbol.exitEditing", "params": {}},
+        {"command": "object.move", "params": {"ids": [first.0], "dx": 10, "dy": 0}},
+    ]);
+    run(&mut s, "command.batch", json!({"commands": commands}));
+    assert_eq!(s.doc().unwrap().history.undo.len(), steps + 1, "one step for the batch");
+}
