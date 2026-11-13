@@ -40,6 +40,11 @@
 //! - `vectorcraft:taskBarAction` (to the parent): `{ id, selection }`, one of the page's actions
 //!   clicked, with the objects selected when it was.
 //! - `vectorcraft:selection` (to the parent): `{ ids }` whenever the selected objects change.
+//! - `vectorcraft:panel` (from the parent, host-only): `{ id, title, anchor, content }`, a panel the
+//!   page fills (a popover from its task bar action, or a docked `host:<id>` panel), or `{ id,
+//!   close: true }` (`protocol::panel`, `vectorcraft_ui_egui::host_panels`).
+//! - `vectorcraft:panelEvent` (to the parent): `{ panel, id, kind, selection | value }`, a click or a
+//!   change in one of the page's panels.
 //! - `vectorcraft:failed` (to the parent): `{ error }`. Before `ready`, the app couldn't start;
 //!   after it, the last message from the parent was refused (the app keeps running).
 //!
@@ -87,6 +92,8 @@ pub struct Bridge {
     selection_doc: Rc<Cell<Option<u64>>>,
     /// The selection last reported to the parent (`vectorcraft:selection`).
     selection: Rc<RefCell<protocol::Reported<Vec<u64>>>>,
+    /// The `vectorcraft:panel` messages heard, until the next frame applies them in order.
+    panels: Rc<RefCell<Vec<protocol::PanelMessage>>>,
 }
 
 impl Bridge {
@@ -118,6 +125,7 @@ impl Bridge {
             task_bar: Rc::default(),
             selection_doc: Rc::default(),
             selection: Rc::default(),
+            panels: Rc::default(),
         })
     }
 
@@ -159,6 +167,23 @@ impl Bridge {
         if let Some(actions) = self.task_bar.borrow_mut().take() {
             app.ui.host_task_bar = actions;
         }
+        let panels = std::mem::take(&mut *self.panels.borrow_mut());
+        for message in panels {
+            match message {
+                protocol::PanelMessage::Show(panel) => {
+                    let known = app.ui.host_panels.panels.iter().any(|p| p.id == panel.id);
+                    let dockable = || match panel.anchor {
+                        vectorcraft_ui_egui::host_panels::HostPanelAnchor::Dock => vectorcraft_ui_egui::host_panels::dockable(&panel.id),
+                        vectorcraft_ui_egui::host_panels::HostPanelAnchor::TaskBar => Ok(()),
+                    };
+                    match protocol::room_for_panel(known, app.ui.host_panels.panels.len()).and_then(|()| dockable()) {
+                        Ok(()) => vectorcraft_ui_egui::host_panels::show_panel(app, panel),
+                        Err(error) => self.post_failed(&error),
+                    }
+                }
+                protocol::PanelMessage::Close(id) => vectorcraft_ui_egui::host_panels::close_panel(app, &id),
+            }
+        }
         let answers = std::mem::take(&mut *self.answers.borrow_mut());
         // The saves posted are heard before the answers to them, whichever pass of the frame
         // posted them: a hidden tab runs no UI pass, where they were heard before.
@@ -196,6 +221,43 @@ impl Bridge {
                 ids.push(&JsValue::from_f64(node.0 as f64));
             }
             self.send(&[("type", "vectorcraft:taskBarAction".into()), ("id", id.into()), ("selection", ids.into())]);
+        }
+    }
+
+    /// After each frame: tell the parent what was done in its panels: each click, with the objects
+    /// selected when it was, and each change (`vectorcraft:panelEvent`).
+    pub fn report_panels(&self, app: &mut VectorcraftApp) {
+        use vectorcraft_ui_egui::host_panels::HostPanelEvent;
+        for event in std::mem::take(&mut app.ui.host_panels.events) {
+            match event {
+                HostPanelEvent::Click { panel, id, selection } => {
+                    let ids = js_sys::Array::new();
+                    for node in selection {
+                        ids.push(&JsValue::from_f64(node.0 as f64));
+                    }
+                    self.send(&[
+                        ("type", "vectorcraft:panelEvent".into()),
+                        ("panel", panel.into()),
+                        ("id", id.into()),
+                        ("kind", "click".into()),
+                        ("selection", ids.into()),
+                    ]);
+                }
+                HostPanelEvent::Change { panel, id, value } => {
+                    let value = match value {
+                        serde_json::Value::Bool(b) => JsValue::from_bool(b),
+                        serde_json::Value::String(s) => JsValue::from_str(&s),
+                        _ => JsValue::NULL,
+                    };
+                    self.send(&[
+                        ("type", "vectorcraft:panelEvent".into()),
+                        ("panel", panel.into()),
+                        ("id", id.into()),
+                        ("kind", "change".into()),
+                        ("value", value),
+                    ]);
+                }
+            }
         }
     }
 
@@ -272,6 +334,21 @@ impl Bridge {
                     }
                     Err(error) => {
                         log::warn!("refused the page's configuration: {error}");
+                        bridge.post_failed(&error);
+                    }
+                }
+                return;
+            }
+            if string(&data, "type").as_deref() == Some("vectorcraft:panel") {
+                // Its items nest: read as JSON, the rules in `protocol::panel`.
+                let json = js_sys::JSON::stringify(&data).ok().and_then(|s| s.as_string()).and_then(|s| serde_json::from_str(&s).ok());
+                match json.ok_or_else(|| "vectorcraft:panel is a plain object".to_string()).and_then(|v| protocol::panel(&v)) {
+                    Ok(message) => {
+                        bridge.panels.borrow_mut().push(message);
+                        wake();
+                    }
+                    Err(error) => {
+                        log::warn!("refused the page's panel: {error}");
                         bridge.post_failed(&error);
                     }
                 }
@@ -459,6 +536,7 @@ fn actions(data: &JsValue) -> Option<Vec<protocol::TaskBarActionFields>> {
                 when: field(&a, "when"),
                 linked: boolean(&a, "linked"),
                 enabled: boolean(&a, "enabled"),
+                panel: field(&a, "panel"),
             })
             .collect(),
     )
