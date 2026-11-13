@@ -65,7 +65,8 @@ pub struct Limits {
     /// Deepest call nesting.
     pub max_recursion_depth: usize,
     /// Wall-clock budget for one run, in milliseconds. The web build measures it with the page's
-    /// `performance.now()`.
+    /// `performance.now()`; a wasm32 build without a clock (no `web-clock` feature) has none, and
+    /// only the fuel and memory budgets stop a run.
     pub wall_time_ms: u64,
     /// The most a heavy filter ([`crate::Budget::Heavy`]) is given instead of `fuel_base` and
     /// `wall_time_ms`: what the host allows, which the module's manifest can ask for but never

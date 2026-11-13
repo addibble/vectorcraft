@@ -321,20 +321,21 @@ pub struct Report {
 /// The limit a run past its wall-clock deadline exceeded ([`Error::Limit`]).
 pub(crate) const TIME_BUDGET: &str = "time budget";
 
-/// When a run must stop: a deadline on the monotonic clock (`web_time::Instant`, the page's
-/// `performance.now()` in the web build).
+/// When a run must stop: a deadline on the monotonic clock ([`crate::clock`]); none where there is
+/// no clock to read. Every budget fits: the clocks' instants (seconds in an `i64` or a `u64`) hold
+/// `u64::MAX` milliseconds from now.
 #[derive(Clone, Copy)]
 pub(crate) struct Deadline {
-    at: web_time::Instant,
+    at: Option<crate::clock::Instant>,
 }
 
 impl Deadline {
     pub(crate) fn new(wall_time_ms: u64) -> Self {
-        Self { at: web_time::Instant::now() + std::time::Duration::from_millis(wall_time_ms) }
+        Self { at: crate::clock::now().and_then(|now| now.checked_add(std::time::Duration::from_millis(wall_time_ms))) }
     }
 
     pub(crate) fn passed(&self) -> bool {
-        web_time::Instant::now() >= self.at
+        self.at.zip(crate::clock::now()).is_some_and(|(at, now)| now >= at)
     }
 
     pub(crate) fn check(&self) -> Result<()> {
@@ -805,6 +806,14 @@ mod tests {
 
     fn run() -> Run {
         Run::new("test", true, false, Deadline::new(60_000))
+    }
+
+    /// The largest budget is still a deadline, never none.
+    #[test]
+    fn the_largest_budget_is_a_deadline() {
+        let d = Deadline::new(u64::MAX);
+        assert!(d.at.is_some(), "no deadline at all");
+        assert!(!d.passed());
     }
 
     /// A deadline reads the monotonic clock that the web build also reads: one of 0 ms has
