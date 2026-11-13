@@ -467,7 +467,7 @@ pub(super) fn task_bar(app: &mut VectorcraftApp, ui: &mut Ui, xf: &Xf) {
                             crate::panels::character::task_bar(app, ui, f32::INFINITY);
                         }
                         let on_row: Vec<_> = host.iter().zip(host_rows).filter(|(_, at)| **at == Some(row)).map(|(a, _)| a.clone()).collect();
-                        if let Some(id) = draw_host_actions(ui, &t, &on_row) {
+                        if let Some(id) = draw_host_actions(app, ui, &t, &on_row) {
                             host_clicked = Some(id);
                         }
                         for (chip, at) in chips.iter().zip(&layout.chips) {
@@ -926,8 +926,10 @@ fn host_action_width(ui: &Ui, action: &crate::state::HostTaskBarAction) -> f32 {
 
 /// The page's actions drawn as the bar's own buttons, each named for screen readers (and
 /// `ui.widgets`); a disabled one dimmed, its hover text kept, and not clickable. An icon the app
-/// doesn't have leaves the label alone. Answers the id of the one clicked.
-fn draw_host_actions(ui: &mut Ui, t: &Tokens, host: &[crate::state::HostTaskBarAction]) -> Option<String> {
+/// doesn't have leaves the label alone. One naming a host panel opens and closes that panel as a
+/// popover under the bar ([`crate::host_panels`]), as Shape Properties opens; the others answer
+/// the id of the one clicked.
+fn draw_host_actions(app: &mut VectorcraftApp, ui: &mut Ui, t: &Tokens, host: &[crate::state::HostTaskBarAction]) -> Option<String> {
     let mut clicked = None;
     for action in host {
         let icon = action.icon.as_deref().filter(|i| crate::icons::exists(i));
@@ -950,7 +952,10 @@ fn draw_host_actions(ui: &mut Ui, t: &Tokens, host: &[crate::state::HostTaskBarA
         }
         ui.painter().galley(pos2(r.left() + inset, r.center().y - galley.size().y / 2.0), galley, ink);
         resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, action.enabled, action.label.as_str()));
-        if action.enabled && resp.on_hover_text(action.label.as_str()).clicked() {
+        let resp = resp.on_hover_text(action.label.as_str());
+        if let Some(panel) = action.panel.as_deref().and_then(|id| crate::host_panels::task_bar_panel(app, id)) {
+            crate::host_panels::task_bar_popover(app, &resp, action.enabled && resp.clicked(), &panel);
+        } else if action.enabled && resp.clicked() {
             clicked = Some(action.id.clone());
         }
     }
