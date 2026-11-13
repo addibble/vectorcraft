@@ -179,6 +179,8 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
     // Lock and Isolate Group are left out while their commands are off (in isolation mode, while
     // an opacity mask is edited).
     actions.retain(|(_, id)| !matches!(*id, "object.lock" | "object.isolate") || crate::menus::enabled(app, id));
+    // Those an embedding page hid are left out, as their menu items are.
+    actions.retain(|(_, id)| !crate::menus::host_hidden(app, id));
     let w = (ui.available_width() - 6.0) / 2.0;
     for pair in actions.chunks(2) {
         ui.horizontal(|ui| {
