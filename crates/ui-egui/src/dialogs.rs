@@ -648,6 +648,9 @@ pub fn set_field(d: &mut Dialog, field: String, value: Value) {
         object_mosaic::set_percentages(d, &value);
         return;
     }
+    if d.kind == placement_options::KIND {
+        placement_options::note_set(d, &field);
+    }
     let dxf = (d.kind == dxf_options::KIND).then(|| field.clone());
     let mosaic = (d.kind == object_mosaic::KIND).then(|| field.clone());
     let graph = (d.kind == graph_data::KIND).then(|| field.clone());

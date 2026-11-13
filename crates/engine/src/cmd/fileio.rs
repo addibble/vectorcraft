@@ -59,6 +59,7 @@ mod psdlayers;
 pub mod psdread;
 mod psdslices;
 mod pxrread;
+pub mod regions;
 mod save;
 mod screens;
 mod svg;

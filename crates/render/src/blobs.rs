@@ -1,6 +1,46 @@
 use super::{Affine, Arc, BezPath, Ink, Node, Pixmap, Shape, images, ink, paint};
 use vectorcraft_doc::{AppearanceItem, NodeKind};
 
+/// Pixels `src` (under `src_key` in the shared image store) recoloured by `map` (its hash `hash`),
+/// made once and kept in the store beside them.
+pub(crate) fn adjusted_pixmap(
+    src_key: images::ImageKey,
+    src: &Pixmap,
+    hash: u64,
+    map: &vectorcraft_effects::ColorMap,
+    touch: bool,
+) -> (images::ImageKey, Arc<Pixmap>) {
+    let key = images::ImageKey { adjust: Some(hash), ..src_key };
+    if let Some(pm) = lookup(&key, touch) {
+        return (key, pm);
+    }
+    let mut pm = src.clone();
+    // Photos repeat few colours next to each other: a small direct-mapped memo of the colours
+    // adjusted (a slot per hash of the premultiplied RGBA), not a hash map, so a print-size photo
+    // costs one multiply a pixel more than its adjustment.
+    const SLOTS: usize = 4096;
+    // Keys are 32-bit colours: u64::MAX marks a slot no colour has filled yet.
+    let mut memo = vec![(u64::MAX, [0u8; 3]); SLOTS];
+    for px in pm.data_mut().iter_mut().filter(|p| p.a > 0) {
+        let a = px.a as u32;
+        let packed = u32::from_le_bytes([px.r, px.g, px.b, px.a]);
+        let slot = (packed.wrapping_mul(0x9e37_79b1) >> 20) as usize % SLOTS;
+        let [r, g, b] = match memo[slot] {
+            (k, rgb) if k == u64::from(packed) => rgb,
+            _ => {
+                // Premultiplied to straight, adjusted, then premultiplied again.
+                let straight = [px.r, px.g, px.b].map(|v| ((v as u32 * 255 + a / 2) / a).min(255) as u8);
+                let rgb = map.apply_rgb8(straight).map(|v| ((v as u32 * a + 127) / 255) as u8);
+                memo[slot] = (u64::from(packed), rgb);
+                rgb
+            }
+        };
+        (px.r, px.g, px.b) = (r, g, b);
+    }
+    let pm = images::store().insert(key.clone(), Arc::new(pm));
+    (key, pm)
+}
+
 /// `key`'s pixels in the shared image store; `touch` marks them used.
 pub(crate) fn lookup(key: &images::ImageKey, touch: bool) -> Option<Arc<Pixmap>> {
     let mut s = images::store();

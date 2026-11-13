@@ -35,6 +35,8 @@ mod host;
 mod keys;
 #[cfg(any(target_arch = "wasm32", test))]
 mod latest;
+#[cfg(target_arch = "wasm32")]
+mod link_sources;
 #[cfg(any(target_arch = "wasm32", test))]
 mod locks;
 #[cfg(any(target_arch = "wasm32", test))]
