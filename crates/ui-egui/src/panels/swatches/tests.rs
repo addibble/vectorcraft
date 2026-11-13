@@ -268,6 +268,10 @@ fn delete_asks_then_removes_the_selection_and_unlinks_art() {
 /// The prompt for several swatches and groups gives the form the language's plural rule picks for the count.
 #[test]
 fn deleting_several_swatches_uses_each_count_form() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let mut app = app();
     let mut prompt = |code: &str, count: usize| {
         crate::i18n::set_current(crate::i18n::Lang::from_code(code).unwrap());

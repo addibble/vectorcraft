@@ -503,6 +503,10 @@ mod tests {
         let xml = r#"<variableSets><variableSet><variables><variable varName="Logo" trait="other"/></variables></variableSet></variableSets>"#;
         app.run("variable.loadLibrary", json!({"xml": xml})).unwrap();
         assert_eq!(app.ui.status, "variables that aren't text were left out: other (1)");
+        // The rest reads catalogs other than English, compiled in with `translations`.
+        if !cfg!(feature = "translations") {
+            return;
+        }
         let langs: Vec<Lang> = Lang::all().filter(|l| l.code() != "en").collect();
         assert!(langs.len() >= 23, "{} languages", langs.len());
         for l in langs {
@@ -536,6 +540,10 @@ mod tests {
         let refused = app.ui.status.clone();
         assert!(refused.contains("would read back as the variable `#Tag`"), "{refused}");
         let _ = std::fs::remove_dir_all(&dir);
+        // The rest reads catalogs other than English, compiled in with `translations`.
+        if !cfg!(feature = "translations") {
+            return;
+        }
         let langs: Vec<Lang> = Lang::all().filter(|l| l.code() != "en").collect();
         assert!(langs.len() >= 23, "{} languages", langs.len());
         for l in langs {
@@ -559,6 +567,10 @@ mod tests {
             "bg", "bs", "ca", "cs", "da", "de", "el", "es", "fi", "fr", "hu", "id", "it", "ja", "ka", "ko", "nl", "pl", "pt-br", "ru", "sv", "tr",
             "uk", "vi", "zh-hans", "zh-hant",
         ];
+        // The rest reads catalogs other than English, compiled in with `translations`.
+        if !cfg!(feature = "translations") {
+            return;
+        }
         for l in codes.iter().map(|c| Lang::from_code(c).expect("registered")) {
             let shown = message(l, partly);
             assert!(shown != partly && shown.contains('7'), "{}: {shown}", l.code());

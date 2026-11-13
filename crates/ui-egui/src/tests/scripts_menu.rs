@@ -5,7 +5,7 @@
 use serde_json::{Value, json};
 use vectorcraft_engine::Session;
 
-use crate::menus::{self, Entry, Item};
+use crate::menus::{self, Item};
 use crate::native_menu::{self, Node};
 use crate::{VectorcraftApp, script_runs, scripts_menu};
 
@@ -163,6 +163,10 @@ fn script_and_folder_names_are_shown_as_they_are_in_every_language() {
     write(&dir, "Layers.js", "");
     write(&dir, "Export/Layers.jsx", "");
     read(&app);
+    // The rest reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let de = crate::i18n::Lang::from_code("de").unwrap();
     assert!(crate::i18n::tr(de, "Layers") != "Layers" && crate::i18n::tr(de, "Export") != "Export", "German translates both words");
     crate::i18n::set_current(de);
@@ -170,8 +174,8 @@ fn script_and_folder_names_are_shown_as_they_are_in_every_language() {
     let labels: Vec<String> = items
         .iter()
         .filter_map(|item| match menus::entry(&app, item)? {
-            Entry::Sub(label, _) => Some(label.to_string()),
-            Entry::Item(row) => Some(row.label.to_string()),
+            menus::Entry::Sub(label, _) => Some(label.to_string()),
+            menus::Entry::Item(row) => Some(row.label.to_string()),
             _ => None,
         })
         .collect();

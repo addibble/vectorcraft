@@ -252,6 +252,10 @@ fn last_effect_dialog_and_view_toggles() {
 /// only the effect's menu row with an ellipsis, as Japanese does for Feather.
 #[test]
 fn undo_and_redo_name_the_step_as_the_history_panel_does() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let ja = crate::i18n::Lang::from_code("ja").expect("ja registered");
     crate::i18n::set_current(ja);
     let mut app = app_with_a_rectangle();
@@ -688,6 +692,10 @@ fn undo_and_redo_name_a_style_step_around_the_style_name() {
     let text = app.run("text.create", json!({"x": 0, "y": 40, "text": "Hello"})).unwrap()["id"].clone();
     app.run("charStyle.new", json!({"name": "Brush"})).unwrap();
     app.run("charStyle.apply", json!({"name": "Brush", "id": text})).unwrap();
+    // The rest reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let ja = crate::i18n::Lang::from_code("ja").expect("ja registered");
     crate::i18n::set_current(ja);
     let step = |template: &str| {
@@ -1189,6 +1197,10 @@ fn new_window_opens_a_view_of_the_current_document() {
 /// active interface language (e.g. French), rather than staying frozen in English alphabetical order.
 #[test]
 fn window_menu_panels_are_sorted_alphabetically_in_active_language() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     use crate::i18n::{Lang, current, name_sort_key, set_current, tr, tr_id};
 
     let prev = current();

@@ -139,6 +139,10 @@ fn language_and_appearance_are_in_the_app_menu() {
     assert_eq!(ids(submenu(app_menu, "Language"))[..2], ["app.language", "---"], "Automatic, then the languages");
     let langs: Vec<(String, Option<bool>)> = items(submenu(app_menu, "Language")).iter().map(|it| (it.label.clone(), it.checked)).collect();
     let mut want = vec![("Automatic".to_string(), Some(false))];
+    // The rest reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     want.extend(Lang::for_picker().into_iter().map(|l| (l.name().to_string(), Some(l.code() == "ja"))));
     assert_eq!(langs, want);
     // In every UI language the languages keep their own names.

@@ -358,6 +358,10 @@ fn a_package_status_is_stored_in_english() {
     let out = dir.path("out");
     std::fs::create_dir_all(&out).unwrap();
     app.ui.dialog.as_mut().unwrap().fields.insert("folder".into(), json!(out));
+    // The rest reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     crate::i18n::set_current(crate::i18n::Lang::from_code("cs").unwrap());
     let r = confirm(&mut app);
     crate::i18n::set_current(crate::i18n::Lang::EN);
@@ -374,6 +378,10 @@ fn a_package_status_is_stored_in_english() {
 /// rule picks for the count. The status bar's note stays English.
 #[test]
 fn the_missing_links_note_uses_each_count_form() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let note = |code: &str, missing: usize| {
         crate::i18n::set_current(crate::i18n::Lang::from_code(code).unwrap());
         let notes = (package::package_dialog_note(missing, ""), package::package_status_note(missing, ""));
@@ -398,6 +406,10 @@ fn a_long_list_of_fonts_left_out_is_cut_short_in_the_status() {
     assert_eq!(package::status_fonts("Mono, Sans"), "Mono, Sans");
     let note = package::package_status_note(0, &package::status_fonts(&fonts));
     assert!(note.starts_with("(fonts not copied: Family 0 Regular, ") && note.ends_with(", …)"), "{note}");
+    // The rest reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let shown = message(Lang::from_code("de").unwrap(), &package::package_status(3, Some("/out/card Folder"), &note));
     assert!(shown.starts_with("3 Dateien in /out/card Folder verpackt (nicht kopierte Schriften: Family 0 Regular, "), "{shown}");
     assert!(package::package_dialog_note(0, &fonts).contains("Family 199 Regular"));
@@ -445,6 +457,10 @@ fn an_english_package_status_is_translated_after_a_language_switch() {
     assert!(english.contains(&"Packaged 1 file in /out/card Folder"), "{english:?}");
     assert!(english.contains(&"Packaged 1 file (fonts not copied: Mono) in /out/card (draft) v2"), "{english:?}");
     assert!(english.contains(&"Packaged 3 files"), "{english:?}");
+    // The rest reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     for lang in Lang::all().filter(|l| l.code() != "en") {
         for (s, folder, note) in &statuses {
             let shown = message(lang, s);

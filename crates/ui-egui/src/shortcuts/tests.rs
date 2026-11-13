@@ -3048,6 +3048,10 @@ fn a_heavy_filter_plugin_runs_from_its_shortcut_as_from_its_menu_item() {
 /// item. A filter plug-in's name stays as the plug-in gives it, even when it reads like a command.
 #[test]
 fn a_filter_plugin_row_translates_its_path_and_not_its_name() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let zh = crate::i18n::Lang::from_code("zh-hant").unwrap();
     crate::i18n::set_current(zh);
     let entry = |key: &str| crate::shortcut_editor::Entry {

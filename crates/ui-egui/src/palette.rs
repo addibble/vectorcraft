@@ -212,6 +212,10 @@ mod tests {
     #[test]
     fn entries_are_built_once_per_language_and_match_english_shown_text_and_ids() {
         let ctx = egui::Context::default();
+        // The rest reads catalogs other than English, compiled in with `translations`.
+        if !cfg!(feature = "translations") {
+            return;
+        }
         let zh = Lang::from_code("zh-hant").unwrap();
         // Tests running alongside edit shortcuts and install plug-ins, which rebuilds the entries:
         // look twice until nothing changed in between.
@@ -242,7 +246,7 @@ mod tests {
     fn use_precise_cursors_palette_result_toggles_the_preference() {
         let ctx = egui::Context::default();
         let query = "use precise cursors";
-        let entries = entries(&ctx, Lang::EN);
+        let entries = entries(&ctx, crate::i18n::Lang::EN);
         let matches: Vec<&Entry> = entries.iter().filter(|e| query.split_whitespace().all(|word| e.haystack.contains(word))).take(14).collect();
         assert!(matches.iter().any(|e| e.id == "view.preciseCursors"), "preference toggle appears for its name");
         assert!(entries.iter().filter(|e| e.id == "view.capsLock").all(|e| e.shown != "Use Precise Cursors"));
@@ -547,6 +551,10 @@ mod tests {
         };
         install(one, "{}");
         install(two, r#"{"wiggle":{"type":"bool"}}"#);
+        // The rest reads catalogs other than English, compiled in with `translations`.
+        if !cfg!(feature = "translations") {
+            return;
+        }
         let zh = Lang::from_code("zh-hant").unwrap();
         let built = build(zh);
         let of = |key: &str| built.iter().filter(|e| e.id == key).collect::<Vec<_>>();

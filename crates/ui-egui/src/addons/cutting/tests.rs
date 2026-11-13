@@ -81,7 +81,11 @@ fn weed_box_and_lines_previews_cancels_and_runs_on_ok() {
     for s in ["Weed Box and Lines", "Margin", "Box", "Direction", "Both", "Count", "Spacing", "Gap", "Weight", "Swatch", "Preview"] {
         assert!(shown.contains(s), "{s} in {shown}");
     }
-    // Every field label is translated.
+    // Every field label is translated (the rest reads catalogs other than English, compiled in with
+    // `translations`).
+    if !cfg!(feature = "translations") {
+        return;
+    }
     crate::i18n::set_current(crate::i18n::Lang::from_code("de").expect("de registered"));
     let german = painted_text(&mut app, |app, ui| crate::dialogs::show(app, ui.ctx()));
     crate::i18n::set_current(crate::i18n::Lang::EN);
@@ -184,6 +188,10 @@ fn banner_hems_and_grommets_previews_cancels_and_runs_on_ok() {
         "Preview",
     ] {
         assert!(shown.contains(s), "{s} in {shown}");
+    }
+    // The rest reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
     }
     crate::i18n::set_current(crate::i18n::Lang::from_code("de").expect("de registered"));
     let german = painted_text(&mut app, |app, ui| crate::dialogs::show(app, ui.ctx()));

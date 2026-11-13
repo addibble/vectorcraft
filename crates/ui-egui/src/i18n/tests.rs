@@ -19,6 +19,10 @@ fn gujarati_resolves_locales_and_takes_the_singular_for_zero_and_one() {
 
 #[test]
 fn hindi_resolves_locales_and_uses_zero_one_plurals() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let hi = Lang::from_code("hi").expect("hi registered");
     for tag in ["hi", "hi-IN", "hi_IN.UTF-8", "HI-in", "hi-Deva-IN"] {
         assert_eq!(lang_from_tag(tag), Some(hi), "{tag}");
@@ -51,6 +55,10 @@ fn hindi_resolves_locales_and_uses_zero_one_plurals() {
 /// a path, never पाठ (a reading), and a number of points is a number (संख्या) in points (पॉइंट).
 #[test]
 fn hindi_rows_use_the_glossary_term_for_what_their_english_names() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let hi = Lang::from_code("hi").expect("hi registered");
     let (entries, _) = parse_entries(hi.0.source);
     let mut wrong = Vec::new();
@@ -81,6 +89,10 @@ fn hindi_rows_use_the_glossary_term_for_what_their_english_names() {
 /// paths, points, type or lines is जोड़ें, never शामिल हों, which stays for joining the community.
 #[test]
 fn hindi_rows_use_one_term_for_a_variable_and_for_joining_paths() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let hi = Lang::from_code("hi").expect("hi registered");
     let (entries, _) = parse_entries(hi.0.source);
     let mut wrong = Vec::new();
@@ -110,6 +122,10 @@ fn hindi_rows_use_one_term_for_a_variable_and_for_joining_paths() {
 /// Hindi messages and labels keep the condition, quantity and clauses of their English.
 #[test]
 fn hindi_rows_keep_the_meaning_of_their_english() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let hi = Lang::from_code("hi").expect("hi registered");
     assert_eq!(message(hi, "`shift` must be a number of points"), "`shift` पॉइंट में एक संख्या होनी चाहिए");
     assert_eq!(
@@ -140,6 +156,10 @@ fn hindi_rows_keep_the_meaning_of_their_english() {
 /// Hindi messages keep every `a|b|c` list of accepted values exactly as their English writes it.
 #[test]
 fn hindi_messages_keep_their_lists_of_accepted_values() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let hi = Lang::from_code("hi").expect("hi registered");
     let (entries, _) = parse_entries(hi.0.source);
     let mut wrong = Vec::new();
@@ -156,6 +176,10 @@ fn hindi_messages_keep_their_lists_of_accepted_values() {
 /// braces and brackets is a name, value or placeholder and keeps its English.
 #[test]
 fn hindi_rows_keep_no_english_words_in_their_sentences() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     const ENGLISH: [&str; 13] = ["or", "and", "the", "must", "give", "see", "use", "most", "is", "of", "be", "not", "an"];
     let hi = Lang::from_code("hi").expect("hi registered");
     let (entries, _) = parse_entries(hi.0.source);
@@ -190,6 +214,12 @@ fn tags_map_to_languages() {
     assert_eq!(lang_from_tag("C"), Some(Lang::EN));
     assert_eq!(lang_from_tag("POSIX"), Some(Lang::EN));
     assert_eq!(lang_from_tag("qaa-QM"), None, "the private-use tag names no language");
+    assert_eq!(lang_from_tag(""), None);
+    assert_eq!(lang_from_tag("_"), None);
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     // German: Germany, Austria, Switzerland and the rest share the one catalog.
     for tag in ["de", "de_DE.UTF-8", "de-AT", "de_CH", "de-LU", "de_DE.UTF-8@euro"] {
         assert_eq!(lang_from_tag(tag), Some(de()), "{tag}");
@@ -219,8 +249,6 @@ fn tags_map_to_languages() {
     for tag in ["zh-CN", "zh_CN.UTF-8", "zh_SG", "zh-Hans", "zh-Hans-CN", "zh"] {
         assert_eq!(lang_from_tag(tag), Lang::from_code("zh-hans"), "{tag}");
     }
-    assert_eq!(lang_from_tag(""), None);
-    assert_eq!(lang_from_tag("_"), None);
 }
 
 #[test]
@@ -270,6 +298,10 @@ fn other_tags_map_to_languages() {
 /// tags and preferences, and each language names itself in its own language.
 #[test]
 fn languages_resolve_from_their_tags_and_name_themselves() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let lang = |code: &str| Lang::from_code(code).expect("registered");
     for (code, tags) in [
         ("it", &["it", "it_IT.UTF-8", "it-CH", "it_SM"][..]),
@@ -309,6 +341,10 @@ fn languages_resolve_from_their_tags_and_name_themselves() {
 /// locale resolution, vocabulary and count formatting checks.
 #[test]
 fn catalan_reads_as_catalan() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let ca = Lang::from_code("ca").expect("ca registered");
     assert_eq!(ca.name(), "Català");
     assert!(ca.complete_menus());
@@ -357,6 +393,10 @@ fn brazilian_portuguese_spells_relink_and_process_color() {
 
 #[test]
 fn font_height_reference_labels_are_in_complete_catalogs() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     for lang in LANGUAGES.iter().filter(|lang| lang.complete_menus) {
         for label in
             ["Show Font Height Options", "Hide Font Height Options", "Set Font Height Reference", "Em Box", "Cap Height", "x-Height", "ICF Box"]
@@ -370,6 +410,10 @@ fn font_height_reference_labels_are_in_complete_catalogs() {
 /// Detach with no object chosen.
 #[test]
 fn objects_on_path_detach_strings_are_in_complete_catalogs() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     for lang in LANGUAGES.iter().filter(|lang| lang.complete_menus) {
         for label in ["Detach", "Detach Object from Path"] {
             assert!(lang.catalog().plain(label).is_some(), "{} is missing {label}", lang.code);
@@ -386,6 +430,10 @@ fn objects_on_path_detach_strings_are_in_complete_catalogs() {
 /// The Window › Brush Libraries menu, built from the built-in library table, names each library.
 #[test]
 fn built_in_brush_library_names_are_in_complete_catalogs() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let mut bad = vec![];
     for lang in LANGUAGES.iter().filter(|lang| lang.complete_menus) {
         let missing: Vec<&str> =
@@ -401,6 +449,10 @@ fn built_in_brush_library_names_are_in_complete_catalogs() {
 /// built-in library has a row in each complete catalog.
 #[test]
 fn built_in_library_brush_names_are_in_complete_catalogs() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     use vectorcraft_engine::cmd::brushlib;
     let session = vectorcraft_engine::Session::new();
     let mut names: Vec<String> = brushlib::BUILTIN
@@ -424,6 +476,10 @@ fn built_in_library_brush_names_are_in_complete_catalogs() {
 /// Preference choices and the marquee's E hint share the same translated labels.
 #[test]
 fn marquee_selection_labels_are_in_complete_catalogs() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     for lang in LANGUAGES.iter().filter(|lang| lang.complete_menus) {
         for label in ["Marquee Selection", "Touching", "Fully Enclosed", "Drag Direction"] {
             assert!(lang.catalog().plain(label).is_some(), "{} is missing {label}", lang.code);
@@ -434,6 +490,10 @@ fn marquee_selection_labels_are_in_complete_catalogs() {
 /// Preferences › Performance › Use Monitor Profile for Canvas and the note under it.
 #[test]
 fn monitor_profile_labels_are_in_complete_catalogs() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     for lang in LANGUAGES.iter().filter(|lang| lang.complete_menus) {
         for label in [
             "Use Monitor Profile for Canvas",
@@ -451,6 +511,10 @@ fn monitor_profile_labels_are_in_complete_catalogs() {
 /// command that turns a group on or off.
 #[test]
 fn control_bar_panel_menu_labels_are_in_complete_catalogs() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     const LABELS: [&str; 18] = [
         "Snapping",
         "Anchor Points",
@@ -483,6 +547,10 @@ fn control_bar_panel_menu_labels_are_in_complete_catalogs() {
 /// show artboard names and are left out).
 #[test]
 fn document_info_labels_are_in_complete_catalogs() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let mut session = vectorcraft_engine::Session::new();
     session.execute("file.new", &serde_json::json!({"width": 100, "height": 100})).unwrap();
     session.execute("shape.rectangle", &serde_json::json!({"x": 0, "y": 0, "width": 10, "height": 10})).unwrap();
@@ -553,6 +621,10 @@ fn document_info_values_are_in_complete_catalogs() {
 /// own `antiAlias` row apart from the plain "Sharp" corner row.
 #[test]
 fn anti_aliasing_method_labels_are_in_complete_catalogs() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     for lang in LANGUAGES.iter().filter(|lang| lang.complete_menus) {
         let cat = lang.catalog();
         for label in ["Anti-aliasing Method", "Crisp", "Strong"] {
@@ -580,6 +652,10 @@ fn painted_and_sketched_style_names_are_in_every_catalog() {
 /// level), and Save As's Preview label.
 #[test]
 fn eps_option_menu_names_are_in_complete_catalogs() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     use vectorcraft_engine::cmd::FlattenOptions;
     use vectorcraft_eps::{Level, Overprint, Preview};
     let names: Vec<&str> = Preview::ALL
@@ -601,6 +677,10 @@ fn eps_option_menu_names_are_in_complete_catalogs() {
 /// `other`/`many`).
 #[test]
 fn each_language_counts_with_its_plural_rule() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     const COUNTS: [u64; 8] = [0, 1, 2, 3, 5, 11, 21, 22];
     for (codes, forms) in [
         (&["de", "es", "it", "pt-br", "fi", "ca"][..], [1, 0, 1, 1, 1, 1, 1, 1]),
@@ -621,6 +701,10 @@ fn each_language_counts_with_its_plural_rule() {
 /// the language's own form.
 #[test]
 fn script_console_counts_take_each_language_s_form() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     const COUNTED: [(&str, &str); 3] =
         [("{n} host call", "{n} host calls"), ("{n} earlier line dropped", "{n} earlier lines dropped"), ("{n} line cut", "{n} lines cut")];
     for l in LANGUAGES.iter().filter(|l| l.complete_menus) {
@@ -645,6 +729,10 @@ fn candidates_walk_from_specific_to_general() {
 
 #[test]
 fn os_language_lists_are_parsed() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     assert_eq!(first_supported("(\n    \"zh-Hant-TW\",\n    \"en-US\"\n)\n"), Some(ZH()));
     assert_eq!(first_supported("(\n    \"qaa-QM\",\n    \"en-US\"\n)\n"), Some(Lang::EN), "the private-use tag falls through to the next entry");
     assert_eq!(first_supported("(\n    \"de-DE\",\n    \"en-US\"\n)\n"), Some(de()));
@@ -659,6 +747,10 @@ fn os_language_lists_are_parsed() {
 
 #[test]
 fn preferences_resolve_with_fallback() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     assert_eq!(Lang::from_pref("zh-Hans"), Lang::from_code("zh-hans").unwrap());
     assert_eq!(Lang::from_pref("zh-hant"), ZH());
     assert_eq!(Lang::from_pref("ZH-Hant"), ZH());
@@ -671,6 +763,10 @@ fn preferences_resolve_with_fallback() {
 
 #[test]
 fn current_language_is_a_frame_setting() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     set_current(ZH());
     assert_eq!(current(), ZH());
     assert_eq!(t("Layers"), "圖層");
@@ -683,6 +779,10 @@ fn current_language_is_a_frame_setting() {
 /// another thread (by a test running beside this one) leaves this thread's text in English.
 #[test]
 fn a_language_set_by_another_test_leaves_this_one_in_english() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     std::thread::spawn(|| set_current(ZH())).join().unwrap();
     assert_eq!(current(), Lang::EN);
     assert_eq!(t("Layers"), "Layers");
@@ -690,6 +790,10 @@ fn a_language_set_by_another_test_leaves_this_one_in_english() {
 
 #[test]
 fn lookups_fall_back_to_english() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     assert_eq!(tr(Lang::EN, "Layers"), "Layers");
     let layers = ZH().catalog().plain("Layers");
     assert_eq!(tr(ZH(), "Layers"), layers.unwrap_or("Layers"));
@@ -721,6 +825,10 @@ fn malformed_lines_are_reported_not_fatal() {
 
 #[test]
 fn plurals_and_placeholders() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     assert_eq!(trn(Lang::EN, 1, "{n} item", "{n} items"), "1 item");
     assert_eq!(trn(Lang::EN, 0, "{n} item", "{n} items"), "0 items");
     assert_eq!(trn(Lang::EN, 7, "{n} item", "{n} items"), "7 items");
@@ -791,6 +899,10 @@ fn partial_catalogs_only_translate_strings_the_ui_shows() {
 /// only: the tests running beside it on other threads still draw in English.
 #[test]
 fn the_engine_follows_the_interface_language() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let mut app = crate::VectorcraftApp::new(vectorcraft_engine::Session::new(), crate::Services::default());
     let ctx = egui::Context::default();
     let frame = |app: &mut crate::VectorcraftApp| {
@@ -818,6 +930,10 @@ fn the_engine_follows_the_interface_language() {
 /// item follows the preference, and a bad code is an error, not a change.
 #[test]
 fn language_command_sets_the_preference() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     use crate::menus::{checked, run_ui_command};
     let mut app = crate::VectorcraftApp::new(vectorcraft_engine::Session::new(), crate::Services::default());
     assert_eq!(checked(&app, "app.language", &serde_json::json!({"lang": "auto"})), Some(true));
@@ -930,6 +1046,10 @@ fn bundled_fonts_cover_the_catalogs() {
 /// in the wrong script would read as a typo to every user).
 #[test]
 fn zh_hant_has_no_simplified_characters() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     const SIMPLIFIED_ONLY: &str = "们这为来时间个说对会发现过还没动开关图层选设项编辑显视帮删预览导节线连择报错误处据库经体应该样点击确认标记录输进转换调约维护启闭锁义类网络页颜绘画宽长边缘缩镜复贴渐滤笔钢区饱参数变号单双属组齐径锚轮阴阳实际让从产东车门问闪并坚测试运术压缩叠饰够亚质纸张档缺省认识";
     let (entries, _) = parse_entries(ZH().0.source);
     let mut bad = Vec::new();
@@ -945,6 +1065,10 @@ fn zh_hant_has_no_simplified_characters() {
 /// mainland: Taiwan's terms (and a converted Traditional row) would read as foreign to its users.
 #[test]
 fn zh_hans_is_simplified_and_mainland() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     const TRADITIONAL_ONLY: &str = "們這為來時間個說對會發現過還沒動開關圖層選設項編輯顯視幫刪預覽導節線連擇報錯誤處據庫經體應該樣點擊確認標記錄輸進轉換調約維護啟閉鎖義類網絡頁顏繪畫寬長邊緣縮鏡複貼漸濾筆鋼區飽參數變號單雙屬組齊徑錨輪陰陽實際讓從產東車門問閃並堅測試運術壓縮疊飾夠亞質紙張檔認識";
     const TAIWAN_TERMS: &[&str] = &[
         "档案",
@@ -1684,6 +1808,10 @@ fn toggled_labels() -> Vec<String> {
 /// `--nocapture`.
 #[test]
 fn untranslated_report() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     use std::collections::{BTreeMap, BTreeSet};
     // For each kind of string, the languages checked and what each one lacks.
     let mut gaps: Vec<(&str, BTreeMap<&str, BTreeSet<String>>)> = Vec::new();
@@ -1846,6 +1974,10 @@ fn untranslated_report_checks_every_message_crate_and_schema_phrase() {
 /// translates them.
 #[test]
 fn kept_menu_names_are_menu_labels_left_in_english() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let labels = menu_labels();
     for keep in MENU_KEEP_AS_IS {
         assert!(labels.iter().any(|(l, ..)| l == keep), "`{keep}` isn't a menu label");
@@ -1858,6 +1990,10 @@ fn kept_menu_names_are_menu_labels_left_in_english() {
 /// Georgian interface text has no capitals: no row uses Mtavruli.
 #[test]
 fn georgian_rows_have_no_mtavruli() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let (entries, _) = parse_entries(ka().0.source);
     let caps: Vec<_> = entries.iter().filter(|(_, _, tr)| tr.chars().any(|c| matches!(c, '\u{1C90}'..='\u{1CBF}'))).collect();
     assert!(caps.is_empty(), "Mtavruli in ka.tsv: {caps:?}");
@@ -1890,6 +2026,10 @@ fn uk() -> Lang {
 /// Every Ukrainian plural has all three forms; exercise different endings through real lookups.
 #[test]
 fn ukrainian_plurals_have_three_forms() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let (entries, _) = parse_entries(uk().0.source);
     let mut count = 0;
     for (ctx, src, translated) in entries {
@@ -1937,6 +2077,10 @@ fn spaced_catalogs_keep_the_spaces_around_fragments() {
 
 #[test]
 fn czech_plurals_have_three_forms() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let forms: Vec<usize> = [0, 1, 2, 4, 5, 11, 21].into_iter().map(plural_czech).collect();
     assert_eq!(forms, [2, 0, 1, 1, 2, 2, 2]);
     // Every Czech plural row has the three forms, and each count picks its own.
@@ -2033,6 +2177,10 @@ fn a_language_saved_by_an_older_version_carries_over() {
 
 #[test]
 fn messages_translate_by_template_and_their_parts() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let c = Catalog::parse(concat!(
         "@msg\tnothing selected\tnada seleccionado\n",
         "@msg\t{path}: {e}\t{path}: {e}\n",
@@ -2064,6 +2212,10 @@ fn messages_translate_by_template_and_their_parts() {
 /// objects is translated whole, its counts included, in every complete-message language.
 #[test]
 fn recolor_notes_on_objects_left_unchanged_translate_with_their_counts() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let notes = [
         ("Recolor completed; 2 locked objects and 1 hidden object were left unchanged", ["2", "1"]),
         ("Recolor completed; 1 locked object and 3 hidden objects were left unchanged", ["1", "3"]),
@@ -2256,6 +2408,10 @@ fn literal_brace_rows_match_only_their_message() {
 /// plug-in's id and the JSON kept.
 #[test]
 fn plugin_run_of_another_kind_is_translated_with_its_json() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     use serde_json::json;
     use vectorcraft_plugins::wat as tpl;
     let mut s = vectorcraft_engine::Session::new();
@@ -2295,6 +2451,10 @@ fn plugin_run_of_another_kind_is_translated_with_its_json() {
 /// picks the language's form.
 #[test]
 fn messages_with_a_count_take_the_plural_form() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let c = Catalog::parse("@msgplural\tSaved {n} file|Saved {n} files\tone {n}|few {n}|many {n}\n");
     for s in ["Saved 1 file", "Saved 4 files"] {
         let (forms, caps) = c.message_forms(s).unwrap();
@@ -2312,6 +2472,10 @@ fn messages_with_a_count_take_the_plural_form() {
 /// catalog. It is built from a constant, which the scan of message literals doesn't see.
 #[test]
 fn warped_type_note_is_translated() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let note = "warped text objects that came in as drawn art, not as editable type: 3";
     for code in COMPLETE_MESSAGES {
         let lang = Lang::from_code(code).expect("registered");
@@ -2325,6 +2489,10 @@ fn warped_type_note_is_translated() {
 /// importers, exporters and effects) have an `@msg` row in every complete-message catalog.
 #[test]
 fn plugin_messages_are_translated_in_every_complete_catalog() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let messages = message_literals_in(&["plugins"]);
     assert!(messages.len() > 100, "scan found only {} plug-in messages", messages.len());
     let mut missing = vec![];
@@ -2342,6 +2510,10 @@ fn plugin_messages_are_translated_in_every_complete_catalog() {
 /// and nested reasons as written.
 #[test]
 fn plugin_errors_translate_with_their_values() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     use vectorcraft_plugins::{Error, Manifest, manifest::MAX_MANIFEST_BYTES};
     let err = |r: Result<(), Error>| r.err().map(|e| e.to_string()).unwrap_or_default();
     let not_json = err(vectorcraft_plugins::export::decode(b"{} x").map(drop));
@@ -2375,6 +2547,10 @@ fn plugin_errors_translate_with_their_values() {
 /// with the error in every complete-message catalog, so no status line mixes two languages.
 #[test]
 fn plugin_error_reasons_are_translated_with_the_error() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     use serde_json::json;
     use vectorcraft_plugins::{Error, Manifest};
     let err = |r: Result<(), Error>| r.err().map(|e| e.to_string()).unwrap_or_default();
@@ -2444,6 +2620,10 @@ fn three_d_parts() -> Vec<String> {
 /// every complete-message catalog.
 #[test]
 fn three_d_refusals_are_translated_in_every_complete_catalog() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let refusals = three_d_refusals();
     assert!(refusals.len() > 55, "scan found only {} 3D refusals", refusals.len());
     let helper_made = [
@@ -2473,6 +2653,10 @@ fn three_d_refusals_are_translated_in_every_complete_catalog() {
 /// error the command returns stays English.
 #[test]
 fn three_d_refusals_translate_with_their_values() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     use serde_json::json;
     use std::sync::Arc;
     use vectorcraft_doc::{Node, NodeId, NodeKind};
@@ -2527,6 +2711,10 @@ fn three_d_refusals_translate_with_their_values() {
 /// the same text: a symbol called Rotate stays Rotate while the effect's name is translated.
 #[test]
 fn quoted_values_in_a_message_stay_as_written() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let s = "Extrude & Bevel can't build a solid from the instance of symbol \"Rotate\": the symbol's art isn't available";
     for code in COMPLETE_MESSAGES {
         let lang = Lang::from_code(code).expect("registered");
@@ -2541,6 +2729,10 @@ fn quoted_values_in_a_message_stay_as_written() {
 /// and every complete catalog translates it, in the form its plural rule picks.
 #[test]
 fn gamut_check_status_takes_the_plural_form() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     use crate::panels::separations::gamut_check_status;
     assert_eq!(gamut_check_status(0), "All colors are within the CMYK gamut");
     assert_eq!(gamut_check_status(1), "1 color is out of the CMYK gamut");
@@ -2593,6 +2785,10 @@ const COUNTED_STATUS_MESSAGES: &[(&str, &str)] = &[
 /// the plural, and every complete catalog translates both, in the form its plural rule picks.
 #[test]
 fn counted_status_messages_take_the_plural_form() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     use crate::panels::links::{relinked_status, updated_status};
     assert_eq!((relinked_status(1), relinked_status(2)), ("Relinked 1 image".to_string(), "Relinked 2 images".to_string()));
     assert_eq!((updated_status(1), updated_status(2)), ("Updated 1 image".to_string(), "Updated 2 images".to_string()));
@@ -2639,6 +2835,10 @@ const OPEN_SAVE_COUNTED_MESSAGES: &[(&str, &str)] = &[
 /// translates both, in the form its plural rule picks.
 #[test]
 fn open_save_and_recovery_messages_take_the_plural_form() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     use crate::dialogs::missing_links::changed_on_disk_status;
     use crate::io::{opened_after_notice, opened_with_notes, saved_status};
     use crate::panels::properties::global_edit_results;
@@ -2700,6 +2900,10 @@ fn open_save_and_recovery_messages_take_the_plural_form() {
 /// the path keeps its count and its whole path. A `{n}` in a message without a count is any text.
 #[test]
 fn a_count_placeholder_matches_only_a_number() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     use crate::io::saved_status;
     let saved = |path: &str, n: usize| saved_status(path, &serde_json::json!({ "warnings": vec!["a note"; n] }));
     let path = "/out/art with notes.pdf";
@@ -3011,6 +3215,10 @@ fn message_scan_skips_test_modules_with_any_test_cfg() {
 /// status bar shows them.
 #[test]
 fn plugin_limit_errors_are_translated() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     use vectorcraft_plugins::Error;
     let scanned = message_literals();
     let grant = "the plug-in's grant can't be removed from the plug-in store";
@@ -3081,6 +3289,10 @@ fn selected_path_reason_is_translated() {
 /// threw stay as they are.
 #[test]
 fn script_errors_are_translated() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     use serde_json::json;
     let scanned = message_literals();
     let templates = [
@@ -3188,6 +3400,10 @@ fn script_errors_are_translated() {
 /// ids of functions stay as they are.
 #[test]
 fn script_host_errors_are_translated() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     use serde_json::json;
     let scanned = message_literals();
     let templates = [
@@ -3318,6 +3534,10 @@ fn script_host_errors_are_translated() {
 /// manifest included.
 #[test]
 fn wrongly_shaped_plugin_commands_errors_are_translated() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let many: Vec<String> = (0..=32).map(|i| format!(r#"{{"id":"c{i}","label":"C"}}"#)).collect();
     let commands = [
         r#"{"id":"x"}"#.to_string(),
@@ -3349,6 +3569,10 @@ fn wrongly_shaped_plugin_commands_errors_are_translated() {
 /// doesn't read, are translated in each language of [`COMPLETE_MESSAGES`], with the colors kept.
 #[test]
 fn the_keep_colors_trace_warnings_are_translated() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     use serde_json::json;
     let mut s = vectorcraft_engine::Session::new();
     s.execute("file.new", &json!({"width": 100, "height": 100})).unwrap();
@@ -3441,6 +3665,10 @@ fn blend_spine_param_errors_say_what_is_wrong() {
 /// language that translates every message.
 #[test]
 fn dataset_import_repeated_column_error_is_translated() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     use serde_json::json;
     use vectorcraft_engine::{EngineError, Session};
     let mut s = Session::new();
@@ -3460,6 +3688,10 @@ fn dataset_import_repeated_column_error_is_translated() {
 /// every message, with the parameter's path and the refused value kept.
 #[test]
 fn parameter_schema_errors_are_translated() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     use serde_json::json;
     use vectorcraft_engine::Session;
     let scanned = message_literals();
@@ -3547,6 +3779,10 @@ const SCHEMA_PHRASES: &[&str] = &[
 /// the parameter's path and the refused value.
 #[test]
 fn parameter_schema_expected_phrases_are_translated() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     use serde_json::{Value, json};
     use vectorcraft_apischema::{Bound, Param, ParamSchema, Problem, Type};
     let number = |min, max, unit| Type::Number { min, max, unit };
@@ -3637,6 +3873,10 @@ fn parameter_schema_expected_phrases_are_translated() {
 /// starts with a bracket is still translated.
 #[test]
 fn bracketed_message_parts_translate_only_as_exact_messages() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     for code in COMPLETE_MESSAGES {
         let lang = Lang::from_code(code).expect("registered");
         let point = message(lang, "[x, y] (two numbers)");
@@ -3669,6 +3909,10 @@ fn pdfx_bleed_warning_is_translated() {
 /// that translates every message.
 #[test]
 fn saved_tracing_preset_errors_are_translated() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     use serde_json::json;
     use vectorcraft_engine::{EngineError, Session};
     let mut s = Session::new();
@@ -3700,6 +3944,10 @@ fn saved_tracing_preset_errors_are_translated() {
 /// that translates every message, keeping the name, the encoding and the param.
 #[test]
 fn legacy_name_notes_are_translated() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let notes = [
         "the name `·¹ÀÌ¾î 1` isn't UTF-8 and was read as windows-1252: if it looks wrong, open the file with another legacyNameEncoding",
         "the name `레\u{fffd} 1` isn't UTF-8, and parts of it aren't valid windows-949 either: open the file with another legacyNameEncoding",
@@ -3722,6 +3970,10 @@ fn legacy_name_notes_are_translated() {
 /// translated in every language that translates every message.
 #[test]
 fn dataset_export_limit_errors_are_translated() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     use serde_json::json;
     use vectorcraft_engine::{EngineError, Session};
     let mut s = Session::new();
@@ -3782,6 +4034,10 @@ fn postscript_errors_keep_their_name_and_meaning() {
 /// every message, with the line and the variable kept.
 #[test]
 fn dataset_import_cell_errors_are_translated() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     use serde_json::json;
     use vectorcraft_engine::{EngineError, Session};
     let mut s = Session::new();
@@ -4100,6 +4356,10 @@ const NAMED_KEYS: &[(&str, &[&str])] = &[
 /// a whole word, and every message in the table is still in a catalog.
 #[test]
 fn translated_messages_keep_the_keys_and_values_their_english_names() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let mut missing = Vec::new();
     let mut seen = vec![false; NAMED_KEYS.len()];
     for l in &LANGUAGES {
@@ -4701,6 +4961,10 @@ fn as_literal_key(s: &str) -> String {
 /// their templates fill in English as in any language.
 #[test]
 fn render_site_labels_fall_back_to_english() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     for (_, source) in RENDER_SITE_ROWS.iter().filter(|(ctx, _)| *ctx == "file-filter") {
         assert_eq!(tr_ctx(Lang::EN, "file-filter", source), *source);
     }
@@ -4754,6 +5018,10 @@ fn pl() -> Lang {
 
 #[test]
 fn polish_plurals_have_three_forms() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let forms: Vec<usize> = [0, 1, 2, 4, 5, 11, 12, 14, 21, 22, 25, 101, 112, 122].into_iter().map(plural_polish).collect();
     assert_eq!(forms, [2, 0, 1, 1, 2, 2, 2, 2, 2, 1, 2, 2, 2, 1]);
     // Every Polish plural row has the three forms, and each count picks its own.

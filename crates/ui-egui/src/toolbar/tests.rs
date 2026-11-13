@@ -449,6 +449,10 @@ fn double_clicking_a_selection_tool_opens_the_move_dialog() {
 /// (the Spanish Live Paint names need more than the 250 pt the English ones fit in).
 #[test]
 fn a_flyout_is_as_wide_as_its_longest_translated_row() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let ctx = egui::Context::default();
     let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
         for lang in crate::i18n::Lang::all() {

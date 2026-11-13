@@ -448,6 +448,10 @@ mod tests {
         };
         let english = brushes(&mut app);
         assert!(english.contains("Charcoal") && english.contains("Art Brush"), "{english}");
+        // The rest reads catalogs other than English, compiled in with `translations`.
+        if !cfg!(feature = "translations") {
+            return;
+        }
         let Some(de) = crate::i18n::Lang::from_code("de") else { panic!("no German catalog") };
         crate::i18n::set_current(de);
         let (german, missing) = (brushes(&mut app), brush_value("missing from the Brushes panel").to_string());

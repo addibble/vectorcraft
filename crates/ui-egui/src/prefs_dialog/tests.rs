@@ -741,6 +741,10 @@ fn a_search_finds_a_setting_by_its_label() {
 /// A translated label matches while the dialog is drawn in that language.
 #[test]
 fn a_translated_label_matches_in_the_interface_language() {
+    // Reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let de = crate::i18n::Lang::from_code("de").expect("de registered");
     let label = crate::i18n::tr(de, "Show Tool Tips");
     assert_ne!(label, "Show Tool Tips", "German has a row for the label");
@@ -1556,4 +1560,19 @@ fn ok_refuses_a_typed_folder_outside_the_automation_roots_before_looking_at_it()
         assert!(a.ui.dialog.is_some(), "{key}: the dialog stays open");
     }
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Older preference files kept the interface language with the UI state: it is carried over to the
+/// preference, also when this build leaves that language out (its `lang-<code>` feature off: the
+/// preference keeps it, follows the system locale meanwhile, and a build that has it shows it). A
+/// code no language has is not carried over.
+#[test]
+fn a_legacy_interface_language_is_carried_over_though_left_out() {
+    for (code, kept) in [("fr", true), ("pt-br", true), ("xx", false)] {
+        let mut a = app();
+        a.ui.legacy_language = Some(code.into());
+        a.ui.engine_prefs = json!({});
+        restore(&mut a);
+        assert_eq!(a.session.prefs.interface_language == code, kept, "{code}");
+    }
 }

@@ -230,6 +230,10 @@ fn status_width_measurements_are_reused_across_frames() {
 fn status_width_measurements_refresh_for_language_units_and_dpi() {
     let (mut app, ctx) = status_readout_app();
     let mut previous = status_width_cache_frame(&app, &ctx, 4000.0, 1.0);
+    // The rest reads catalogs other than English, compiled in with `translations`.
+    if !cfg!(feature = "translations") {
+        return;
+    }
     let french = crate::i18n::Lang::from_code("fr").unwrap();
     for (lang, unit, ppp) in [
         (french, vectorcraft_doc::Unit::Points, 1.0),
