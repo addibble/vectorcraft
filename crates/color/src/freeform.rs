@@ -27,7 +27,7 @@ fn default_spread() -> f32 {
 }
 
 /// One colour point.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct FreeformPoint {
     /// Position in the paint's space (document coordinates; text space for type runs).
     pub at: Point,
@@ -47,7 +47,7 @@ impl FreeformPoint {
 }
 
 /// How the Gradient tool adds points: free points, or points joined into lines.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum FreeformMode {
     #[default]
@@ -72,7 +72,7 @@ impl FreeformMode {
 }
 
 /// A freeform gradient: its colour points and the lines through them.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Freeform {
     pub points: Vec<FreeformPoint>,
     /// Each line is a smooth curve through `points` at these indices, in order.

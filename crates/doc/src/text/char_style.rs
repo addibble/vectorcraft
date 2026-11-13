@@ -2,10 +2,10 @@ use super::para_style::ParaDirection;
 use super::{Appearance, AppearanceItem, Color, Dash, Deserialize, FillLayer, LineCap, LineJoin, Paint, Serialize, StrokeAlign, StrokeLayer};
 
 /// Character attributes (the Character panel).
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct CharStyle {
     pub font_family: String,
-    #[serde(default = "regular")]
+    #[serde(default = "regular", skip_serializing_if = "is_regular")]
     pub font_style: String,
     /// Which installed version of the font (its version string) when several versions of the
     /// family and style are installed and the text was set in one the family and style alone
@@ -23,7 +23,7 @@ pub struct CharStyle {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub leading: Option<f64>,
     /// Tracking in 1/1000 em; in horizontal type, of the em as [`Self::h_scale`] draws it.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub tracking: f64,
     /// Manual pair spacing in 1/1000 em, as [`Self::tracking`]; None uses the automatic mode.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -57,24 +57,24 @@ pub struct CharStyle {
     /// Use glyph shapes for automatic pair spacing; false uses font metrics.
     #[serde(default, rename = "opticalKerning", skip_serializing_if = "crate::skip::is_default")]
     pub optical_kerning: bool,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub baseline_shift: f64,
-    #[serde(default = "hundred")]
+    #[serde(default = "hundred", skip_serializing_if = "is_hundred")]
     pub h_scale: f64,
-    #[serde(default = "hundred")]
+    #[serde(default = "hundred", skip_serializing_if = "is_hundred")]
     pub v_scale: f64,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub rotation: f64,
     pub fill: Paint,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub stroke: Paint,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub stroke_width: f64,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub underline: bool,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub strikethrough: bool,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::skip::left_out")]
     pub all_caps: bool,
     /// OpenType features that differ from the defaults (OpenType panel), as tags: `"dlig"` turns
     /// a feature on, `"-liga"` off, and `"salt=2"` turns a feature with alternates on at the font's
@@ -230,7 +230,7 @@ pub struct CharStyle {
 /// The East Asian glyph form characters are drawn in ([`CharStyle::glyph_form`]): the font's
 /// default glyphs, or the glyphs one OpenType feature substitutes. One form at a time.
 /// <https://learn.microsoft.com/en-us/typography/opentype/spec/featurelist>
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum GlyphForm {
     /// The font's default glyphs.
@@ -326,7 +326,7 @@ impl GlyphForm {
 /// A glyph chosen for one character ([`CharStyle::glyph_alternate`]): the glyph id and the face it
 /// belongs to, named by its PostScript name and version string, so that a glyph id is never used
 /// in another font or another version of the font.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GlyphChoice {
     /// The character the glyph is drawn for.
     pub ch: char,
@@ -344,7 +344,7 @@ pub struct GlyphChoice {
 /// height of its OS/2 table), or its ideographic character face (ICF, OpenType's `icfb` and
 /// `icft` baselines). Layout sets the characters at the em size at which the chosen height equals
 /// the font size; with a font that has no such value, the size measures the em box.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum FontHeightReference {
     #[default]
@@ -358,7 +358,7 @@ pub enum FontHeightReference {
 /// the Western, Arabic-Indic and Eastern Arabic-Indic sets drawn in one of them or in the digits
 /// of an Indic script. The text keeps the digits that were typed; only the glyphs change (like
 /// All Caps).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum Digits {
     /// Each digit as typed.
@@ -464,7 +464,7 @@ impl Digits {
 /// baseline, at the top (right, in vertical type), centre or bottom (left) of the ideographic
 /// em boxes, or at the top (right) or bottom (left) of the ideographic character faces (ICF, the
 /// average box of the ideographs inside the em box: OpenType's `icft` and `icfb` baselines).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum CharAlign {
     #[default]
@@ -477,7 +477,7 @@ pub enum CharAlign {
 }
 
 /// Superscript or subscript proportions in percent of the font size (Document Setup → Type).
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ScriptMetrics {
     /// Glyph size.
     pub size: f64,
@@ -509,7 +509,7 @@ impl Default for ScriptMetrics {
 
 /// Character position (Character panel Superscript / Subscript). The proportions are the
 /// document's when the position is applied, and follow later Document Setup changes.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum CharPosition {
     #[default]
@@ -556,9 +556,15 @@ fn is_ten(v: &f64) -> bool {
 fn regular() -> String {
     "Regular".into()
 }
+fn is_regular(v: &str) -> bool {
+    crate::skip::saving() && v == regular()
+}
 
 fn hundred() -> f64 {
     100.0
+}
+fn is_hundred(v: &f64) -> bool {
+    crate::skip::saved_as(v, &hundred())
 }
 
 /// The largest Insert Aki Left or Right ([`CharStyle::aki_left`]), in 1/1000 em: one em.
@@ -600,7 +606,7 @@ fn is_fifty(v: &f64) -> bool {
 /// each line set flush left (top, in vertical type), centered or flush right (bottom), or spread
 /// to the block's length with the last line set flush left, centered or flush right, or spread as
 /// well. Auto is the default and sets the lines as [`WarichuAlign::JustifyLeft`] does.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum WarichuAlign {
     #[default]

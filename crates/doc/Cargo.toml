@@ -25,6 +25,7 @@ tiff = { workspace = true }
 # 1-bit TIFFs compressed with CCITT Group 3 (Compression 2 and 3).
 craft-stream-codecs = { workspace = true }
 serde = { workspace = true }
+schemars = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 chrono = { workspace = true }

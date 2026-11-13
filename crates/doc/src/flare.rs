@@ -227,7 +227,7 @@ pub fn json_close(a: &Value, b: &Value, tol: f64) -> bool {
 const PIXEL_SNAP: f64 = 1.0;
 
 /// The settings of a flare group ([`crate::NodeExtras::flare`]).
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct FlareSpec {
     /// `shape.flare`'s params the flare was drawn with, each one given: the center (`cx`, `cy`) and
     /// the rings' end point (`x2`, `y2`) are in the coordinates it was drawn in.

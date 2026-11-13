@@ -630,6 +630,19 @@ impl<'de> Deserialize<'de> for Anchors {
     }
 }
 
+/// The schema of [`Anchors`] is its file form's: a list of [`Anchor`]s, as it serializes.
+impl schemars::JsonSchema for Anchors {
+    fn is_referenceable() -> bool {
+        false
+    }
+    fn schema_name() -> String {
+        <Vec<Anchor>>::schema_name()
+    }
+    fn json_schema(g: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
+        <Vec<Anchor>>::json_schema(g)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use kurbo::Point;

@@ -103,7 +103,7 @@ impl CharClass {
 }
 
 /// The font a composite font sets one class of characters in, and how.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CompositePart {
     /// The font family and style.
@@ -124,7 +124,7 @@ pub struct CompositePart {
     pub v_scale: f64,
     /// Kana only: the characters are scaled from the center of the em box rather than from the
     /// baseline.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[serde(default, skip_serializing_if = "crate::skip::is_false")]
     pub scale_at_center: bool,
 }
 
@@ -145,7 +145,7 @@ impl CompositePart {
 }
 
 /// The six parts of a composite font, one per [`CharClass`].
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct CompositeParts {
     pub kanji: CompositePart,
     pub kana: CompositePart,
@@ -186,7 +186,7 @@ impl CompositeParts {
 
 /// A custom character set of a composite font: characters chosen by the user, set in a part of
 /// their own instead of their class's part.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct CustomCharSet {
     /// The set's name, unique in its composite font in any case.
     pub name: String,
@@ -246,7 +246,7 @@ impl CompositeClasses {
 
 /// A composite font (Type › Composite Fonts…), saved with the document. Its name is the family
 /// that type set in it names.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct CompositeFont {
     pub name: String,
     pub parts: CompositeParts,
