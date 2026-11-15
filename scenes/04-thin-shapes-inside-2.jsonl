@@ -1,0 +1,12 @@
+{"command": "artboard.setProps", "params": {"index": 0, "x": 0, "y": 0, "width": 190.0, "height": 64.0}}
+{"command": "shape.rectangle", "params": {"x": 0, "y": 0, "width": 190.0, "height": 64.0}}
+{"command": "paint.setFill", "params": {"color": "#e9e4d8"}}
+{"command": "paint.setStroke", "params": {"none": true}}
+{"command": "shape.rectangle", "params": {"x": 30, "y": 26, "width": 70, "height": 2.0}}
+{"command": "paint.setFill", "params": {"color": "#3366cc"}}
+{"command": "paint.setStroke", "params": {"none": true}}
+{"command": "effect.apply", "params": {"effect": "threeD.extrude", "params": {"depth": 17.2, "twist": 0, "taper": 100, "cap": true, "bevel": "cove", "bevelWidth": 2.0, "bevelHeight": 10.3, "bevelRepeat": 1, "bevelSpace": 0, "bevelInside": true, "bevelBothSides": false, "rotationX": 30.0, "rotationY": 11.0, "rotationZ": 0, "perspectiveAngle": 0, "shade": true, "lightRotation": 125, "lightHeight": 30, "lightIntensity": 80, "ambient": 25}}}
+{"command": "shape.star", "params": {"cx": 150, "cy": 27, "radius1": 16, "radius2": 3.0, "points": 5}}
+{"command": "paint.setFill", "params": {"color": "#3366cc"}}
+{"command": "paint.setStroke", "params": {"none": true}}
+{"command": "effect.apply", "params": {"effect": "threeD.extrude", "params": {"depth": 17.2, "twist": 0, "taper": 100, "cap": true, "bevel": "cove", "bevelWidth": 2.0, "bevelHeight": 10.3, "bevelRepeat": 1, "bevelSpace": 0, "bevelInside": true, "bevelBothSides": false, "rotationX": 30.0, "rotationY": 11.0, "rotationZ": 0, "perspectiveAngle": 0, "shade": true, "lightRotation": 125, "lightHeight": 30, "lightIntensity": 80, "ambient": 25}}}

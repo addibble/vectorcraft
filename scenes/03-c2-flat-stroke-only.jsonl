@@ -1,0 +1,8 @@
+{"command": "artboard.setProps", "params": {"index": 0, "x": 0, "y": 0, "width": 200.0, "height": 46.0}}
+{"command": "shape.rectangle", "params": {"x": 0, "y": 0, "width": 200.0, "height": 46.0}}
+{"command": "paint.setFill", "params": {"color": "#e9e4d8"}}
+{"command": "paint.setStroke", "params": {"none": true}}
+{"command": "text.create", "params": {"x": 10, "y": 12, "text": "SAMPLE TYPE", "size": 18, "area": {"width": 180.0, "height": 25.2}, "justify": "center", "color": "#3366cc"}}
+{"command": "paint.setFill", "params": {"none": true}}
+{"command": "paint.setStroke", "params": {"color": "#ffffff"}}
+{"command": "stroke.set", "params": {"weight": 1.5, "join": "round"}}

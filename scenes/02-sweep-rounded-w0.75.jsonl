@@ -1,0 +1,8 @@
+{"command": "artboard.setProps", "params": {"index": 0, "x": 0, "y": 0, "width": 200.0, "height": 46.0}}
+{"command": "shape.rectangle", "params": {"x": 0, "y": 0, "width": 200.0, "height": 46.0}}
+{"command": "paint.setFill", "params": {"color": "#e9e4d8"}}
+{"command": "paint.setStroke", "params": {"none": true}}
+{"command": "text.create", "params": {"x": 10, "y": 12, "text": "SAMPLE TYPE", "size": 18, "area": {"width": 180.0, "height": 25.2}, "justify": "center", "color": "#3366cc"}}
+{"command": "paint.setStroke", "params": {"color": "#ffffff"}}
+{"command": "stroke.set", "params": {"weight": 2.0, "join": "round"}}
+{"command": "effect.apply", "params": {"effect": "threeD.extrude", "params": {"depth": 17.2, "twist": 0, "taper": 100, "cap": true, "bevel": "rounded", "bevelWidth": 0.75, "bevelHeight": 10.3, "bevelRepeat": 1, "bevelSpace": 0, "bevelInside": false, "bevelBothSides": false, "rotationX": 30.0, "rotationY": 11.0, "rotationZ": 0, "perspectiveAngle": 0, "shade": true, "lightRotation": 125, "lightHeight": 30, "lightIntensity": 80, "ambient": 25}}}

@@ -1,0 +1,82 @@
+diff --git a/crates/three-d/src/solid/build.rs b/crates/three-d/src/solid/build.rs
+index d73416134..bd9c5e241 100644
+--- a/crates/three-d/src/solid/build.rs
++++ b/crates/three-d/src/solid/build.rs
+@@ -625,7 +625,7 @@ pub(crate) fn extrude_faces(path: &PathData, rule: FillRule, bounds: Rect, optio
+     let mut b = Builder::new(&camera, o.cap, o.hidden, keep);
+     let z = |t: f64| o.depth / 2.0 - o.depth * t;
+     let ring_at =
+-        |ring: &[Point], s: &Step| -> Vec<V3> { section(&inset(ring, s.inset), bounds, &o, s.t).iter().map(|p| camera.place(*p, z(s.t))).collect() };
++        |ring: &[Point], s: &Step| -> Vec<V3> { section(&inset(ring, s.inset, &rings), bounds, &o, s.t).iter().map(|p| camera.place(*p, z(s.t))).collect() };
+     // Every band of a twisted outline, bevels included, is cut as its walls' first slice is (with
+     // bevels and no walls, as its shallowest band is), within [`MAX_FACES`] facets.
+     let depth_of = |s: &[Step]| s.get(1).zip(s.first()).map_or(0.0, |(b, a)| (b.t - a.t).abs());
+diff --git a/crates/three-d/src/solid/rings.rs b/crates/three-d/src/solid/rings.rs
+index 882bd245a..8b98aa2ea 100644
+--- a/crates/three-d/src/solid/rings.rs
++++ b/crates/three-d/src/solid/rings.rs
+@@ -480,7 +480,7 @@ pub(super) fn left(a: Point, b: Point) -> (f64, f64) {
+ /// A point given twice (a corner [`square_corners`] cut) moves each copy along its one edge's
+ /// normal. Each point stays the partner of its source point, so rings at different insets join
+ /// face to face.
+-pub(super) fn inset(ring: &[Point], w: f64) -> Vec<Point> {
++pub(super) fn inset(ring: &[Point], w: f64, region: &[&[Point]]) -> Vec<Point> {
+     if w == 0.0 {
+         return ring.to_vec();
+     }
+@@ -506,11 +506,54 @@ pub(super) fn inset(ring: &[Point], w: f64) -> Vec<Point> {
+                 (mx, my) = (mx / ml, my / ml);
+             }
+             let cos = (mx * ax + my * ay).max(1.0 / MITER_LIMIT);
+-            Point::new(p.x + mx * w / cos, p.y + my * w / cos)
++            let q = Point::new(p.x + mx * w / cos, p.y + my * w / cos);
++            // Prototype (travel limit): the corner stops halfway to the first edge of the solid
++            // its path crosses.
++            let travel = q.distance(p);
++            match first_hit(region, p, q) {
++                Some(d) if 0.5 * d < travel => {
++                    let keep = 0.5 * d / travel;
++                    Point::new(p.x + (q.x - p.x) * keep, p.y + (q.y - p.y) * keep)
++                }
++                _ => q,
++            }
+         })
+         .collect()
+ }
+ 
++/// Prototype: the distance from `p` along `p`→`q` to the first edge of `region` it crosses, not
++/// counting the edges that touch `p`. Every edge is tested: O(points × edges).
++fn first_hit(region: &[&[Point]], p: Point, q: Point) -> Option<f64> {
++    let (dx, dy) = (q.x - p.x, q.y - p.y);
++    let len = dx.hypot(dy);
++    if len < 1e-12 {
++        return None;
++    }
++    let mut best: Option<f64> = None;
++    for ring in region {
++        let n = ring.len();
++        for k in 0..n {
++            let (a, b) = (ring[k], ring[(k + 1) % n]);
++            if a.distance(p) < 1e-9 || b.distance(p) < 1e-9 {
++                continue;
++            }
++            let (ex, ey) = (b.x - a.x, b.y - a.y);
++            let den = dx * ey - dy * ex;
++            if den.abs() < 1e-15 {
++                continue;
++            }
++            let (fx, fy) = (a.x - p.x, a.y - p.y);
++            let t = (fx * ey - fy * ex) / den;
++            let u = (fx * dy - fy * dx) / den;
++            if (1e-9..=1.0).contains(&t) && (0.0..=1.0).contains(&u) {
++                let d = t * len;
++                best = Some(best.map_or(d, |b: f64| b.min(d)));
++            }
++        }
++    }
++    best
++}
++
+ /// `ring` with each corner whose miter an inset towards `side` (positive: the filled side,
+ /// negative: away from it) would reach past [`MITER_LIMIT`] given twice, joined by an edge of no
+ /// length that follows no curve. [`inset`] moves the two copies apart along their own edges'
