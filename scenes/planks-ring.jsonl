@@ -1,0 +1,13 @@
+{"command": "file.new", "params": {"width": 300, "height": 300}}
+{"command": "path.create", "params": {"d": "M201.00 75.00 L201.00 225.00 L179.00 225.00 L179.00 75.00 Z", "closed": true}}
+{"command": "paint.setFill", "params": {"color": "#3366cc"}}
+{"command": "stroke.set", "params": {"weight": 3, "dash": [12, 8]}}
+{"command": "path.create", "params": {"d": "M189.45 231.67 L59.55 156.67 L70.55 137.61 L200.45 212.61 Z", "closed": true}}
+{"command": "paint.setFill", "params": {"color": "#cc6633"}}
+{"command": "stroke.set", "params": {"weight": 3, "dash": [12, 8]}}
+{"command": "path.create", "params": {"d": "M59.55 143.33 L189.45 68.33 L200.45 87.39 L70.55 162.39 Z", "closed": true}}
+{"command": "paint.setFill", "params": {"color": "#339966"}}
+{"command": "stroke.set", "params": {"weight": 3, "dash": [12, 8]}}
+{"command": "select.all", "params": {}}
+{"command": "object.group", "params": {}}
+{"command": "effect.apply", "params": {"effect": "threeD.extrude", "item": null, "params": {"depth": 50, "rotationX": 50, "rotationY": -25, "bevel": "none"}}}
