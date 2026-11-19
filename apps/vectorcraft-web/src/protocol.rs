@@ -624,6 +624,24 @@ pub enum FontIndex {
     Url { url: String, sha256: String },
 }
 
+/// The `vectorcraft:fonts` set waiting for the app's next frame: each message gives the host's
+/// whole set (RFC-0034, craft-web-host's `fonts`), so a later one replaces one still waiting and
+/// the bridge holds one set at most.
+#[derive(Debug, Default)]
+pub struct FontsInbox(Option<Vec<FontIndex>>);
+
+impl FontsInbox {
+    /// A set heard, in place of any still waiting.
+    pub fn heard(&mut self, list: Vec<FontIndex>) {
+        self.0 = Some(list);
+    }
+
+    /// The set waiting, once.
+    pub fn take(&mut self) -> Option<Vec<FontIndex>> {
+        self.0.take()
+    }
+}
+
 /// Check a `vectorcraft:fonts` the bridge accepted, by craft-web-host's rules for its `fonts`
 /// message: `indexes` (`None` when it is no array, with how many entries it has) lists 1 to
 /// [`MAX_FONT_INDEXES`] entries, each exactly one of `{bytes}` or `{url, sha256}` (an https URL of
@@ -1187,5 +1205,15 @@ mod tests {
         ] {
             assert!(fonts(indexes).is_err(), "{why}");
         }
+    }
+
+    /// The bridge keeps only the last `vectorcraft:fonts` heard: it replaces one still waiting.
+    #[test]
+    fn a_later_fonts_message_replaces_one_still_waiting() {
+        let mut inbox = FontsInbox::default();
+        inbox.heard(vec![FontIndex::Bytes(b"first".to_vec())]);
+        inbox.heard(vec![FontIndex::Bytes(b"second".to_vec())]);
+        assert_eq!(inbox.take(), Some(vec![FontIndex::Bytes(b"second".to_vec())]));
+        assert_eq!(inbox.take(), None, "taken once");
     }
 }
