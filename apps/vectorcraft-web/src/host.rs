@@ -689,6 +689,7 @@ fn font_indexes(data: &JsValue) -> Option<(usize, Vec<protocol::FontIndexFields>
     let entries = list
         .iter()
         .map(|entry| protocol::FontIndexFields {
+            not_object: !entry.is_object(),
             bytes: match js_sys::Reflect::get(&entry, &JsValue::from_str("bytes")) {
                 Ok(v) if v.is_undefined() || v.is_null() => protocol::Field::Absent,
                 Ok(v) if byte_length(&v).is_some_and(|n| n > protocol::MAX_FONT_INDEX_BYTES) => protocol::Field::Wrong,
