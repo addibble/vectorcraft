@@ -56,7 +56,7 @@ fn renamed(file: &str) -> Vec<u8> {
 }
 
 /// A bundled Source Sans 3 file renamed `family`, which is as long as the original name.
-fn renamed_to(file: &str, family: &str) -> Vec<u8> {
+pub(crate) fn renamed_to(file: &str, family: &str) -> Vec<u8> {
     let data = std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/fonts").join(file)).unwrap();
     rename(data, "Source Sans 3", family)
 }

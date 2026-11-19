@@ -743,6 +743,7 @@ pub(super) const DENIED: &[&str] = &[
     "object.pathfinder.options",
     "stroke.arrowheads.edit",
     "stroke.arrowheads.list",
+    "text.activateFont",
     "text.similarFonts",
     "type.compositeFonts.set",
 ];

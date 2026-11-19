@@ -28,11 +28,15 @@ mod fonts;
 #[cfg(any(target_arch = "wasm32", test))]
 mod keys;
 #[cfg(any(target_arch = "wasm32", test))]
+mod latest;
+#[cfg(any(target_arch = "wasm32", test))]
 mod locks;
 #[cfg(any(target_arch = "wasm32", test))]
 mod pencil;
 #[cfg(any(target_arch = "wasm32", test))]
 mod saved_files;
+#[cfg(any(target_arch = "wasm32", test))]
+mod settle;
 #[cfg(target_arch = "wasm32")]
 mod web;
 

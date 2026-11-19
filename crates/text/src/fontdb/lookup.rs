@@ -197,11 +197,22 @@ impl FontDb {
     /// [`face`](Self::face) by any of the family's names ([`canonical`](Self::canonical)), and how
     /// it matched. A composite font matches as its base font does ([`Self::composite_base`]).
     pub fn resolve(&self, family: &str, style: &str) -> Option<(Arc<FontFace>, FontMatch)> {
+        self.resolve_with(family, style, true)
+    }
+
+    /// [`FontDb::resolve`] for a check that sets no type in the font (is it installed, is this
+    /// style its own): a font source it meets is not asked for ([`FontDb::face_without_request`]).
+    pub fn resolve_without_request(&self, family: &str, style: &str) -> Option<(Arc<FontFace>, FontMatch)> {
+        self.resolve_with(family, style, false)
+    }
+
+    /// [`FontDb::resolve`], asking for a font source it meets when `request`.
+    fn resolve_with(&self, family: &str, style: &str, request: bool) -> Option<(Arc<FontFace>, FontMatch)> {
         if let Some((base, base_style)) = self.composite_base(family) {
-            return self.resolve(&base, &base_style);
+            return self.resolve_with(&base, &base_style, request);
         }
         let (family, style) = self.canonical(family, style);
-        let f = self.face(&family, &style)?;
+        let f = self.face_with(&family, &style, request)?;
         let m = if !f.family.eq_ignore_ascii_case(&family) {
             FontMatch::Missing
         } else if norm(&f.style) == norm(&style) || f.keys.styles.contains(&norm(&style)) {
@@ -213,8 +224,21 @@ impl FontDb {
     }
 
     /// The installed face whose PostScript name is `name` (`HiraginoSans-W3`; any case), loaded
-    /// from the system fonts if need be. `None` when no installed font has the name.
+    /// from the system fonts if need be. `None` when no installed font has the name; then a face a
+    /// host's font index lists by exactly that name is asked for ([`FontDb::host_postscript`],
+    /// RFC-0034 section 2.2), and found here once it arrives.
     pub fn find_postscript(&self, name: &str) -> Option<Arc<FontFace>> {
+        self.find_postscript_with(name, true)
+    }
+
+    /// [`FontDb::find_postscript`] for a check that sets no type in the face (is it installed):
+    /// a face a host's font index lists by that name is not asked for.
+    pub fn find_postscript_without_request(&self, name: &str) -> Option<Arc<FontFace>> {
+        self.find_postscript_with(name, false)
+    }
+
+    /// [`FontDb::find_postscript`], asking for a face of a host's index when `request`.
+    fn find_postscript_with(&self, name: &str, request: bool) -> Option<Arc<FontFace>> {
         let key = norm(name);
         if key.is_empty() {
             return None;
@@ -227,7 +251,12 @@ impl FontDb {
         let face = self.aliases.read().unwrap_or_else(|e| e.into_inner()).get(&key).and_then(|v| {
             v.iter().find(|a| a.paired.is_none() && a.style.is_some()).map(|a| (a.family.clone(), a.style.clone().unwrap_or_default()))
         });
-        let (family, style) = face?;
+        let Some((family, style)) = face else {
+            if request && let Some(listed) = self.host_postscript(name) {
+                self.request_source(&listed.family, &listed.style);
+            }
+            return None;
+        };
         self.face(&family, &style)?;
         loaded(self)
     }
@@ -262,9 +291,12 @@ impl FontDb {
     /// The (family, style) of the installed face whose PostScript name is `name` (ignoring ASCII
     /// case). Documents name fonts this way, and a family can hold hyphens
     /// ("Rounded-X-Mplus-1c-black" is Rounded-X M+ 1c, black), so the name can't be split.
+    /// A face a host's font index lists by exactly that PostScript name is named too, as its index
+    /// names it ([`FontDb::host_postscript`]): its type asks for it when drawn.
     pub fn by_postscript_name(&self, name: &str) -> Option<(String, String)> {
         self.ensure_catalog();
-        self.postscript.read().unwrap_or_else(|e| e.into_inner()).get(&norm(name)).cloned()
+        let installed = self.postscript.read().unwrap_or_else(|e| e.into_inner()).get(&norm(name)).cloned();
+        installed.or_else(|| self.host_postscript(name).map(|l| (l.family, l.style)))
     }
 
     /// Load the files of the installed `family`, adding all their faces at once
@@ -277,7 +309,7 @@ impl FontDb {
         paths.sort();
         paths.dedup();
         let files = paths.into_iter().flat_map(|p| font_files(&p).into_iter().map(move |data| (data, Some(p.clone()))));
-        self.add_fonts(files) > 0 || self.is_loaded(family)
+        !self.add_fonts(files).added.is_empty() || self.is_loaded(family)
     }
 
     /// Resolve a family + style to a face, falling back to the closest style of the family, then to
@@ -286,8 +318,19 @@ impl FontDb {
     /// the `bundled-fonts` feature and none was added), in which case text has no glyphs. A
     /// composite font gives its base font's face ([`Self::composite_base`]).
     pub fn face(&self, family: &str, style: &str) -> Option<Arc<FontFace>> {
+        self.face_with(family, style, true)
+    }
+
+    /// [`FontDb::face`] for a check that draws no type in it: a font source of the family is not
+    /// asked for ([`FontDb::take_source_requests`]), so only type set in it fetches it.
+    pub fn face_without_request(&self, family: &str, style: &str) -> Option<Arc<FontFace>> {
+        self.face_with(family, style, false)
+    }
+
+    /// [`FontDb::face`], asking for a font source of the family when `request`.
+    fn face_with(&self, family: &str, style: &str, request: bool) -> Option<Arc<FontFace>> {
         if let Some((base, base_style)) = self.composite_base(family) {
-            return self.face(&base, &base_style);
+            return self.face_with(&base, &base_style, request);
         }
         let (family, style) = self.canonical(family, style);
         let (family, style) = (family.as_str(), style.as_str());
@@ -304,6 +347,10 @@ impl FontDb {
             if let Some(f) = self.find(family, style) {
                 return Some(f);
             }
+        }
+        // A host can supply it: asked for once, drawn in the fallback until the host adds it.
+        if request && found.as_ref().is_none_or(|f| norm(&f.style) != norm(style)) {
+            self.request_source(family, style);
         }
         found
             .or_else(|| self.find(FALLBACK_FAMILY, style))
@@ -494,7 +541,9 @@ impl FontDb {
         self.has_installed_family(family)
     }
 
-    /// Is `family` available as a loaded or installed font, excluding composite fonts?
+    /// Is `family` available as a loaded or installed font, excluding composite fonts? A font
+    /// family a host's font index lists ([`FontDb::set_host_indexes`]) is not until a face of it
+    /// arrives, as a font Adobe Fonts hasn't activated isn't installed (RFC-0034 section 5.1).
     pub fn has_installed_family(&self, family: &str) -> bool {
         let (family, _) = self.canonical(family, "");
         self.is_loaded(&family) || self.read_catalog().contains_key(&family.to_ascii_lowercase())

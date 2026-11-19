@@ -2571,6 +2571,7 @@ file-filter	Templates	Modelli
 	No document open.	Nessun documento aperto.
 	No filter plug-ins installed	Nessun plug-in filtro installato
 	No fonts are available.	Nessun font disponibile.
+	This font isn't loaded yet: set type in it to load it.	Questo font non è ancora caricato: usalo in un testo per caricarlo.
 	No gradient swatches	Nessun campione sfumatura
 	No graphic styles	Nessuno stile grafico
 	No images	Nessuna immagine
@@ -10403,3 +10404,10 @@ breakText	Glyphs	Glifi
 # #5804 native-picked raster editor (draft translations; native review welcome).
 	Edit Original with:	Modifica originale con:
 file-filter	Applications	Applicazioni
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	impossibile caricare {font} ({reason}): il suo testo viene mostrato con un altro font
+	Activate	Attiva
+	Activating…	Attivazione…
+	Activate Font	Riattiva font
+@msg	give the font's family	specifica la famiglia del font
+@msg	{family} {style} is no font a font index lists that failed to load	{family} {style} non è un font dell'elenco dei font della pagina che non è stato caricato
+@msg	The fonts this page supplies couldn't be listed: {why}	Impossibile elencare i font forniti da questa pagina: {why}

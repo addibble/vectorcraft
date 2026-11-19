@@ -1028,3 +1028,20 @@ fn usecmap_copies_count_against_the_memory_budget() {
     .unwrap();
     assert!(r.warnings.iter().any(|w| w.contains("too much memory")), "{:?}", r.warnings);
 }
+
+/// Telling whether a font name splits into a CIDFont and a CMap asks for no face of a host's font
+/// index: `Hostcid-Bold-H` checks whether `Hostcid-Bold` is installed, and a host's index listing
+/// that PostScript name isn't fetched for it, since no type is set in it (review round 2, item 9;
+/// RFC-0034 acceptance test 2).
+#[test]
+fn a_composite_name_check_fetches_no_host_face() {
+    use vectorcraft_text::test_fonts::{IndexFile, add_host_index, host_index};
+    let index = host_index(&[("Hostcid", &[IndexFile { path: "h/Bold.ttf", bytes: b"a bold face", italic: false, weight: 700 }])]);
+    let index = String::from_utf8(index).unwrap().replacen(r#""weight": 700}"#, r#""weight": 700, "postscript": ["Hostcid-Bold"]}"#, 1);
+    let _index = add_host_index("eps-cid-check", index.into_bytes()).unwrap();
+    let db = vectorcraft_text::FontDb::global();
+    db.take_source_requests();
+    super::tests::read("/Hostcid-Bold-H findfont 20 scalefont setfont 10 20 moveto (AB) show");
+    let asked: Vec<_> = db.take_source_requests().into_iter().filter(|r| r.family == "Hostcid" && r.file.weight == 700).collect();
+    assert!(asked.is_empty(), "{asked:?}");
+}

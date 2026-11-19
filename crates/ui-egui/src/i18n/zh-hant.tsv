@@ -3844,6 +3844,7 @@ liquify-list-end	{0}, {1}	{0}和{1}
 	No document open.	沒有開啟的文件。
 	No filter plug-ins installed	未安裝濾鏡增效模組
 	No fonts are available.	沒有可用的字體。
+	This font isn't loaded yet: set type in it to load it.	此字體尚未載入：在文字中使用它即可載入。
 	No gradient swatches	沒有漸層色票
 	No graphic styles	沒有繪圖樣式
 	No images	沒有影像
@@ -10420,3 +10421,10 @@ breakText	Glyphs	字符
 # #5804 native-picked raster editor (draft translations; native review welcome).
 	Edit Original with:	編輯原稿所用應用程式：
 file-filter	Applications	應用程式
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	無法載入 {font}（{reason}）：使用此字體的文字會以其他字體顯示
+	Activate	啟用
+	Activating…	正在啟用…
+	Activate Font	重新啟用字體
+@msg	give the font's family	請提供字體的字體系列
+@msg	{family} {style} is no font a font index lists that failed to load	{family} {style} 不是頁面字體清單中載入失敗的字體
+@msg	The fonts this page supplies couldn't be listed: {why}	無法列出此頁面提供的字型：{why}

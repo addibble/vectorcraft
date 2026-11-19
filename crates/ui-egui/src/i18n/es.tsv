@@ -2530,6 +2530,7 @@ font-technology	Variable	Variables
 	No document open.	No hay ningún documento abierto.
 	No filter plug-ins installed	No hay plugins de filtro instalados
 	No fonts are available.	No hay fuentes disponibles.
+	This font isn't loaded yet: set type in it to load it.	Esta fuente aún no se ha cargado: úsela en un texto para cargarla.
 	No gradient swatches	No hay muestras de degradado
 	No graphic styles	No hay estilos gráficos
 	No images	No hay imágenes
@@ -10684,3 +10685,10 @@ breakText	Glyphs	Glifos
 # #5804 native-picked raster editor (draft translations; native review welcome).
 	Edit Original with:	Editar original con:
 file-filter	Applications	Aplicaciones
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	no se pudo cargar {font} ({reason}): su texto se muestra con otra fuente
+	Activate	Activar
+	Activating…	Activando…
+	Activate Font	Reactivar fuente
+@msg	give the font's family	indica la familia de la fuente
+@msg	{family} {style} is no font a font index lists that failed to load	{family} {style} no es una fuente de la lista de fuentes de la página que haya fallado al cargarse
+@msg	The fonts this page supplies couldn't be listed: {why}	No se pudieron listar las fuentes que ofrece esta página: {why}

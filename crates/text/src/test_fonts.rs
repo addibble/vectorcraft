@@ -12,6 +12,84 @@ use write_fonts::tables::fvar::{AxisInstanceArrays, Fvar, InstanceRecord, Variat
 use write_fonts::tables::gvar::{GlyphDelta, GlyphDeltas, GlyphVariations, Gvar, Tent};
 use write_fonts::types::{F2Dot14, Fixed, NameId, Tag};
 
+/// A host's font index ([`crate::FontDb::add_host_indexes`], beside the others) taken out of the process's font
+/// database when this drops ([`crate::FontDb::remove_host_index`]), also when the test fails: a
+/// test that gives an index of its own leaves no listed family or pending request for the tests
+/// after it.
+pub struct HostIndexRemoved(pub String);
+
+impl Drop for HostIndexRemoved {
+    fn drop(&mut self) {
+        crate::FontDb::global().remove_host_index(&self.0);
+    }
+}
+
+/// A file of a test's font index ([`host_index`]): its path, its bytes, and the slant and weight
+/// its entry says it has.
+pub struct IndexFile<'a> {
+    pub path: &'a str,
+    pub bytes: &'a [u8],
+    pub italic: bool,
+    pub weight: u16,
+}
+
+/// A host's font index in craft-font-index format listing `families` (each its name and files),
+/// their files at `https://fonts.test/{path}`.
+pub fn host_index(families: &[(&str, &[IndexFile<'_>])]) -> Vec<u8> {
+    let families: Vec<String> = families
+        .iter()
+        .map(|(family, files)| {
+            let files: Vec<String> = files
+                .iter()
+                .map(|f| {
+                    let style = if f.italic { "italic" } else { "normal" };
+                    format!(
+                        r#"{{"path": "{}", "size": {}, "sha256": "{}", "style": "{style}", "weight": {}}}"#,
+                        f.path,
+                        f.bytes.len(),
+                        craft_font_store::sha256_hex(f.bytes),
+                        f.weight
+                    )
+                })
+                .collect();
+            format!(r#"{{"family": "{family}", "license": "OFL", "files": [{}]}}"#, files.join(", "))
+        })
+        .collect();
+    format!(
+        r#"{{"schema": 1, "version": "1.0", "source": "test-host", "commit": "0000000000000000000000000000000000000000",
+            "source_info": {{"id": "test-host", "name": "A test's fonts", "file_urls": ["https://fonts.test/{{path}}"]}},
+            "families": [{}]}}"#,
+        families.join(", ")
+    )
+    .into_bytes()
+}
+
+/// `index` given to the process's font database as the host's index `id`, taken away again when
+/// the guard drops; `None` when the database refuses it.
+pub fn add_host_index(id: &str, index: Vec<u8>) -> Option<HostIndexRemoved> {
+    crate::FontDb::global().add_host_indexes(vec![(id.to_string(), index)]).ok()?;
+    Some(HostIndexRemoved(id.to_string()))
+}
+
+/// A host's index `id` of `faces` (each a family and the CSS weight of its one upright file),
+/// given to the process's font database and taken away when the guard drops. Its files are never
+/// fetched by the tests that use it, so their bytes are only what the entries name. `None` when
+/// the database refuses it.
+pub fn add_index_of(id: &str, faces: &[(&str, u16)]) -> Option<HostIndexRemoved> {
+    let paths: Vec<String> = (0..faces.len()).map(|i| format!("f/{i}.ttf")).collect();
+    let bytes: Vec<Vec<u8>> = faces.iter().map(|(f, w)| format!("{f} {w}").into_bytes()).collect();
+    let mut families: Vec<(&str, Vec<IndexFile<'_>>)> = vec![];
+    for (i, (family, weight)) in faces.iter().enumerate() {
+        let file = IndexFile { path: &paths[i], bytes: &bytes[i], italic: false, weight: *weight };
+        match families.iter_mut().find(|(f, _)| f == family) {
+            Some((_, files)) => files.push(file),
+            None => families.push((family, vec![file])),
+        }
+    }
+    let families: Vec<(&str, &[IndexFile<'_>])> = families.iter().map(|(f, files)| (*f, files.as_slice())).collect();
+    add_host_index(id, host_index(&families))
+}
+
 /// Whether faces use and keep shaping plans ([`keep_shape_plans`]).
 static KEEP_SHAPE_PLANS: AtomicBool = AtomicBool::new(true);
 

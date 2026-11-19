@@ -1076,6 +1076,13 @@
 	Entire Document	Seluruh dokumen
 	Report Results	Laporkan hasil
 	Create Outlines	Buat garis luar
+	Activate Font	Aktifkan font
+	Activate	Aktifkan
+	Activating…	Mengaktifkan…
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	{font} tidak dapat dimuat ({reason}): teksnya ditampilkan dengan font lain
+@msg	give the font's family	berikan keluarga font
+@msg	{family} {style} is no font a font index lists that failed to load	{family} {style} bukan font dari daftar font halaman yang gagal dimuat
+@msg	The fonts this page supplies couldn't be listed: {why}	Font yang disediakan halaman ini tidak dapat dicantumkan: {why}
 	Optical Margin Alignment	Perataan margin optik
 	Dynamic Text	Teks dinamis
 	Dynamic Text Presets	Preset teks dinamis
@@ -2491,6 +2498,7 @@ digits	Malayalam	Malayalam
 	Latin Extended	Latin diperluas
 	Latin-1 Supplement	Tambahan Latin-1
 	No fonts are available.	Tidak ada font yang tersedia.
+	This font isn't loaded yet: set type in it to load it.	Font ini belum dimuat: gunakan dalam teks untuk memuatnya.
 	Select text or click into text with the Type tool to insert glyphs	Pilih teks atau klik di dalam teks dengan alat teks untuk menyisipkan glif
 	Show:	Tampilkan:
 	Use the Selected Text's Font	Gunakan font teks yang dipilih

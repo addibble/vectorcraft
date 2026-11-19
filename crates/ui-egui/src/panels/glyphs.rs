@@ -166,7 +166,9 @@ fn browsed_face(app: &VectorcraftApp, ctx: &egui::Context) -> (String, String, O
     let face = selected_target(app)
         .filter(|t| t.style.font_family.eq_ignore_ascii_case(&family) && t.style.font_style.eq_ignore_ascii_case(&style))
         .and_then(|t| db.style_face(t.style))
-        .or_else(|| db.face(&family, &style));
+        // A family of a host's font index whose face hasn't arrived has none to show yet, and
+        // showing it fetches nothing (RFC-0034 section 2.3): only type set in it does.
+        .or_else(|| (!db.is_unloaded_host_style(&family, &style)).then(|| db.face_without_request(&family, &style)).flatten());
     (family, style, face)
 }
 
@@ -355,6 +357,15 @@ fn grid_glyphs(
     }
 }
 
+/// Ask again for the face of `family` the panel shows, which failed: in `listed`, the style the
+/// family lists for the panel's own (its closest), which is what failed and what
+/// `text.activateFont` takes.
+fn activate(app: &mut VectorcraftApp, family: &str, listed: &str) {
+    if let Err(e) = app.run("text.activateFont", serde_json::json!({ "family": family, "style": listed })) {
+        app.status(e);
+    }
+}
+
 /// Browse and insert glyphs from the chosen font, with font controls below the glyph grid.
 pub fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
@@ -388,7 +399,29 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
         return;
     }
     let Some(face) = face else {
-        ui.label(egui::RichText::new(tl!("No fonts are available.")).color(t.text_dim));
+        // A host's font not loaded yet, by where it is: on its way; failed, which only Activate
+        // asks for again (as Missing Fonts offers it); or not asked for, which only type set in
+        // it does (never from here).
+        // Activating… and Activate only where the host fetches faces (as Missing Fonts shows them):
+        // elsewhere nothing is on its way, and the panel needn't redraw for it.
+        let fetches = app.services.fetches_font_sources;
+        match FontDb::global().unloaded_host_style(&family, &style) {
+            Some((listed, Some(vectorcraft_text::FaceState::Failed))) if fetches => {
+                if ui.button(tl!("Activate")).clicked() {
+                    activate(app, &family, &listed);
+                }
+            }
+            Some((_, Some(_))) if fetches => {
+                ui.label(egui::RichText::new(tl!("Activating…")).color(t.text_dim));
+                ui.ctx().request_repaint_after(std::time::Duration::from_millis(250));
+            }
+            Some(_) => {
+                ui.label(egui::RichText::new(tl!("This font isn't loaded yet: set type in it to load it.")).color(t.text_dim));
+            }
+            None => {
+                ui.label(egui::RichText::new(tl!("No fonts are available.")).color(t.text_dim));
+            }
+        }
         return;
     };
     let (chars, unencoded) = grid_glyphs(&face, category.and_then(|i| face.glyph_categories().get(i)), subset, (lo, hi));
@@ -540,7 +573,7 @@ fn font_row(app: &mut VectorcraftApp, ui: &mut Ui, family: &str, style: &str, w:
         let look = crate::font_menu::MenuLook::of(app);
         let pick = crate::font_menu::font_menu(ui, "gl-family", family, family_w, sample.as_deref(), look);
         if let Some((f, style)) = crate::font_menu::picked(app, pick) {
-            let st = style.unwrap_or_else(|| db.face(&f, "Regular").map_or_else(|| "Regular".into(), |face| face.style.clone()));
+            let st = style.unwrap_or_else(|| db.face_without_request(&f, "Regular").map_or_else(|| "Regular".into(), |face| face.style.clone()));
             set_pstate(ui.ctx(), "gl-font", Some((f, st)));
         }
         let styles = db.styles(family);
@@ -1558,6 +1591,75 @@ mod tests {
     fn frame(ctx: &egui::Context, app: &mut VectorcraftApp, events: Vec<egui::Event>) -> (Vec<(String, Pos2)>, Vec<f32>) {
         let shapes = shapes(ctx, app, events);
         (text_anchors(&shapes), square_sides(&shapes))
+    }
+
+    /// A family of a host's font index whose faces haven't arrived shows as unavailable in the
+    /// Glyphs panel, and browsing it fetches nothing (review round 1, item 2; RFC-0034 section 2.3).
+    #[test]
+    fn a_host_family_not_loaded_is_unavailable_and_fetches_nothing() {
+        let _fonts = crate::adding_fonts();
+        const FAMILY: &str = "Glyph Host 01";
+        let _index = vectorcraft_text::test_fonts::add_index_of("glyphs-panel", &[(FAMILY, 400)]).unwrap();
+        let db = FontDb::global();
+        db.take_source_requests();
+        let mut app = VectorcraftApp::new(vectorcraft_engine::Session::new(), Default::default());
+        let ctx = egui::Context::default();
+        set_pstate(&ctx, "gl-font", Some((FAMILY.to_string(), "Regular".to_string())));
+        let (texts, _) = frame(&ctx, &mut app, vec![]);
+        assert!(texts.iter().any(|(t, _)| t == "This font isn't loaded yet: set type in it to load it."), "{texts:?}");
+        assert!(db.take_source_requests().iter().all(|r| r.family != FAMILY), "the panel fetches nothing");
+    }
+
+    /// The panel says where a host's font not loaded yet is: on its way while it is fetched, and
+    /// Activate, which asks for it again, once it failed (review round 3, item 10).
+    #[test]
+    fn a_host_font_s_note_follows_its_state() {
+        let _fonts = crate::adding_fonts();
+        const FAMILY: &str = "Glyph State 01";
+        let _index = vectorcraft_text::test_fonts::add_index_of("glyphs-state", &[(FAMILY, 400)]).unwrap();
+        let db = FontDb::global();
+        let mut app = VectorcraftApp::new(vectorcraft_engine::Session::new(), Default::default());
+        app.services.fetches_font_sources = true;
+        let ctx = egui::Context::default();
+        set_pstate(&ctx, "gl-font", Some((FAMILY.to_string(), "Regular".to_string())));
+        let shown = |app: &mut VectorcraftApp| frame(&ctx, app, vec![]).0.into_iter().map(|(t, _)| t).collect::<Vec<_>>();
+        db.face(FAMILY, "Regular");
+        let src = db.take_source_requests().into_iter().find(|r| r.family == FAMILY).unwrap();
+        assert!(shown(&mut app).iter().any(|t| t == "Activating…"), "on its way");
+        db.settle(&src, Err("HTTP 404".into()));
+        let failed = shown(&mut app);
+        assert!(failed.iter().any(|t| t == "Activate") && !failed.iter().any(|t| t.starts_with("This font")), "{failed:?}");
+    }
+
+    /// Activate asks again for the face that failed, the family's style closest to the panel's own
+    /// (Regular for Medium), which text.activateFont takes by that name; and a host that doesn't
+    /// fetch faces shows no Activating… or Activate, only the not-loaded note (review round 4,
+    /// item E).
+    #[test]
+    fn activate_asks_for_the_style_that_failed_and_only_a_fetching_host_shows_it() {
+        let _fonts = crate::adding_fonts();
+        const FAMILY: &str = "Glyph Act 001";
+        let _index = vectorcraft_text::test_fonts::add_index_of("glyphs-activate", &[(FAMILY, 400)]).unwrap();
+        let db = FontDb::global();
+        let mut app = VectorcraftApp::new(vectorcraft_engine::Session::new(), Default::default());
+        app.services.fetches_font_sources = true;
+        db.face(FAMILY, "Regular");
+        let src = db.take_source_requests().into_iter().find(|r| r.family == FAMILY).unwrap();
+        db.settle(&src, Err("HTTP 404".into()));
+        let (listed, state) = db.unloaded_host_style(FAMILY, "Medium").expect("Regular, the closest, failed");
+        assert_eq!((listed.as_str(), state), ("Regular", Some(vectorcraft_text::FaceState::Failed)));
+        app.ui.status.clear();
+        activate(&mut app, FAMILY, &listed);
+        assert_eq!(app.ui.status, "", "activated");
+        assert!(db.take_source_requests().iter().any(|r| r.family == FAMILY), "asked for again");
+
+        // A host that doesn't fetch: the face is queued, but nothing is on its way.
+        app.services.fetches_font_sources = false;
+        let ctx = egui::Context::default();
+        set_pstate(&ctx, "gl-font", Some((FAMILY.to_string(), "Medium".to_string())));
+        let shown: Vec<String> = frame(&ctx, &mut app, vec![]).0.into_iter().map(|(t, _)| t).collect();
+        assert!(!shown.iter().any(|t| t == "Activating…" || t == "Activate"), "{shown:?}");
+        assert!(shown.iter().any(|t| t.starts_with("This font isn't loaded yet")), "{shown:?}");
     }
 
     /// The Type tool editing `text` in a new document.

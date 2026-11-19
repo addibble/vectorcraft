@@ -850,6 +850,11 @@ pub struct UiState {
     /// place, [`crate::dialogs::settle`] puts the document back at the front of `pending_fonts`.
     #[serde(skip)]
     pub fonts_dialog: Option<u64>,
+    /// The font sources that failed (family, lowercase) whose Missing Fonts dialog each document
+    /// (uid) has had: one is shown once for a font, and after it is closed only another font
+    /// that fails shows it again ([`crate::dialogs::missing_fonts::source_failed`]).
+    #[serde(skip)]
+    pub failed_sources_shown: Vec<(u64, String)>,
     /// The plug-in (`{id, file, name, label}`) the last launch was loading when it stopped, while
     /// the user has not chosen what to do about it. When another dialog takes the choice's place,
     /// [`crate::dialogs::settle`] opens the choice again once no dialog is open.
@@ -1352,6 +1357,7 @@ impl Default for UiState {
             made_text_style: vec![],
             pending_fonts: vec![],
             fonts_dialog: None,
+            failed_sources_shown: vec![],
             stopped_plugin: None,
             dialog_search: None,
             links_search: None,

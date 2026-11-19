@@ -72,6 +72,15 @@ pub fn specs() -> Vec<CommandSpec> {
             glyph_categories
         ),
         cmd!(
+            query "text.activateFont",
+            "Activate Font",
+            [],
+            None,
+            "{family, style?: \"Regular\"} ask again for a face of a font index the host gave (RFC-0034) that couldn't be fetched or failed its checks: Missing Fonts' Activate, a retry. Type set in it draws in it once it arrives; until then it is missing. Not an edit → {activating: true}; an error when that face didn't fail",
+            always,
+            activate_font
+        ),
+        cmd!(
             "text.rescanFonts",
             "Refresh Font List",
             [],
@@ -971,17 +980,37 @@ fn font_param(p: &Value, k: &str, c: &str) -> Result<(String, Option<String>)> {
     Ok((family.to_string(), v.get("style").and_then(Value::as_str).map(str::to_string)))
 }
 
+/// `text.replaceFont`: the type in one family and style (in the selection, or the whole document)
+/// set in another, which is available, installed or a font source.
 fn replace(s: &mut Session, p: &Value) -> Result<Value> {
     const C: &str = "text.replaceFont";
     let (ff, fs) = font_param(p, "from", C)?;
-    let (tf, ts) = font_param(p, "to", C)?;
+    let (tf, mut ts) = font_param(p, "to", C)?;
     let db = vectorcraft_text::FontDb::global();
     // Any name of the family (ヒラギノ角ゴシック) is stored as its own name (Hiragino Sans), and a
     // composite font as its own name.
     let composite = db.composite_font(&tf).is_some();
-    let Some(tf) = db.stored_family(&tf, ts.as_deref().unwrap_or("Regular")) else {
-        return Err(bad(C, format!("font family `{tf}` is not available")));
+    let tf = match db.stored_family(&tf, ts.as_deref().unwrap_or("Regular")) {
+        Some(f) => f,
+        // A family of a host's font index, as the index names it: the type takes it now and draws
+        // in it once its face arrives (RFC-0034 section 5.1).
+        None => match db.source_family(&tf) {
+            Some(f) => f,
+            None => return Err(bad(C, format!("font family `{tf}` is not available"))),
+        },
     };
+    // A style given, of a family a host's index lists, must be one the family lists, by any name
+    // its face is found by (`700`, `Semi Bold`), whether or not a face of it has loaded; it is
+    // stored as the family lists it. An installed family's is kept as given, as before.
+    if !composite
+        && db.source_family(&tf).is_some()
+        && let Some(style) = ts.clone()
+    {
+        match db.listed_style(&tf, &style, vectorcraft_text::Fit::Exact) {
+            Some(listed) => ts = Some(listed.style),
+            None => return Err(bad(C, format!("no style `{tf} {style}`"))),
+        }
+    }
     let matches = |st: &vectorcraft_doc::CharStyle| {
         st.font_family.eq_ignore_ascii_case(&ff) && fs.as_ref().is_none_or(|x| st.font_style.eq_ignore_ascii_case(x))
     };
@@ -993,7 +1022,14 @@ fn replace(s: &mut Session, p: &Value) -> Result<Value> {
         }
         // An explicit style, else the closest the new family has to the old one (a composite font's
         // parts name their own styles: the run keeps its style).
-        let closest = || if composite { None } else { db.face(&tf, &st.font_style).map(|f| f.style.clone()) };
+        // The closest is among the styles the family lists, its installed ones and its index's,
+        // whatever of it has loaded (`fit_font_style`'s rule).
+        let closest = || {
+            if composite {
+                return None;
+            }
+            db.listed_style(&tf, &st.font_style, vectorcraft_text::Fit::Closest).map(|l| l.style)
+        };
         let style = ts.clone().or_else(closest).unwrap_or_else(|| st.font_style.clone());
         (st.font_family != tf || st.font_style != style || st.font_version.is_some() || !st.font_axes.is_empty()).then_some(style)
     };
@@ -1198,19 +1234,24 @@ impl FontScope {
     }
 }
 
+/// `text.fontList`: every family the font menus list, or one family's styles and the axes of one
+/// style (none for a font source not loaded yet).
 fn font_list(_: &mut Session, p: &Value) -> Result<Value> {
     let db = vectorcraft_text::FontDb::global();
     match str_param(p, "family") {
         Some(family) => {
-            if !db.has_family(family) {
+            // A font source not loaded yet is listed, though no font of it is available yet.
+            if !db.has_family(family) && !db.is_source(family) {
                 return Err(bad("text.fontList", format!("font family `{family}` is not available")));
             }
             // The name as the font spells it.
             let name = db.family_list().iter().find(|f| f.eq_ignore_ascii_case(family)).cloned().unwrap_or_else(|| family.to_string());
             let styles = db.styles(family);
             let style = str_param(p, "style").map(str::to_string).or_else(|| styles.first().cloned()).unwrap_or_else(|| "Regular".into());
-            let axes: Vec<Value> = db
-                .face(family, &style)
+            // A font source not loaded yet has no axes to tell, and listing it asks for nothing
+            // (only type set in it does).
+            let face = if db.is_pending_source(family, &style) { None } else { db.face(family, &style) };
+            let axes: Vec<Value> = face
                 .map(|face| {
                     let axes = face.axes();
                     axes.iter()
@@ -1297,43 +1338,416 @@ fn glyph_categories(_: &mut Session, p: &Value) -> Result<Value> {
     Ok(json!({"family": face.family, "style": face.style, "categories": categories}))
 }
 
+/// `text.rescanFonts`: the font folders scanned again, and the type laid out in the fonts available now.
 pub(crate) fn rescan(s: &mut Session, _: &Value) -> Result<Value> {
     let db = vectorcraft_text::FontDb::global();
     #[cfg(not(target_arch = "wasm32"))]
     let faces = db.load_system_fonts();
     #[cfg(target_arch = "wasm32")]
     let faces = 0;
-    // The canvas redraws type in the fonts available now (renderers lay it out again when the
-    // fonts change), and the bounds follow, also of the type in opacity masks and in the art of
-    // symbols and patterns; that isn't an edit to save. The type in art is laid out first, and the
-    // inline graphics of the type on the layers then take the new bounds of their symbols' art.
+    relayout_text(s);
+    Ok(json!({ "families": db.menu_family_list().len(), "faces": faces }))
+}
+
+/// `text.activateFont`: a face of a host's font index that failed, asked for again.
+fn activate_font(_: &mut Session, p: &Value) -> Result<Value> {
+    const C: &str = "text.activateFont";
+    let family = str_param(p, "family").ok_or_else(|| bad(C, "give the font's family"))?;
+    let style = str_param(p, "style").unwrap_or("Regular");
+    if !vectorcraft_text::FontDb::global().activate_source(family, style) {
+        return Err(bad(C, format!("{family} {style} is no font a font index lists that failed to load")));
+    }
+    Ok(json!({ "activating": true }))
+}
+
+/// The font indexes the host gives (RFC-0034), in place of those it gave before: each `(id, bytes)`
+/// read as the source `host:<id>` ([`vectorcraft_text::FontDb::set_host_indexes`]), all or nothing, and the type of every open
+/// document laid out again, so type set in their families asks for its faces. Only the host calls
+/// this: it is no command, so no control channel, MCP server, script or plug-in can give an index
+/// (RFC-0034 section 7). Not an edit. Answers `{families}`, how many the indexes list.
+pub(crate) fn set_host_indexes(s: &mut Session, list: Vec<(String, Vec<u8>)>) -> std::result::Result<Value, String> {
+    let families = vectorcraft_text::FontDb::global().set_host_indexes(list)?;
+    relayout_text(s);
+    Ok(json!({ "families": families }))
+}
+
+/// The canvas redraws type in the fonts available now (renderers lay it out again when the fonts
+/// change), and the bounds follow, also of the type in opacity masks and in the art of symbols and
+/// patterns; that isn't an edit to save. The type in art is laid out first, and the inline graphics
+/// of the type on the layers then take the new bounds of their symbols' art.
+///
+/// An open drag or dialog preview's snapshot is laid out too: the next preview starts from it and
+/// Cancel goes back to it, which would otherwise bring back the bounds of the fonts before.
+pub(crate) fn relayout_text(s: &mut Session) {
     for d in &mut s.docs {
-        let mut texts = vec![];
-        d.doc.walk(|n| {
-            if matches!(n.kind, NodeKind::Text(_)) {
-                texts.push(n.id);
+        // No preview yet: the snapshot is the document, and stays it.
+        let snapshot_is_doc = d.interaction.as_ref().is_some_and(|it| std::sync::Arc::ptr_eq(&it.doc, &d.doc));
+        if has_type(&d.doc) {
+            d.change_unsaved(|doc| relayout_doc(std::sync::Arc::make_mut(doc)));
+        }
+        if let Some(it) = &mut d.interaction {
+            if snapshot_is_doc {
+                it.doc = d.doc.clone();
+            } else if has_type(&it.doc) {
+                relayout_doc(std::sync::Arc::make_mut(&mut it.doc));
             }
-        });
-        if !texts.is_empty() || !art_texts_of(&d.doc).is_empty() {
-            d.change_unsaved(|doc| {
-                let doc = std::sync::Arc::make_mut(doc);
-                edit_art_texts_of(doc, &|_| true, &mut refresh_bounds);
-                doc.resolve_inline_art_with(&mut refresh_bounds);
-                for id in texts {
-                    if let Some(NodeKind::Text(t)) = doc.node_mut(id).map(|n| &mut n.kind) {
-                        refresh_bounds(t);
-                    }
-                }
-            });
+            // The box a move drag measured once is measured again, in the type's new bounds.
+            it.move_box = std::sync::OnceLock::new();
         }
         d.revision += 1;
     }
-    Ok(json!({ "families": db.menu_family_list().len(), "faces": faces }))
+}
+
+/// Whether `doc` has type, on its layers or in art.
+fn has_type(doc: &vectorcraft_doc::Document) -> bool {
+    let mut found = false;
+    doc.walk(|n| found |= matches!(n.kind, NodeKind::Text(_)));
+    found || !art_texts_of(doc).is_empty()
+}
+
+/// The type of `doc` laid out in the fonts available now ([`relayout_text`]).
+fn relayout_doc(doc: &mut vectorcraft_doc::Document) {
+    let mut texts = vec![];
+    doc.walk(|n| {
+        if matches!(n.kind, NodeKind::Text(_)) {
+            texts.push(n.id);
+        }
+    });
+    edit_art_texts_of(doc, &|_| true, &mut refresh_bounds);
+    doc.resolve_inline_art_with(&mut refresh_bounds);
+    for id in texts {
+        if let Some(NodeKind::Text(t)) = doc.node_mut(id).map(|n| &mut n.kind) {
+            refresh_bounds(t);
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use vectorcraft_text::test_fonts::{IndexFile, add_host_index, host_index};
+
+    /// A host's index of `family` with a Regular and a Bold file (Source Sans 3's, renamed
+    /// `family`, 13 bytes long), and the Regular file's bytes.
+    fn two_styles(family: &str) -> (Vec<u8>, Vec<u8>) {
+        let regular = vectorcraft_testkit::fonts::renamed(family);
+        let bold = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/fonts/SourceSans3-Bold.ttf")).unwrap();
+        let index = host_index(&[(
+            family,
+            &[
+                IndexFile { path: "f/Regular.ttf", bytes: &regular, italic: false, weight: 400 },
+                IndexFile { path: "f/Bold.ttf", bytes: &bold, italic: false, weight: 700 },
+            ],
+        )]);
+        (index, regular)
+    }
+
+    /// The id of the first run's style of text `id`: (family, style).
+    fn run_font(s: &Session, id: u64) -> (String, String) {
+        match &s.doc().unwrap().doc.node(NodeId(id)).unwrap().kind {
+            NodeKind::Text(t) => (t.runs[0].style.font_family.clone(), t.runs[0].style.font_style.clone()),
+            other => panic!("not text: {other:?}"),
+        }
+    }
+
+    /// RFC-0034 acceptance tests 2 and 4: a family of a host's index is listed at once and listing
+    /// it fetches nothing; type set in it asks for its face once; the face's arrival draws the type
+    /// in it, leaves the document unmodified and adds no undo step.
+    #[test]
+    fn a_host_family_is_listed_fetched_for_type_and_drawn_once_it_arrives() {
+        let _fonts = crate::adding_fonts();
+        const FAMILY: &str = "Host Family 1";
+        let (index, regular) = two_styles(FAMILY);
+        let mut s = Session::new();
+        s.execute("file.new", &json!({"width": 200, "height": 100})).unwrap();
+        let db = vectorcraft_text::FontDb::global();
+        assert_eq!(set_host_indexes(&mut s, vec![("engine-test-1".into(), index)]).unwrap()["families"], 1);
+        let _index = vectorcraft_text::test_fonts::HostIndexRemoved("engine-test-1".into());
+        let list = s.execute("text.fontList", &json!({})).unwrap();
+        assert!(list["families"].as_array().unwrap().iter().any(|f| f == FAMILY), "listed before it is loaded");
+        assert_eq!(s.execute("text.fontList", &json!({"family": FAMILY})).unwrap()["styles"], json!(["Regular", "Bold"]));
+        assert!(db.take_source_requests().iter().all(|r| r.family != FAMILY), "listing a family fetches nothing");
+
+        s.execute("text.create", &json!({"x": 10, "y": 50, "text": "Hosted", "font": FAMILY})).unwrap();
+        s.execute("text.fonts", &json!({})).unwrap();
+        let asked: Vec<_> = db.take_source_requests().into_iter().filter(|r| r.family == FAMILY).collect();
+        assert_eq!(asked.len(), 1, "asked for once type names it");
+        assert_eq!(asked[0].urls, ["https://fonts.test/f/Regular.ttf"]);
+        let status = |s: &mut Session| s.execute("text.fonts", &json!({})).unwrap()[0]["status"].clone();
+        assert_eq!(status(&mut s), "missing", "drawn in the fallback face until it arrives");
+
+        s.doc_mut().unwrap().mark_saved();
+        let undo = s.doc().unwrap().history.undo.len();
+        assert!(matches!(db.settle(&asked[0], Ok(regular)), vectorcraft_text::Settled::Added(_)));
+        crate::cmd::fontfiles::relayout_type(&mut s);
+        assert_eq!(status(&mut s), "exact", "drawn in it once it arrives");
+        assert!(!s.doc().unwrap().is_dirty(), "its arrival is no edit");
+        assert_eq!(s.doc().unwrap().history.undo.len(), undo, "and adds no undo step");
+    }
+
+    /// RFC-0034 acceptance test 5: a face that fails is drawn in the fallback and reported missing;
+    /// `text.activateFont` (Missing Fonts' Activate) asks for it again, and refuses a face that
+    /// didn't fail.
+    #[test]
+    fn a_failed_face_is_missing_and_activate_asks_again() {
+        let _fonts = crate::adding_fonts();
+        const FAMILY: &str = "Failed Face 1";
+        let (index, _) = two_styles(FAMILY);
+        let _index = add_host_index("engine-test-2", index).unwrap();
+        let db = vectorcraft_text::FontDb::global();
+        let mut s = Session::new();
+        s.execute("file.new", &json!({"width": 200, "height": 100})).unwrap();
+        s.execute("text.create", &json!({"x": 10, "y": 50, "text": "Fails", "font": FAMILY})).unwrap();
+        s.execute("text.fonts", &json!({})).unwrap();
+        let src = db.take_source_requests().into_iter().find(|r| r.family == FAMILY).unwrap();
+        assert!(matches!(db.settle(&src, Ok(b"not a font".to_vec())), vectorcraft_text::Settled::Refused(_)));
+        assert_eq!(s.execute("text.fonts", &json!({})).unwrap()[0]["status"], "missing");
+        assert!(s.execute("text.missingFonts", &json!({})).unwrap().to_string().contains(FAMILY), "reported missing");
+        assert_eq!(s.execute("text.activateFont", &json!({"family": FAMILY})).unwrap(), json!({"activating": true}));
+        assert_eq!(db.take_source_requests().into_iter().filter(|r| r.family == FAMILY).count(), 1, "fetched again");
+        assert!(s.execute("text.activateFont", &json!({"family": FAMILY})).is_err(), "it is on its way, not failed");
+        assert!(s.execute("text.activateFont", &json!({"family": FAMILY, "style": "Bold"})).is_err(), "Bold never failed");
+    }
+
+    /// Replace Font to a host family not loaded yet takes it by name in a style its index lists,
+    /// and refuses one it doesn't list without fetching anything (RFC-0034 sections 2.2 and 5.1).
+    #[test]
+    fn replacing_with_a_host_family_takes_its_name_and_listed_styles() {
+        let _fonts = crate::adding_fonts();
+        const FAMILY: &str = "Replace Hst 1";
+        let (index, regular) = two_styles(FAMILY);
+        let _index = add_host_index("engine-test-3", index).unwrap();
+        let db = vectorcraft_text::FontDb::global();
+        let mut s = Session::new();
+        s.execute("file.new", &json!({"width": 200, "height": 100})).unwrap();
+        let id = s.execute("text.create", &json!({"x": 10, "y": 50, "text": "Swap", "font": "Source Sans 3", "style": "Bold"})).unwrap()["id"]
+            .as_u64()
+            .unwrap();
+        db.take_source_requests();
+        let to = json!({"family": FAMILY, "style": "Thin"});
+        let e = s.execute("text.replaceFont", &json!({"from": {"family": "Source Sans 3"}, "to": to})).unwrap_err().to_string();
+        assert!(e.contains("no style"), "{e}");
+        assert!(db.take_source_requests().iter().all(|r| r.family != FAMILY), "a refused replacement fetches nothing");
+        s.execute("text.replaceFont", &json!({"from": {"family": "Source Sans 3"}, "to": {"family": FAMILY.to_uppercase()}})).unwrap();
+        assert_eq!(run_font(&s, id), (FAMILY.to_string(), "Bold".to_string()), "the index lists Bold: kept");
+        // A style by another name its face is found by is taken, as the index names it.
+        let to = json!({"family": FAMILY, "style": "400"});
+        s.execute("text.replaceFont", &json!({"from": {"family": FAMILY}, "to": to})).unwrap();
+        assert_eq!(run_font(&s, id), (FAMILY.to_string(), "Regular".to_string()), "400 is the index's Regular");
+        // Design test 12: the same once a face of the family has loaded (review round 2, item 5).
+        s.execute("text.fonts", &json!({})).unwrap();
+        let src = db.take_source_requests().into_iter().find(|r| r.family == FAMILY && r.file.weight == 400).expect("Regular asked for");
+        assert!(matches!(db.settle(&src, Ok(regular)), vectorcraft_text::Settled::Added(_)));
+        let to = json!({"family": FAMILY, "style": "700"});
+        s.execute("text.replaceFont", &json!({"from": {"family": FAMILY}, "to": to})).unwrap();
+        assert_eq!(run_font(&s, id), (FAMILY.to_string(), "Bold".to_string()), "700 is Bold, loaded or not");
+        let to = json!({"family": FAMILY, "style": "Thin"});
+        let e = s.execute("text.replaceFont", &json!({"from": {"family": FAMILY}, "to": to})).unwrap_err().to_string();
+        assert!(e.contains("no style"), "an unlisted style is refused once a face has loaded too: {e}");
+    }
+
+    /// Type set in a host family takes the style the index lists closest to its own, whatever of
+    /// the family has loaded: the document saved doesn't depend on which faces arrived first
+    /// (review round 1, item 6). Only that style is fetched, never a stand-in for it (RFC-0034
+    /// section 5.4).
+    #[test]
+    fn setting_a_host_family_takes_its_index_s_closest_style() {
+        let _fonts = crate::adding_fonts();
+        const FAMILY: &str = "Style Kept 01";
+        let (index, regular) = two_styles(FAMILY);
+        let _index = add_host_index("engine-test-4", index).unwrap();
+        let db = vectorcraft_text::FontDb::global();
+        let mut s = Session::new();
+        s.execute("file.new", &json!({"width": 200, "height": 100})).unwrap();
+        let semibold = |s: &mut Session| {
+            s.execute("text.create", &json!({"x": 10, "y": 50, "text": "Fit", "font": "Source Sans 3", "style": "Semibold"})).unwrap()["id"]
+                .as_u64()
+                .unwrap()
+        };
+        let id = semibold(&mut s);
+        db.take_source_requests();
+        s.execute("text.setStyle", &json!({"ids": [id], "font": FAMILY})).unwrap();
+        s.execute("text.fonts", &json!({})).unwrap();
+        assert_eq!(run_font(&s, id), (FAMILY.to_string(), "Bold".to_string()), "600 is nearer Bold's 700 than Regular's 400");
+        let asked: Vec<_> = db.take_source_requests().into_iter().filter(|r| r.family == FAMILY).collect();
+        assert_eq!(asked.iter().map(|r| r.file.weight).collect::<Vec<_>>(), [700], "only Bold is fetched");
+        // With the Regular face arrived, the same type takes the same style.
+        assert!(db.add_font(regular) > 0);
+        let again = semibold(&mut s);
+        s.execute("text.setStyle", &json!({"ids": [again], "font": FAMILY})).unwrap();
+        assert_eq!(run_font(&s, again), (FAMILY.to_string(), "Bold".to_string()), "what has loaded doesn't decide it");
+    }
+
+    /// RFC-0034 acceptance test 6: a document's composite font that shares a host family's name
+    /// wins in that document, and its type asks for nothing from the index.
+    #[test]
+    fn a_composite_font_wins_over_a_host_family_of_its_name() {
+        let _fonts = crate::adding_fonts();
+        const FAMILY: &str = "Shared Name 1";
+        let (index, _) = two_styles(FAMILY);
+        let _index = add_host_index("engine-test-5", index).unwrap();
+        let db = vectorcraft_text::FontDb::global();
+        let mut s = Session::new();
+        s.execute("file.new", &json!({"width": 200, "height": 100})).unwrap();
+        let part = json!({"font": "Source Sans 3"});
+        let fonts = json!([{"name": FAMILY, "parts": {"kanji": part}}]);
+        s.execute("type.compositeFonts.set", &json!({ "fonts": fonts })).unwrap();
+        db.take_source_requests();
+        let id = s.execute("text.create", &json!({"x": 10, "y": 50, "text": "Own", "font": FAMILY})).unwrap()["id"].as_u64().unwrap();
+        s.execute("text.fonts", &json!({})).unwrap();
+        assert!(db.take_source_requests().iter().all(|r| r.family != FAMILY), "the composite font draws it");
+        assert_eq!(run_font(&s, id).0, FAMILY);
+        let listed = s.execute("type.compositeFonts.list", &json!({})).unwrap();
+        assert_eq!(listed["fonts"][0]["name"], FAMILY, "its definition is kept");
+        // Design test 11: type fitted to it keeps its style, which the index doesn't list, and
+        // asks the index for nothing (review round 2, item 7).
+        let other = s.execute("text.create", &json!({"x": 10, "y": 80, "text": "Fit", "font": "Source Sans 3", "style": "Semibold"})).unwrap()["id"]
+            .as_u64()
+            .unwrap();
+        s.execute("text.setStyle", &json!({"ids": [other], "font": FAMILY})).unwrap();
+        s.execute("text.fonts", &json!({})).unwrap();
+        assert_eq!(run_font(&s, other), (FAMILY.to_string(), "Semibold".to_string()), "the composite font keeps the style");
+        assert!(db.take_source_requests().iter().all(|r| r.family != FAMILY), "and asks for nothing");
+    }
+
+    /// A face that arrives during a move drag lays the drag's snapshot out, and the box the drag
+    /// measured once is measured again, so the drag doesn't keep the fallback's bounds (review
+    /// round 1, item 9).
+    #[test]
+    fn fonts_added_during_a_move_drag_measure_its_box_again() {
+        let _fonts = crate::adding_fonts();
+        let db = vectorcraft_text::FontDb::global();
+        const FAMILY: &str = "Drag Box Fnt1";
+        let mut s = Session::new();
+        s.execute("file.new", &json!({"width": 400, "height": 200})).unwrap();
+        let text = s.execute("text.create", &json!({"x": 10, "y": 50, "text": "Wide words here", "font": FAMILY, "style": "Bold"})).unwrap()["id"]
+            .as_u64()
+            .unwrap();
+        s.execute("select.set", &json!({"ids": [text]})).unwrap();
+        s.begin_interaction("Move").unwrap();
+        let measured = |s: &Session| s.doc().unwrap().interaction.as_ref().unwrap().move_box.get().cloned();
+        s.doc().unwrap().interaction.as_ref().unwrap().move_box.get_or_init(|| None);
+        assert!(measured(&s).is_some(), "measured once");
+        assert!(db.add_font(vectorcraft_testkit::fonts::renamed(FAMILY)) > 0);
+        crate::cmd::fontfiles::relayout_type(&mut s);
+        assert_eq!(measured(&s), None, "measured again on the next step");
+        s.cancel_interaction().unwrap();
+    }
+
+    /// A fresh folder of this test's own, under the testkit's private temporary root.
+    fn folder(tag: &str) -> std::path::PathBuf {
+        vectorcraft_testkit::temp_dir(&format!("host-fonts-{tag}"))
+    }
+
+    /// RFC-0034 acceptance test 2: opening a document whose type uses a host family asks for only
+    /// the faces its type uses, as the index lists them; a style the index doesn't list asks for
+    /// nothing, and the index's other faces aren't fetched.
+    #[test]
+    fn opening_a_document_fetches_only_the_listed_faces_its_type_uses() {
+        let _fonts = crate::adding_fonts();
+        const FAMILY: &str = "Opened Font 1";
+        let dir = folder("open");
+        let path = dir.join("hosted.vectorcraft");
+        let mut s = Session::new();
+        s.execute("file.new", &json!({"width": 200, "height": 100})).unwrap();
+        s.execute("text.create", &json!({"x": 10, "y": 40, "text": "Listed", "font": FAMILY, "style": "Bold"})).unwrap();
+        // Light: the index's nearest is Regular, which no type uses, so nothing may fetch it.
+        s.execute("text.create", &json!({"x": 10, "y": 80, "text": "Unlisted", "font": FAMILY, "style": "Light"})).unwrap();
+        s.execute("file.saveAs", &json!({"path": path.to_string_lossy()})).unwrap();
+
+        let (index, _) = two_styles(FAMILY);
+        let _index = add_host_index("engine-test-6", index).unwrap();
+        let db = vectorcraft_text::FontDb::global();
+        db.take_source_requests();
+        let mut opened = Session::new();
+        opened.execute("document.open", &json!({"path": path.to_string_lossy()})).unwrap();
+        opened.execute("text.fonts", &json!({})).unwrap();
+        let asked: Vec<_> = db.take_source_requests().into_iter().filter(|r| r.family == FAMILY).collect();
+        assert_eq!(asked.iter().map(|r| (r.style.as_str(), r.file.weight)).collect::<Vec<_>>(), [("Bold", 700)], "only Bold: {asked:?}");
+        let fonts = opened.execute("text.fonts", &json!({})).unwrap();
+        assert!(fonts.as_array().unwrap().iter().all(|f| f["status"] == "missing"), "both draw in the fallback meanwhile: {fonts}");
+    }
+
+    /// RFC-0034 acceptance test 6: a document's composite font that shares a host family's name
+    /// keeps its definition through save, reopen, an edit and save again, and its type never asks
+    /// the index for that family.
+    #[test]
+    fn a_composite_font_of_a_host_family_s_name_survives_save_and_reopen() {
+        let _fonts = crate::adding_fonts();
+        const FAMILY: &str = "Kept Compos 1";
+        let (index, _) = two_styles(FAMILY);
+        let _index = add_host_index("engine-test-7", index).unwrap();
+        let db = vectorcraft_text::FontDb::global();
+        let dir = folder("composite");
+        let path = dir.join("composite.vectorcraft");
+        let mut s = Session::new();
+        s.execute("file.new", &json!({"width": 200, "height": 100})).unwrap();
+        let fonts = json!([{"name": FAMILY, "parts": {"kanji": {"font": "Source Sans 3"}}}]);
+        s.execute("type.compositeFonts.set", &json!({ "fonts": fonts })).unwrap();
+        s.execute("text.create", &json!({"x": 10, "y": 50, "text": "Own", "font": FAMILY})).unwrap();
+        s.execute("file.saveAs", &json!({"path": path.to_string_lossy()})).unwrap();
+        db.take_source_requests();
+        for round in ["reopened", "edited and saved again"] {
+            let mut t = Session::new();
+            t.execute("document.open", &json!({"path": path.to_string_lossy()})).unwrap();
+            t.execute("text.fonts", &json!({})).unwrap();
+            let listed = t.execute("type.compositeFonts.list", &json!({})).unwrap();
+            assert_eq!(listed["fonts"].as_array().map(Vec::len), Some(1), "{round}: {listed}");
+            assert_eq!(listed["fonts"][0]["name"], FAMILY, "{round}");
+            assert_eq!(listed["fonts"][0]["parts"]["kanji"]["font"], "Source Sans 3", "{round}");
+            assert!(db.take_source_requests().iter().all(|r| r.family != FAMILY), "{round}: the composite font draws it");
+            t.execute("text.create", &json!({"x": 10, "y": 80, "text": "More", "font": FAMILY})).unwrap();
+            t.execute("document.save", &json!({})).unwrap();
+        }
+    }
+
+    /// RFC-0034 acceptance test 7: no command gives an index (only the host's Rust call does), so
+    /// the control channel, the MCP server, scripts and plug-ins can't; the commands the earlier
+    /// form had are gone.
+    #[test]
+    fn no_command_gives_a_font_index() {
+        let mut s = Session::new();
+        for id in ["text.addFont", "text.addFontSources", "text.addFontIndexes"] {
+            assert!(s.execute(id, &json!({})).is_err(), "{id}");
+        }
+    }
+
+    /// Fonts a host adds while a drag or a dialog's preview is open lay out the interaction's
+    /// snapshot too: the next preview starts from it and Cancel goes back to it, so the type keeps
+    /// the bounds of the font it now draws in rather than the fallback's.
+    #[test]
+    fn fonts_added_during_an_interaction_lay_out_its_snapshot() {
+        let _fonts = crate::adding_fonts();
+        let db = vectorcraft_text::FontDb::global();
+        for (family, end) in [("Mid Drag Fnt1", "cancel"), ("Mid Drag Fnt2", "preview")] {
+            let mut s = Session::new();
+            s.execute("file.new", &json!({"width": 400, "height": 200})).unwrap();
+            // Bold: the fallback draws it in Source Sans 3 Bold, the added file (a Regular) narrower.
+            let text =
+                s.execute("text.create", &json!({"x": 10, "y": 50, "text": "Wide words here", "font": family, "style": "Bold"})).unwrap()["id"]
+                    .as_u64()
+                    .unwrap();
+            let rect = s.execute("shape.rectangle", &json!({"x": 10, "y": 120, "width": 20, "height": 20})).unwrap()["id"].clone();
+            s.execute("select.set", &json!({"ids": [rect]})).unwrap();
+            let bounds = |s: &Session| s.doc().unwrap().doc.bounds_of(&[NodeId(text)], false).unwrap();
+            let fallback = bounds(&s);
+            s.begin_interaction("Move").unwrap();
+            s.preview("object.move", &json!({"dx": 5, "dy": 0})).unwrap();
+            assert!(db.add_font(vectorcraft_testkit::fonts::renamed(family)) > 0);
+            crate::cmd::fontfiles::relayout_type(&mut s);
+            let laid_out = bounds(&s);
+            assert_ne!(laid_out, fallback, "{family}: the added face is narrower");
+            match end {
+                "cancel" => s.cancel_interaction().unwrap(),
+                _ => {
+                    s.preview("object.move", &json!({"dx": 10, "dy": 0})).unwrap();
+                    s.commit_interaction().unwrap();
+                }
+            }
+            assert_eq!(bounds(&s), laid_out, "{family}: after {end}, the type keeps the added face's bounds");
+        }
+    }
 
     /// Type › Options › Additional Fonts Folder (#683) adds its folder to the system font scan,
     /// trimmed; clearing it takes the folder out again.
