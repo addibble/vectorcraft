@@ -672,10 +672,9 @@ pub fn fonts(indexes: Option<(usize, Vec<FontIndexFields>)>) -> Result<Vec<FontI
                 }
                 Ok(FontIndex::Url { url, sha256 })
             }
-            (Field::Wrong, ..) => Err(format!(
-                "vectorcraft:fonts index {i}: `bytes` is an ArrayBuffer or Uint8Array of at most {} MB",
-                MAX_FONT_INDEX_BYTES >> 20
-            )),
+            (Field::Wrong, ..) => {
+                Err(format!("vectorcraft:fonts index {i}: `bytes` is an ArrayBuffer or Uint8Array of at most {} MB", MAX_FONT_INDEX_BYTES >> 20))
+            }
             _ => Err(format!("vectorcraft:fonts index {i} is `{{bytes}}` or `{{url, sha256}}`")),
         })
         .collect()
@@ -1201,7 +1200,18 @@ mod tests {
             ("long URL", Some((1, vec![url_entry(&long, &sha)]))),
             ("upper-case hex", Some((1, vec![url_entry("https://fonts.example/i.json", &"AB".repeat(32))]))),
             ("short hash", Some((1, vec![url_entry("https://fonts.example/i.json", "ab")]))),
-            ("both forms", Some((1, vec![FontIndexFields { bytes: Field::Given(vec![1]), url: Field::Given("https://x.example/i".into()), sha256: Field::Given(sha.clone()) }]))),
+            (
+                "both forms",
+                Some((
+                    1,
+                    vec![FontIndexFields {
+                        bytes: Field::Given(vec![1]),
+                        url: Field::Given("https://x.example/i".into()),
+                        sha256: Field::Given(sha.clone()),
+                        ..Default::default()
+                    }],
+                )),
+            ),
             ("neither", Some((1, vec![FontIndexFields::default()]))),
             ("bytes too large", Some((1, vec![FontIndexFields { bytes: Field::Wrong, ..Default::default() }]))),
             ("a good one and a bad one", Some((2, vec![bytes_entry(b"{}"), url_entry("http://x.example/i", &sha)]))),
