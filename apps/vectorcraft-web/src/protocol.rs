@@ -612,6 +612,8 @@ pub const MAX_FONT_INDEX_URL_BYTES: usize = 2048;
 /// `sha256`.
 #[derive(Debug, Default)]
 pub struct FontIndexFields {
+    /// The entry is no object (a number, a string, `null`), so it has none of the fields.
+    pub not_object: bool,
     pub bytes: Field<Vec<u8>>,
     pub url: Field<String>,
     pub sha256: Field<String>,
@@ -659,6 +661,7 @@ pub fn fonts(indexes: Option<(usize, Vec<FontIndexFields>)>) -> Result<Vec<FontI
         .into_iter()
         .enumerate()
         .map(|(i, e)| match (e.bytes, e.url, e.sha256) {
+            _ if e.not_object => Err(format!("vectorcraft:fonts index {i} is no object: give `{{bytes}}` or `{{url, sha256}}`")),
             (Field::Given(bytes), Field::Absent, Field::Absent) => Ok(FontIndex::Bytes(bytes)),
             (Field::Absent, Field::Given(url), Field::Given(sha256)) => {
                 if !url.starts_with("https://") || url.len() > MAX_FONT_INDEX_URL_BYTES {
@@ -1215,5 +1218,12 @@ mod tests {
         inbox.heard(vec![FontIndex::Bytes(b"second".to_vec())]);
         assert_eq!(inbox.take(), Some(vec![FontIndex::Bytes(b"second".to_vec())]));
         assert_eq!(inbox.take(), None, "taken once");
+    }
+
+    /// An entry that is no object is refused for being none, not for its `bytes`.
+    #[test]
+    fn fonts_names_an_entry_that_is_no_object() {
+        let e = fonts(Some((1, vec![FontIndexFields { not_object: true, bytes: Field::Wrong, ..Default::default() }]))).unwrap_err();
+        assert!(e.contains("index 0 is no object"), "{e}");
     }
 }
