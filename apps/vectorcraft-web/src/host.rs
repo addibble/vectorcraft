@@ -53,12 +53,13 @@
 //!   shown as two tints (its white art red, the rest green), or `{ clear: true }`
 //!   (`protocol::masks`, `vectorcraft_ui_egui::host_region`).
 //! - `vectorcraft:fonts` (from the parent): `{ indexes: [{ bytes } | { url, sha256 }] }`, font
-//!   indexes in craft-font-index format the app lists at once and fetches faces from when type uses
-//!   them (RFC-0034), in craft-web-host's `fonts` shape and bounds (`protocol::fonts`). Each
+//!   indexes in craft-font-index format the app lists at once and fetches faces from when type
+//!   uses them (RFC-0034), in craft-web-host's `fonts` shape and bounds (`protocol::fonts`). Each
 //!   message gives the host's whole set, in place of the one before: a host adds an index by
 //!   sending its set again with it, and one it leaves out is gone. The `n`th index is the host's
-//!   index `page` (`page-2`, … after it). The last message wins, however long its fetches take. A list the bridge refuses is answered with `vectorcraft:failed`; one whose indexes
-//!   the app can't fetch or read is refused whole, logged and said on the status line.
+//!   index `page` (`page-2`, … after it). The last message wins, however long its fetches take. A
+//!   list the bridge refuses is answered with `vectorcraft:failed`; one whose indexes the app
+//!   can't fetch or read is refused whole, logged and said on the status line.
 //! - `vectorcraft:failed` (to the parent): `{ error }`. The last message from the parent was
 //!   refused, its `error` beginning with that message's `type` (the app keeps running); the
 //!   listener is up from the start, so this may come before `ready` too. Before `ready`, any other
