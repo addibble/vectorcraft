@@ -17,7 +17,7 @@ pub struct Open {
 }
 
 /// The messages the parent may send.
-pub const FROM_PARENT: [&str; 8] = [
+pub const FROM_PARENT: [&str; 9] = [
     "vectorcraft:open",
     "vectorcraft:configure",
     "vectorcraft:saved",
@@ -26,6 +26,7 @@ pub const FROM_PARENT: [&str; 8] = [
     "vectorcraft:panel",
     "vectorcraft:region",
     "vectorcraft:masks",
+    "vectorcraft:fonts",
 ];
 
 /// Whether the bridge reads a message at all: one of [`FROM_PARENT`] from the parent window, on
@@ -598,6 +599,67 @@ impl Field<String> {
     }
 }
 
+/// The most indexes one `vectorcraft:fonts` gives: craft-web-host's `MAX_FONT_INDEXES`, whose
+/// `fonts` message this one mirrors (storytold/craft-libs#2331) until the bridge is the crate's.
+pub const MAX_FONT_INDEXES: usize = 16;
+/// The most bytes an index given as its bytes may have: craft-web-host's `MAX_FONT_INDEX_BYTES`.
+pub const MAX_FONT_INDEX_BYTES: usize = 32 << 20;
+/// The longest index URL, in bytes: craft-web-host's `MAX_FONT_INDEX_URL_BYTES`.
+pub const MAX_FONT_INDEX_URL_BYTES: usize = 2048;
+
+/// One entry of a `vectorcraft:fonts`'s `indexes` as the page sent it: `bytes` (an `ArrayBuffer` or
+/// `Uint8Array`, `Wrong` when it is neither or past [`MAX_FONT_INDEX_BYTES`]), or `url` and
+/// `sha256`.
+#[derive(Debug, Default)]
+pub struct FontIndexFields {
+    pub bytes: Field<Vec<u8>>,
+    pub url: Field<String>,
+    pub sha256: Field<String>,
+}
+
+/// A font index the page gives (RFC-0034): its bytes, or an https URL and the SHA-256 of the file.
+#[derive(Debug, PartialEq, Eq)]
+pub enum FontIndex {
+    Bytes(Vec<u8>),
+    Url { url: String, sha256: String },
+}
+
+/// Check a `vectorcraft:fonts` the bridge accepted, by craft-web-host's rules for its `fonts`
+/// message: `indexes` (`None` when it is no array, with how many entries it has) lists 1 to
+/// [`MAX_FONT_INDEXES`] entries, each exactly one of `{bytes}` or `{url, sha256}` (an https URL of
+/// at most [`MAX_FONT_INDEX_URL_BYTES`], 64 lowercase hex digits). One wrong entry refuses the
+/// whole message: the app reads the indexes all or nothing (RFC-0034 section 1.3), and checks what
+/// is in them itself.
+pub fn fonts(indexes: Option<(usize, Vec<FontIndexFields>)>) -> Result<Vec<FontIndex>, String> {
+    let Some((count, entries)) = indexes else {
+        return Err("vectorcraft:fonts needs `indexes`, a list of font indexes".to_string());
+    };
+    if count == 0 || count > MAX_FONT_INDEXES || entries.len() != count {
+        return Err(format!("vectorcraft:fonts gives 1 to {MAX_FONT_INDEXES} font indexes"));
+    }
+    entries
+        .into_iter()
+        .enumerate()
+        .map(|(i, e)| match (e.bytes, e.url, e.sha256) {
+            (Field::Given(bytes), Field::Absent, Field::Absent) => Ok(FontIndex::Bytes(bytes)),
+            (Field::Absent, Field::Given(url), Field::Given(sha256)) => {
+                if !url.starts_with("https://") || url.len() > MAX_FONT_INDEX_URL_BYTES {
+                    return Err(format!("vectorcraft:fonts index {i}: `url` is an https URL of at most {MAX_FONT_INDEX_URL_BYTES} bytes"));
+                }
+                if sha256.len() != 64 || !sha256.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) {
+                    return Err(format!("vectorcraft:fonts index {i}: `sha256` is 64 lowercase hexadecimal digits"));
+                }
+                Ok(FontIndex::Url { url, sha256 })
+            }
+            (Field::Wrong, ..) => Err(format!(
+                "vectorcraft:fonts index {i}: `bytes` is an ArrayBuffer or Uint8Array of at most {} MB",
+                MAX_FONT_INDEX_BYTES >> 20
+            )),
+            _ => Err(format!("vectorcraft:fonts index {i} is `{{bytes}}` or `{{url, sha256}}`")),
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1084,5 +1146,46 @@ mod tests {
             assert!(masks(Field::Absent, image).unwrap_err().contains("`image`"));
         }
         assert!(accepts("https://a.example", "https://a.example", true, Some("vectorcraft:masks")));
+    }
+
+    fn bytes_entry(bytes: &[u8]) -> FontIndexFields {
+        FontIndexFields { bytes: Field::Given(bytes.to_vec()), ..Default::default() }
+    }
+
+    fn url_entry(url: &str, sha256: &str) -> FontIndexFields {
+        FontIndexFields { url: Field::Given(url.into()), sha256: Field::Given(sha256.into()), ..Default::default() }
+    }
+
+    /// `vectorcraft:fonts` takes craft-web-host's `fonts` shape: indexes as bytes or as an https
+    /// URL with its SHA-256, both forms in one message.
+    #[test]
+    fn fonts_takes_indexes_as_bytes_or_urls() {
+        let sha = "ab".repeat(32);
+        let got = fonts(Some((2, vec![bytes_entry(b"{}"), url_entry("https://fonts.example/index.json", &sha)]))).unwrap();
+        assert_eq!(got, [FontIndex::Bytes(b"{}".to_vec()), FontIndex::Url { url: "https://fonts.example/index.json".into(), sha256: sha }]);
+        assert!(accepts(SITE, SITE, true, Some("vectorcraft:fonts")));
+    }
+
+    /// One wrong entry refuses the whole message, by craft-web-host's rules.
+    #[test]
+    fn fonts_refuses_a_list_with_a_wrong_entry() {
+        let sha = "ab".repeat(32);
+        let too_many: Vec<FontIndexFields> = (0..=MAX_FONT_INDEXES).map(|_| bytes_entry(b"{}")).collect();
+        let long = format!("https://fonts.example/{}", "a".repeat(MAX_FONT_INDEX_URL_BYTES));
+        for (why, indexes) in [
+            ("no list", None),
+            ("empty", Some((0, vec![]))),
+            ("too many", Some((too_many.len(), too_many))),
+            ("http", Some((1, vec![url_entry("http://fonts.example/index.json", &sha)]))),
+            ("long URL", Some((1, vec![url_entry(&long, &sha)]))),
+            ("upper-case hex", Some((1, vec![url_entry("https://fonts.example/i.json", &"AB".repeat(32))]))),
+            ("short hash", Some((1, vec![url_entry("https://fonts.example/i.json", "ab")]))),
+            ("both forms", Some((1, vec![FontIndexFields { bytes: Field::Given(vec![1]), url: Field::Given("https://x.example/i".into()), sha256: Field::Given(sha.clone()) }]))),
+            ("neither", Some((1, vec![FontIndexFields::default()]))),
+            ("bytes too large", Some((1, vec![FontIndexFields { bytes: Field::Wrong, ..Default::default() }]))),
+            ("a good one and a bad one", Some((2, vec![bytes_entry(b"{}"), url_entry("http://x.example/i", &sha)]))),
+        ] {
+            assert!(fonts(indexes).is_err(), "{why}");
+        }
     }
 }
