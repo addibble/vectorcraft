@@ -2457,6 +2457,7 @@ font-technology	Variable	Variabla
 	No document open.	Inget dokument är öppet.
 	No filter plug-ins installed	Inga filterplugins är installerade
 	No fonts are available.	Inga typsnitt är tillgängliga.
+	This font isn't loaded yet: set type in it to load it.	Det här typsnittet är inte inläst än: använd det i en text för att läsa in det.
 	No gradient swatches	Inga gradientfärgrutor
 	No graphic styles	Inga grafikstilar
 	No images	Inga bilder
@@ -10883,3 +10884,10 @@ digits	Hindi	Hindi
 # #5804 native-picked raster editor (draft translations; native review welcome).
 	Edit Original with:	Redigera original med:
 file-filter	Applications	Program
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	{font} kunde inte läsas in ({reason}): dess text visas med ett annat teckensnitt
+	Activate	Aktivera
+	Activating…	Aktiverar…
+	Activate Font	Aktivera typsnitt igen
+@msg	give the font's family	ange typsnittets familj
+@msg	{family} {style} is no font a font index lists that failed to load	{family} {style} är inte ett typsnitt i sidans typsnittslista som misslyckades att läsas in
+@msg	The fonts this page supplies couldn't be listed: {why}	Teckensnitten som den här sidan tillhandahåller kunde inte listas: {why}

@@ -2738,6 +2738,7 @@ antiAlias	Sharp	シャープ
 	No document open	ドキュメントが開かれていません
 	No document open.	ドキュメントが開かれていません。
 	No fonts are available.	使用できるフォントがありません。
+	This font isn't loaded yet: set type in it to load it.	このフォントはまだ読み込まれていません。テキストに使用すると読み込まれます。
 	No gradient swatches	グラデーションスウォッチがありません
 	No graphic styles	グラフィックスタイルがありません
 	No images	画像がありません
@@ -10467,3 +10468,10 @@ breakText	Glyphs	字形
 # #5804 native-picked raster editor (draft translations; native review welcome).
 	Edit Original with:	元のファイルを編集するアプリ:
 file-filter	Applications	アプリケーション
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	{font} を読み込めませんでした ({reason}): テキストは別のフォントで表示されます
+	Activate	アクティベート
+	Activating…	アクティベート中…
+	Activate Font	フォントを再アクティベート
+@msg	give the font's family	フォントのファミリーを指定してください
+@msg	{family} {style} is no font a font index lists that failed to load	{family} {style} は、ページのフォント一覧にあるフォントのうち、読み込みに失敗したものではありません
+@msg	The fonts this page supplies couldn't be listed: {why}	このページが提供するフォントを一覧にできませんでした: {why}

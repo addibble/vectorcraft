@@ -2817,6 +2817,7 @@ digits	Hindi	Hindi
 	No document open.	Không có tài liệu nào đang mở.
 	No filter plug-ins installed	Không có plug-in lọc được cài đặt
 	No fonts are available.	Không có phông chữ nào.
+	This font isn't loaded yet: set type in it to load it.	Phông chữ này chưa được tải: hãy dùng nó trong văn bản để tải.
 	No gradient swatches	Không có mẫu chuyển sắc
 	No graphic styles	Không có kiểu đồ họa
 	No Group	Không có nhóm
@@ -8612,3 +8613,10 @@ breakText	Glyphs	Glyph
 # #5804 native-picked raster editor (draft translations; native review welcome).
 	Edit Original with:	Chỉnh sửa bản gốc bằng:
 file-filter	Applications	Ứng dụng
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	không tải được {font} ({reason}): văn bản hiển thị bằng phông khác
+	Activate	Kích hoạt
+	Activating…	Đang kích hoạt…
+	Activate Font	Kích hoạt lại phông chữ
+@msg	give the font's family	hãy cung cấp họ phông chữ
+@msg	{family} {style} is no font a font index lists that failed to load	{family} {style} không phải là phông chữ trong danh sách phông chữ của trang bị lỗi khi tải
+@msg	The fonts this page supplies couldn't be listed: {why}	Không thể liệt kê các phông chữ mà trang này cung cấp: {why}

@@ -20,6 +20,9 @@ craft-proof = { git = "https://github.com/storytold/craft-libs", rev = "64b18197
 # JSONPath queries, JSON Patch and the schema read a type at a time over the document model's JSON
 # (document.query, document.patch, document.schema and their MCP tools).
 craft-jsonquery = { git = "https://github.com/addibble/craft-libs", rev = "db07f605ce9765db5bdfdf711461133331af9712" }
+# Fonts a host supplies (RFC-0034): its font indexes read and checked, and a fetched face checked
+# against its entry, by the suite's font store (storytold/craft-libs#2331).
+craft-font-store = { git = "https://github.com/addibble/craft-libs", rev = "397216568db0661429a19d4bff8fd2ca5018236e" }
 # Decides who draws the window frame (desktop vs. app) so the suite shares one native titlebar per
 # desktop. The `egui` feature adds `craft_window::decorate`. (craft-libs#217.)
 craft-window = { git = "https://github.com/storytold/craft-libs", rev = "64b181977a0488e4d1e167bc5cc8cfededc2ed4b", features = ["egui"] }

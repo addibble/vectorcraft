@@ -281,7 +281,10 @@ pub fn enabled(app: &VectorcraftApp, id: &str) -> bool {
         "ui.importSvgFilter" => {
             app.session.active().is_some() && crate::picks::can(app, &crate::picks::PickRequest::Open(crate::dialogs::svg_filter::pick()))
         }
-        "ui.missingFontsDialog" => !cfg!(target_arch = "wasm32") && app.session.active().is_some(),
+        // On the web only for font sources, whose Activate it has.
+        "ui.missingFontsDialog" => {
+            (!cfg!(target_arch = "wasm32") || vectorcraft_text::FontDb::global().source_count() > 0) && app.session.active().is_some()
+        }
         "ui.findFontsInFolder" => crate::picks::can(app, &crate::picks::PickRequest::Folder) && app.session.active().is_some(),
         "ui.swatchOptions" | "ui.newSwatch" | "ui.newColorGroup" | "ui.colorGroupOptions" => app.session.active().is_some(),
         "ui.graphicStyleOptions" | "ui.charStyleOptions" | "ui.paraStyleOptions" | "ui.newCharStyle" | "ui.newParaStyle" => {

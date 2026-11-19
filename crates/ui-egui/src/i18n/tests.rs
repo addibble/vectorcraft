@@ -7718,3 +7718,42 @@ fn every_catalog_names_the_digits_menus_numeral_systems() {
     }
     assert!(missing.is_empty(), "Digits menu labels without a row:\n{}", missing.join("\n"));
 }
+
+/// The status line saying a host's font indexes were refused (RFC-0034) is shown in the interface
+/// language, the reason kept as it came.
+#[test]
+fn a_refused_font_index_list_is_said_in_the_interface_language() {
+    let english = "The fonts this page supplies couldn't be listed: font index page: bad sha256";
+    assert_eq!(
+        message(Lang::from_code("de").expect("registered"), english),
+        "Die Schriften dieser Seite konnten nicht aufgelistet werden: font index page: bad sha256"
+    );
+    assert_eq!(
+        message(Lang::from_code("ja").expect("registered"), english),
+        "このページが提供するフォントを一覧にできませんでした: font index page: bad sha256"
+    );
+}
+
+/// Every catalog that names Activate Font names the rest of the host fonts' interface too:
+/// Missing Fonts' Activate and Activating…, the Glyphs panel's note, and their messages (review
+/// rounds 1 and 2, items 12 and 13).
+#[test]
+fn catalogs_with_activate_font_name_the_host_fonts_interface() {
+    let messages = [
+        "{font} couldn't be loaded ({reason}): its text shows in another font",
+        "give the font's family",
+        "{family} {style} is no font a font index lists that failed to load",
+        "The fonts this page supplies couldn't be listed: {why}",
+    ];
+    let langs: Vec<Lang> = Lang::all().filter(|l| has(*l, "Activate Font")).collect();
+    assert!(langs.len() >= 20, "{} catalogs name Activate Font", langs.len());
+    for lang in langs {
+        let code = lang.code();
+        for s in ["Activate", "Activating…", "This font isn't loaded yet: set type in it to load it."] {
+            assert!(has(lang, s), "{code}: {s}");
+        }
+        for m in messages {
+            assert_ne!(message(lang, m), m, "{code}: {m}");
+        }
+    }
+}

@@ -392,6 +392,27 @@ impl eframe::App for WebShell {
             self.restart(&why);
         }
         let Some(app) = &mut self.app else { return };
+        // Fonts a host supplies (RFC-0034): the latest index set it gave replaces the last; the faces
+        // type asked for are fetched; those fetched join it once they pass their checks against
+        // their entries, and the type set in them is laid out again once for all of them. Each
+        // face is settled, so it is no longer pending; one that failed is listed in Missing Fonts,
+        // with Activate.
+        if let Some(list) = crate::fonts::take_indexes()
+            && let Err(e) = list.and_then(|list| app.set_font_indexes(list))
+        {
+            log::warn!("font indexes: {e}");
+            app.font_indexes_refused(&e);
+        }
+        crate::fonts::fetch_requested(ctx);
+        // A face the host's newer set no longer lists is dropped quietly (Settled::Stale).
+        let settled = crate::settle::settle_fetches(vectorcraft_text::FontDb::global(), crate::fonts::take_fetched());
+        if settled.added {
+            app.fonts_added();
+        }
+        for (src, reason) in settled.refused {
+            log::warn!("font source {} {}: {reason}", src.family, src.style);
+            app.font_source_failed(&src.family, &reason);
+        }
         app.tick(ctx);
         app.finish_ime_logic(ctx);
     }
@@ -444,6 +465,12 @@ impl eframe::App for WebShell {
                 }
             }
             app.ui(ui);
+        }
+        // Type laid out in this frame may have asked for faces: the next frame's logic fetches
+        // them, so it is asked for now rather than at the next input, while a fetch is free (a
+        // fetch that ends asks for its own frame).
+        if crate::fonts::wants_frame() {
+            ui.ctx().request_repaint();
         }
     }
 }
@@ -524,6 +551,8 @@ fn services(
         recovery_store: Some(Arc::new(BrowserStore { locks })),
         // File → Print: the browser's print dialog.
         print: Some(Box::new(BrowserPrint)),
+        // The faces of a host's font indexes are fetched each frame (WebShell::logic).
+        fetches_font_sources: true,
         // The pen's end, from the page's Pointer Events (`crate::pencil`).
         stylus: Some(stylus),
         ..Default::default()

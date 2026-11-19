@@ -38,6 +38,8 @@ fn recent_fonts_follow_committed_choices_and_the_count_preference() {
 
 #[test]
 fn arrows_preview_the_next_family_and_enter_applies_it() {
+    // Reads the font list more than once: no test adds to it meanwhile.
+    let _fonts = crate::adding_fonts();
     let ctx = egui::Context::default();
     crate::theme::install_fonts(&ctx);
     let frame = |events: Vec<egui::Event>| {
@@ -657,6 +659,132 @@ fn a_family_stepped_to_keeps_the_style_it_has() {
     assert_eq!(&first_style(&app, id).font_family, to, "picking menus leave the document alone");
 }
 
+/// Turning the wheel is browsing, which fetches nothing (RFC-0034 section 2.3): families of a host's
+/// font index not loaded yet are passed over, the one it would stop on too, and the type keeps a
+/// family it can draw.
+#[test]
+fn the_wheel_fetches_no_family_of_a_host_index() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
+    let (passed, stopped) = ("Wheel Passed 1", "Wheel Stops 01");
+    let _index = vectorcraft_text::test_fonts::add_index_of("menu-wheel", &[(passed, 400), (stopped, 400)]).unwrap();
+    let ctx = egui::Context::default();
+    let mut app = VectorcraftApp::new(Session::new(), Default::default());
+    let id = selected_inter(&mut app);
+    let db = FontDb::global();
+    db.take_source_requests();
+    let before = first_style(&app, id).font_family;
+    crate::font_menu::apply(&mut app, &ctx, FontPick::Wheel(vec![passed.into(), stopped.into()]));
+    let asked = db.take_source_requests();
+    assert!(asked.iter().all(|r| r.family != passed && r.family != stopped), "nothing is fetched: {asked:?}");
+    assert_eq!(first_style(&app, id).font_family, before);
+}
+
+/// The wheel over type with a Regular run and a Bold run passes over a family of a host's font
+/// index whose Bold hasn't loaded, though its Regular has: setting it would fit the Bold run to a
+/// face that would be fetched. The type keeps its family, and nothing is asked for (review round
+/// 3, items 4 and 5).
+#[test]
+fn the_wheel_passes_over_a_family_one_of_the_runs_would_fetch() {
+    use vectorcraft_text::test_fonts::{IndexFile, add_host_index, host_index};
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
+    const HALF: &str = "Wheel Half 02";
+    let regular = vectorcraft_testkit::fonts::renamed(HALF);
+    let index = host_index(&[(
+        HALF,
+        &[
+            IndexFile { path: "h/Regular.ttf", bytes: &regular, italic: false, weight: 400 },
+            IndexFile { path: "h/Bold.ttf", bytes: b"bold", italic: false, weight: 700 },
+        ],
+    )]);
+    let _index = add_host_index("menu-wheel-app", index).unwrap();
+    let db = FontDb::global();
+    assert!(db.add_font(regular) > 0);
+    let ctx = egui::Context::default();
+    let mut app = VectorcraftApp::new(Session::new(), Default::default());
+    let id = selected_inter(&mut app);
+    app.session.execute("text.setRangeStyle", &json!({"id": id, "start": 0, "end": 3, "style": "Bold"})).unwrap();
+    db.take_source_requests();
+    crate::font_menu::apply(&mut app, &ctx, FontPick::Wheel(vec![HALF.into()]));
+    assert_eq!(first_style(&app, id).font_family, "Inter", "passed over");
+    assert!(db.take_source_requests().iter().all(|r| r.family != HALF), "nothing asked for");
+    // With Regular runs only, it is taken.
+    app.session.execute("text.setRangeStyle", &json!({"id": id, "start": 0, "end": 3, "style": "Regular"})).unwrap();
+    crate::font_menu::apply(&mut app, &ctx, FontPick::Wheel(vec![HALF.into()]));
+    assert_eq!(first_style(&app, id).font_family, HALF);
+    assert!(db.take_source_requests().iter().all(|r| r.family != HALF), "nothing asked for");
+}
+
+/// With the Type tool's range inside a Regular run, the wheel checks only the runs of the range,
+/// which is all it sets: a Bold run elsewhere in the story doesn't keep it from a family whose
+/// Bold hasn't loaded (review round 4, item D).
+#[test]
+fn a_type_range_checks_only_its_own_runs() {
+    use vectorcraft_text::test_fonts::{IndexFile, add_host_index, host_index};
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
+    const HALF: &str = "Wheel Half 03";
+    let regular = vectorcraft_testkit::fonts::renamed(HALF);
+    let index = host_index(&[(
+        HALF,
+        &[
+            IndexFile { path: "h/Regular.ttf", bytes: &regular, italic: false, weight: 400 },
+            IndexFile { path: "h/Bold.ttf", bytes: b"bold", italic: false, weight: 700 },
+        ],
+    )]);
+    let _index = add_host_index("menu-wheel-range", index).unwrap();
+    assert!(FontDb::global().add_font(regular) > 0);
+    let mut app = VectorcraftApp::new(Session::new(), Default::default());
+    app.run("file.new", json!({"width": 300, "height": 200})).unwrap();
+    app.session.select_tool("type", Default::default()).unwrap();
+    let id = app.run("text.create", json!({"x": 20, "y": 50, "text": "Regular Bold", "font": "Inter"})).unwrap()["id"].as_u64().unwrap();
+    app.session.execute("text.setRangeStyle", &json!({"id": id, "start": 8, "end": 12, "style": "Bold"})).unwrap();
+    app.session.apply_actions(vec![vectorcraft_tools::Action::Notify("text.editNew".into())]).unwrap();
+    app.session.set_tool_option("select", &json!({"start": 1, "end": 4}));
+    assert_eq!(crate::panels::character::text_editing(&app).map(|(_, a, b)| (a, b)), Some((1, 4)), "a range in the Regular run");
+    let selected = crate::font_menu::SelectedType::App(&app);
+    assert_eq!(selected.styles(), ["Regular"]);
+    assert!(selected.can_take(HALF), "its Regular has loaded: the wheel may take it");
+}
+
+/// At a caret, a font change restyles the whole object the Type tool edits, so the wheel checks
+/// all of its runs: a caret in the Regular part of type with a Bold run passes over a family whose
+/// Bold hasn't loaded, and fetches nothing (review round 5, item 1).
+#[test]
+fn a_caret_checks_every_run_of_its_object() {
+    use vectorcraft_text::test_fonts::{IndexFile, add_host_index, host_index};
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
+    const HALF: &str = "Wheel Half 04";
+    let regular = vectorcraft_testkit::fonts::renamed(HALF);
+    let index = host_index(&[(
+        HALF,
+        &[
+            IndexFile { path: "h/Regular.ttf", bytes: &regular, italic: false, weight: 400 },
+            IndexFile { path: "h/Bold.ttf", bytes: b"bold", italic: false, weight: 700 },
+        ],
+    )]);
+    let _index = add_host_index("menu-wheel-caret", index).unwrap();
+    let db = FontDb::global();
+    assert!(db.add_font(regular) > 0);
+    let ctx = egui::Context::default();
+    let mut app = VectorcraftApp::new(Session::new(), Default::default());
+    app.run("file.new", json!({"width": 300, "height": 200})).unwrap();
+    app.session.select_tool("type", Default::default()).unwrap();
+    let id = app.run("text.create", json!({"x": 20, "y": 50, "text": "Regular Bold", "font": "Inter"})).unwrap()["id"].as_u64().unwrap();
+    app.session.execute("text.setRangeStyle", &json!({"id": id, "start": 8, "end": 12, "style": "Bold"})).unwrap();
+    app.session.apply_actions(vec![vectorcraft_tools::Action::Notify("text.editNew".into())]).unwrap();
+    app.session.set_tool_option("select", &json!({"start": 2, "end": 2}));
+    assert_eq!(crate::panels::character::text_editing(&app).map(|(_, a, b)| (a, b)), Some((2, 2)), "a caret in the Regular part");
+    let selected = crate::font_menu::SelectedType::App(&app);
+    assert_eq!(selected.styles(), ["Bold", "Regular"], "the whole object's runs");
+    assert!(!selected.can_take(HALF), "its Bold hasn't loaded");
+    db.take_source_requests();
+    crate::font_menu::apply(&mut app, &ctx, FontPick::Wheel(vec![HALF.into()]));
+    assert!(db.take_source_requests().iter().all(|r| r.family != HALF), "nothing asked for");
+}
+
 #[test]
 fn bundled_families_are_classified() {
     use vectorcraft_text::FontClass;
@@ -1269,4 +1397,146 @@ fn show_samples_on_white_is_a_saved_preference_the_menus_follow() {
     assert!(saved.font_samples_on_white, "saved and read back");
     let older: vectorcraft_engine::Prefs = serde_json::from_str("{}").unwrap();
     assert!(!older.font_samples_on_white, "preferences saved before it read as off");
+}
+
+/// A family of a host's font index not loaded yet has no sample in the menu, and showing it asks for nothing (only
+/// type set in it does); once its file is added, its sample draws.
+#[test]
+fn a_font_source_has_no_sample_until_its_file_is_added() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
+    const FAMILY: &str = "Menu Source 1";
+    let _index = vectorcraft_text::test_fonts::add_index_of("menu-sample", &[(FAMILY, 400)]).unwrap();
+    let db = vectorcraft_text::FontDb::global();
+    assert!(db.menu_family_list().iter().any(|f| f == FAMILY), "listed in the menus");
+    assert!(crate::font_menu::render_sample_for_test(FAMILY, "Sample", 24).is_none());
+    assert!(db.take_source_requests().iter().all(|r| r.family != FAMILY), "a sample asks for nothing");
+    assert!(db.add_font(vectorcraft_testkit::fonts::renamed(FAMILY)) > 0);
+    assert!(crate::font_menu::render_sample_for_test(FAMILY, "Sample", 24).is_some(), "drawn once added");
+}
+
+/// Arrowing onto a family of a host's font index not loaded yet previews nothing and asks for nothing: a highlight
+/// passing over the menu would otherwise fetch every source family it passes.
+#[test]
+fn the_highlight_does_not_preview_a_font_source_not_loaded_yet() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
+    // A family of this test's own, sorting last (the font database is the process's, so other
+    // tests' menus see what this one adds), and the source right after it, where ↓ lands.
+    const CURRENT: &str = "Zz Menu Test0";
+    const FAMILY: &str = "Zz Menu Test0 Source";
+    let _index = vectorcraft_text::test_fonts::add_index_of("menu-highlight", &[(FAMILY, 400)]).unwrap();
+    let db = vectorcraft_text::FontDb::global();
+    assert!(db.add_font(vectorcraft_testkit::fonts::renamed(CURRENT)) > 0 || db.has_family(CURRENT));
+    let ctx = egui::Context::default();
+    crate::theme::install_fonts(&ctx);
+    let mut app = VectorcraftApp::new(Session::new(), Default::default());
+    app.run("file.new", json!({"width": 300, "height": 200})).unwrap();
+    let id = app.session.execute("text.create", &json!({"x": 20, "y": 50, "text": "Gagaku", "font": CURRENT})).unwrap()["id"].as_u64().unwrap();
+    app.session.execute("select.set", &json!({"ids": [id]})).unwrap();
+    let frame = |app: &mut VectorcraftApp, events: Vec<egui::Event>| {
+        let input =
+            egui::RawInput { events, screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(600.0, 800.0))), ..Default::default() };
+        let (mut at, mut picked) = (egui::Pos2::ZERO, None);
+        let mut out = ctx.run_ui(input, |ui| {
+            at = ui.next_widget_position();
+            picked = font_menu(ui, "test-pending", CURRENT, 260.0, None, MenuLook::default());
+            if let Some(p) = picked.clone() {
+                crate::font_menu::apply(app, ui.ctx(), p);
+            }
+        });
+        out.textures_delta.clear();
+        (at, picked)
+    };
+    let (at, _) = frame(&mut app, vec![]);
+    let click = at + egui::vec2(40.0, 10.0);
+    let button = |pressed| egui::Event::PointerButton { pos: click, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+    frame(&mut app, vec![egui::Event::PointerMoved(click), button(true)]);
+    frame(&mut app, vec![button(false)]);
+    for _ in 0..3 {
+        frame(&mut app, vec![]);
+    }
+    let (_, picked) = frame(&mut app, key(egui::Key::ArrowDown));
+    assert!(!matches!(picked, Some(FontPick::Preview(..))), "{picked:?}");
+    for _ in 0..3 {
+        frame(&mut app, vec![]);
+    }
+    assert!(db.take_source_requests().iter().all(|r| r.family != FAMILY), "the highlight asks for nothing");
+}
+
+/// Arrowing onto a family whose Regular is loaded and whose Bold is a font source not loaded yet
+/// previews nothing while the selected type is Bold: the preview keeps the type's style, so it would
+/// ask for the Bold.
+#[test]
+fn the_highlight_does_not_preview_a_style_still_to_come() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
+    // Both 13 bytes (`renamed`), the source's family sorting right after the current one.
+    const CURRENT: &str = "Zz Menu Tes1a";
+    const FAMILY: &str = "Zz Menu Tes1b";
+    let _index = vectorcraft_text::test_fonts::add_index_of("menu-style", &[(FAMILY, 700)]).unwrap();
+    let db = vectorcraft_text::FontDb::global();
+    assert!(db.add_font(vectorcraft_testkit::fonts::renamed(CURRENT)) > 0 || db.has_family(CURRENT));
+    assert!(db.add_font(vectorcraft_testkit::fonts::renamed(FAMILY)) > 0 || db.has_family(FAMILY));
+    assert!(!db.is_pending_source(FAMILY, "Regular") && db.is_pending_source(FAMILY, "Bold"));
+    let ctx = egui::Context::default();
+    crate::theme::install_fonts(&ctx);
+    let mut app = VectorcraftApp::new(Session::new(), Default::default());
+    app.run("file.new", json!({"width": 300, "height": 200})).unwrap();
+    let id =
+        app.session.execute("text.create", &json!({"x": 20, "y": 50, "text": "Gagaku", "font": CURRENT, "style": "Bold"})).unwrap()["id"].clone();
+    app.session.execute("select.set", &json!({"ids": [id]})).unwrap();
+    db.take_source_requests();
+    let frame = |app: &mut VectorcraftApp, events: Vec<egui::Event>| {
+        let input =
+            egui::RawInput { events, screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(600.0, 800.0))), ..Default::default() };
+        let (mut at, mut picked) = (egui::Pos2::ZERO, None);
+        let mut out = ctx.run_ui(input, |ui| {
+            at = ui.next_widget_position();
+            // The selected type's style, as MenuLook::of gives the panels: Bold.
+            picked = font_menu(
+                ui,
+                "test-pending-style",
+                CURRENT,
+                260.0,
+                None,
+                MenuLook { selected: crate::font_menu::SelectedType::Styles(&["Bold"]), ..MenuLook::default() },
+            );
+            if let Some(p) = picked.clone() {
+                crate::font_menu::apply(app, ui.ctx(), p);
+            }
+        });
+        out.textures_delta.clear();
+        (at, picked)
+    };
+    let (at, _) = frame(&mut app, vec![]);
+    let click = at + egui::vec2(40.0, 10.0);
+    let button = |pressed| egui::Event::PointerButton { pos: click, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+    frame(&mut app, vec![egui::Event::PointerMoved(click), button(true)]);
+    frame(&mut app, vec![button(false)]);
+    for _ in 0..3 {
+        frame(&mut app, vec![]);
+    }
+    let (_, picked) = frame(&mut app, key(egui::Key::ArrowDown));
+    assert!(!matches!(picked, Some(FontPick::Preview(..))), "{picked:?}");
+    for _ in 0..3 {
+        frame(&mut app, vec![]);
+    }
+    assert!(db.take_source_requests().iter().all(|r| r.family != FAMILY), "the highlight asks for nothing");
+}
+
+/// A family of a host's font index none of whose faces has loaded has no sample, whatever styles
+/// it lists: a Black-only family would otherwise be sampled in the fallback face (review round 1,
+/// item 5).
+#[test]
+fn a_host_family_with_no_regular_has_no_sample_until_a_face_loads() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
+    const FAMILY: &str = "Black Only 01";
+    let _index = vectorcraft_text::test_fonts::add_index_of("menu-black", &[(FAMILY, 900)]).unwrap();
+    let ctx = egui::Context::default();
+    ctx.run_ui(egui::RawInput::default(), |_| {}).textures_delta.clear();
+    assert!(crate::font_menu::sample_texture_for_test(&ctx, FAMILY, None).is_none(), "no sample for the family's row");
+    assert!(crate::font_menu::render_sample_for_test(FAMILY, "Sample", 24).is_none());
+    assert!(FontDb::global().take_source_requests().iter().all(|r| r.family != FAMILY), "and nothing fetched");
 }

@@ -722,6 +722,13 @@ font-technology	Variable	Променливи
 	Delete Raster	Изтриване на растерното изображение
 	Use Ratio	Използване на съотношението
 	Create Outlines	Създаване на контур
+	Activate Font	Активиране на шрифт
+	Activate	Активиране
+	Activating…	Активира се…
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	{font} не можа да се зареди ({reason}): текстът му се показва с друг шрифт
+@msg	give the font's family	посочете семейството на шрифта
+@msg	{family} {style} is no font a font index lists that failed to load	{family} {style} не е шрифт от списъка с шрифтове на страницата, който не е успял да се зареди
+@msg	The fonts this page supplies couldn't be listed: {why}	Шрифтовете, които тази страница предоставя, не можаха да бъдат изброени: {why}
 	Create Path	Създаване на път
 	Create PDF layers from layers and sublayers	Създаване на PDF слоеве от слоеве и подслоеве
 	Create PDF layers from top-level layers	Създаване на PDF слоеве от слоеве на най-високо ниво
@@ -2435,6 +2442,7 @@ font-technology	Variable	Променливи
 	No document open.	Няма отворен документ.
 	No filter plug-ins installed	Няма инсталирани плъгини за филтри
 	No fonts are available.	Няма налични шрифтове.
+	This font isn't loaded yet: set type in it to load it.	Този шрифт още не е зареден: използвайте го в текст, за да се зареди.
 	No gradient swatches	Няма образци на разградки
 	No graphic styles	Няма графични стилове
 	No images	Няма изображения

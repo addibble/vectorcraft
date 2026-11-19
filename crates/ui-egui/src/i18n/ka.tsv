@@ -3997,6 +3997,7 @@ digits	Malayalam	მალაიალამური
 	Latin Extended	გაფართოებული ლათინური
 	Latin-1 Supplement	Latin-1-ის დამატება
 	No fonts are available.	შრიფტები მიუწვდომელია.
+	This font isn't loaded yet: set type in it to load it.	ეს შრიფტი ჯერ არ არის ჩატვირთული: ჩასატვირთად გამოიყენეთ ტექსტში.
 	Select text or click into text with the Type tool to insert glyphs	გლიფების ჩასასმელად მონიშნეთ ტექსტი ან ტექსტის ხელსაწყოთი დაწკაპეთ ტექსტში
 	Show:	ჩვენება:
 	Use the Selected Text's Font	მონიშნული ტექსტის შრიფტის გამოყენება
@@ -11076,3 +11077,10 @@ font-script	Japanese	იაპონური
 # #5804 native-picked raster editor (draft translations; native review welcome).
 	Edit Original with:	ორიგინალის რედაქტირება პროგრამით:
 file-filter	Applications	აპლიკაციები
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	{font} ვერ ჩაიტვირთა ({reason}): მისი ტექსტი სხვა შრიფტით ჩანს
+	Activate	გააქტიურება
+	Activating…	აქტიურდება…
+	Activate Font	შრიფტის ხელახლა გააქტიურება
+@msg	give the font's family	მიუთითეთ შრიფტის ოჯახი
+@msg	{family} {style} is no font a font index lists that failed to load	{family} {style} არ არის გვერდის შრიფტების სიის შრიფტი, რომლის ჩატვირთვაც ვერ მოხერხდა
+@msg	The fonts this page supplies couldn't be listed: {why}	ამ გვერდის მიერ მოწოდებული შრიფტების ჩამოთვლა ვერ მოხერხდა: {why}

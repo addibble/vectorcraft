@@ -559,4 +559,40 @@ impl VectorcraftApp {
             self.status(w);
         }
     }
+
+    /// A face of a host's font index the host couldn't fetch, or that failed its checks: its type
+    /// stays in the fallback face, which the status line says, and the Missing Fonts dialog of each
+    /// document set in it lists it, with Activate to ask for it again (RFC-0034 section 5.3).
+    pub fn font_source_failed(&mut self, font: &str, reason: &str) {
+        self.status(format!("{font} couldn't be loaded ({reason}): its text shows in another font"));
+        crate::dialogs::missing_fonts::source_failed(self, font);
+    }
+
+    /// The font indexes the host gave couldn't be fetched or read (RFC-0034: refused whole): the
+    /// status line says so, with why.
+    pub fn font_indexes_refused(&mut self, why: &str) {
+        self.status(format!("The fonts this page supplies couldn't be listed: {why}"));
+    }
+
+    /// The host added font files to the font database itself (`FontDb::settle`, the faces
+    /// of its font indexes): the type is laid out again in them once for them all, after the edit
+    /// the active tool is computing applies, and never in the middle of it (RFC-0034 section 4).
+    pub fn fonts_added(&mut self) {
+        self.wait_for_tool_edit("text.addFontFiles");
+        vectorcraft_engine::cmd::fontfiles::relayout_type(&mut self.session);
+    }
+
+    /// The font indexes the host gives (RFC-0034), in place of every index it gave before: each
+    /// `(id, bytes)` in craft-font-index format, read as the source `host:<id>`, all or nothing
+    /// ([`vectorcraft_engine::cmd::fontfiles::set_host_indexes`]).
+    /// Only the host calls this, through the hosting contract (section 7): it is no command, so
+    /// neither the control channel, MCP, a script nor a plug-in can reach it, which is what keeps
+    /// them from giving an index. It is not refused while automation acts: a set the page gives
+    /// during a frame of synthetic input (the help guides drive the pointer while the page gives
+    /// its fonts) is the host's all the same, and has already been taken from the shell's queue.
+    /// Not an edit. Answers `{families}`.
+    pub fn set_font_indexes(&mut self, list: Vec<(String, Vec<u8>)>) -> Result<serde_json::Value, String> {
+        self.wait_for_tool_edit("text.addFontFiles");
+        vectorcraft_engine::cmd::fontfiles::set_host_indexes(&mut self.session, list)
+    }
 }

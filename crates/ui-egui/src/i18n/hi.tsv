@@ -3582,6 +3582,7 @@ antiAlias	Sharp	शार्प
 	No equivalent	समतुल्य नहीं
 	No filter plug-ins installed	कोई फिल्टर प्लग-इन स्थापित नहीं है
 	No fonts are available.	कोई फ़ॉन्ट उपलब्ध नहीं हैं।
+	This font isn't loaded yet: set type in it to load it.	यह फ़ॉन्ट अभी लोड नहीं हुआ है: इसे लोड करने के लिए टेक्स्ट में इसका उपयोग करें।
 	No gradient swatches	कोई ग्रेडिएंट स्वॉच नहीं
 	No graphic styles	कोई ग्राफिक स्टाइल नहीं
 	No Group	कोई समूह नहीं
@@ -10359,3 +10360,10 @@ theme	Appearance	अपीयरेंस
 # #5804 native-picked raster editor (draft translations; native review welcome).
 	Edit Original with:	मूल फ़ाइल इसमें एडिट करें:
 file-filter	Applications	ऐप्स
+	Activate	सक्रिय करें
+	Activating…	सक्रिय हो रहा है…
+	Activate Font	फ़ॉन्ट फिर से सक्रिय करें
+@msg	give the font's family	फ़ॉन्ट का परिवार दें
+@msg	{family} {style} is no font a font index lists that failed to load	{family} {style} पेज की फ़ॉन्ट सूची का ऐसा फ़ॉन्ट नहीं है जो लोड होने में विफल रहा
+@msg	The fonts this page supplies couldn't be listed: {why}	इस पेज के दिए फ़ॉन्ट सूचीबद्ध नहीं किए जा सके: {why}
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	{font} लोड नहीं हो सका ({reason}): इसका टेक्स्ट दूसरे फ़ॉन्ट में दिखता है
