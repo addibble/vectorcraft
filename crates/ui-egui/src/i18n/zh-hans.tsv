@@ -2417,6 +2417,7 @@ file-filter	Templates	模板
 	No document open.	未打开文档。
 	No filter plug-ins installed	未安装滤镜增效工具
 	No fonts are available.	没有可用的字体。
+	This font isn't loaded yet: set type in it to load it.	此字体尚未加载：在文本中使用它即可加载。
 	No gradient swatches	没有渐变色板
 	No graphic styles	没有图形样式
 	No images	没有图像
@@ -10605,3 +10606,10 @@ breakText	Glyphs	字形
 # #5804 native-picked raster editor (draft translations; native review welcome).
 	Edit Original with:	编辑原稿所用应用：
 file-filter	Applications	应用程序
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	无法加载 {font}（{reason}）：使用它的文字以其他字体显示
+	Activate	激活
+	Activating…	正在激活…
+	Activate Font	重新激活字体
+@msg	give the font's family	请给出字体的字体系列
+@msg	{family} {style} is no font a font index lists that failed to load	{family} {style} 不是页面字体列表中加载失败的字体
+@msg	The fonts this page supplies couldn't be listed: {why}	无法列出此页面提供的字体：{why}

@@ -3539,6 +3539,7 @@ theme	Appearance	Εμφάνιση
 	No document open.	Δεν υπάρχει ανοιχτό έγγραφο.
 	No filter plug-ins installed	Δεν έχουν εγκατασταθεί πρόσθετα φίλτρων
 	No fonts are available.	Δεν υπάρχουν διαθέσιμες γραμματοσειρές.
+	This font isn't loaded yet: set type in it to load it.	Αυτή η γραμματοσειρά δεν έχει φορτωθεί ακόμη: χρησιμοποιήστε την σε ένα κείμενο για να φορτωθεί.
 	No gradient swatches	Δεν υπάρχουν δείγματα ντεγκραντέ
 	No graphic styles	Δεν υπάρχουν στυλ γραφικών
 	No images	Δεν υπάρχουν εικόνες
@@ -8941,3 +8942,10 @@ breakText	Glyphs	Γλύφοι
 # #5804 native-picked raster editor (draft translations; native review welcome).
 	Edit Original with:	Επεξεργασία πρωτοτύπου με:
 file-filter	Applications	Εφαρμογές
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	η γραμματοσειρά {font} δεν φορτώθηκε ({reason}): το κείμενό της εμφανίζεται με άλλη γραμματοσειρά
+	Activate	Ενεργοποίηση
+	Activating…	Ενεργοποίηση…
+	Activate Font	Εκ νέου ενεργοποίηση γραμματοσειράς
+@msg	give the font's family	δώστε την οικογένεια της γραμματοσειράς
+@msg	{family} {style} is no font a font index lists that failed to load	η {family} {style} δεν είναι γραμματοσειρά από τη λίστα γραμματοσειρών της σελίδας που απέτυχε να φορτωθεί
+@msg	The fonts this page supplies couldn't be listed: {why}	Δεν ήταν δυνατή η εμφάνιση των γραμματοσειρών που παρέχει αυτή η σελίδα: {why}

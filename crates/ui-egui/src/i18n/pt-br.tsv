@@ -2073,6 +2073,7 @@ antiAlias	Sharp	Nítido
 	No document open.	Nenhum documento aberto.
 	No filter plug-ins installed	Nenhum filtro plug-in instalado
 	No fonts are available.	Nenhuma fonte disponível.
+	This font isn't loaded yet: set type in it to load it.	Esta fonte ainda não foi carregada: use-a em um texto para carregá-la.
 	No gradient swatches	Sem amostras de gradiente
 	No graphic styles	Sem estilos gráficos
 	No images	Sem imagens
@@ -10829,3 +10830,10 @@ swatch	Yellow Green	Verde-amarelado
 # #5804 native-picked raster editor (draft translations; native review welcome).
 	Edit Original with:	Editar original com:
 file-filter	Applications	Aplicativos
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	não foi possível carregar {font} ({reason}): o texto dela aparece em outra fonte
+	Activate	Ativar
+	Activating…	Ativando…
+	Activate Font	Reativar fonte
+@msg	give the font's family	informe a família da fonte
+@msg	{family} {style} is no font a font index lists that failed to load	{family} {style} não é uma fonte da lista de fontes da página que falhou ao carregar
+@msg	The fonts this page supplies couldn't be listed: {why}	Não foi possível listar as fontes que esta página fornece: {why}

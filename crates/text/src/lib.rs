@@ -42,11 +42,11 @@ pub use features::{
     EXTRA_FEATURES, LIGATURE_TRACKING_LIMITS, MAX_FEATURE_VALUE, MAX_STYLE_FEATURES, OtFeatures, explicit_ligatures, ligatures_suppressed_by,
 };
 pub use fontdb::{
-    CompositeCoverage, FALLBACK_FAMILY, FontClass, FontDb, FontFace, FontLikeness, FontMatch, FontTraits, GENERIC_FAMILIES, GlyphAlternate,
-    GlyphCategory, GlyphCategoryKind, GlyphOrigin, IcfMargins, JoiningPosition, LentCompositeFonts, OutlineFormat, PlatformFontFiles,
-    RECENTLY_ADDED_WITHIN, RecentlyAdded, StylisticSet, Substitution, SubstitutionKind, WantedFont, WantedFonts, app_font_dir, is_font_file,
-    is_generic_family, is_suitcase, set_app_font_dir, set_platform_font_files, set_user_font_dirs, set_user_font_dirs_confined, style_weight,
-    system_font_dirs, user_font_dirs,
+    CompositeCoverage, FALLBACK_FAMILY, FaceKey, FaceState, Fit, FontClass, FontDb, FontFace, FontLikeness, FontMatch, FontSource, FontTraits,
+    FontsAdded, GENERIC_FAMILIES, GlyphAlternate, GlyphCategory, GlyphCategoryKind, GlyphOrigin, IcfMargins, JoiningPosition, LentCompositeFonts,
+    Listed, Origin, OutlineFormat, PlatformFontFiles, RECENTLY_ADDED_WITHIN, RecentlyAdded, Settled, StylisticSet, Substitution, SubstitutionKind,
+    WantedFont, WantedFonts, app_font_dir, is_font_file, is_generic_family, is_suitcase, set_app_font_dir, set_platform_font_files,
+    set_user_font_dirs, set_user_font_dirs_confined, style_weight, system_font_dirs, user_font_dirs,
 };
 pub use hyphen::{hyphenation_exceptions, set_hyphenation_exceptions};
 pub use layout::{envelope_ink, layout_inputs, register_envelope_ink};
@@ -1060,7 +1060,7 @@ pub fn line_metrics(data: &[u8], index: u32) -> Option<(f32, f32, f32, f32)> {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 #[cfg(test)]
 #[path = "../build/web_fonts.rs"]
 mod web_fonts_build;

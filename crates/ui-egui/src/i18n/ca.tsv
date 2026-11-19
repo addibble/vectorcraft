@@ -3049,6 +3049,7 @@ digits	Malayalam	Malaiàlam
 	No equivalent	Sense equivalent
 	No filter plug-ins installed	No hi ha complements de filtre instal·lats
 	No fonts are available.	No hi ha cap tipus de lletra disponible.
+	This font isn't loaded yet: set type in it to load it.	Aquest tipus de lletra encara no s’ha carregat: useu-lo en un text per carregar-lo.
 	No gradient swatches	No hi ha mostres de degradat
 	No graphic styles	No hi ha estils gràfics
 	No Group	Sense grup
@@ -8963,3 +8964,10 @@ breakText	Glyphs	Glifs
 # #5804 native-picked raster editor (draft translations; native review welcome).
 	Edit Original with:	Edita l’original amb:
 file-filter	Applications	Aplicacions
+	Activate	Activa
+	Activating…	S’està activant…
+	Activate Font	Activa de nou el tipus de lletra
+@msg	give the font's family	doneu la família del tipus de lletra
+@msg	{family} {style} is no font a font index lists that failed to load	{family} {style} no és un tipus de lletra de la llista de la pàgina que hagi fallat en carregar-se
+@msg	The fonts this page supplies couldn't be listed: {why}	No s’han pogut llistar els tipus de lletra que ofereix aquesta pàgina: {why}
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	{font} no s’ha pogut carregar ({reason}): el seu text es mostra amb un altre tipus de lletra

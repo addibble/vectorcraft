@@ -224,6 +224,10 @@ pub struct Services {
     /// processor, recent commands and frame times, and the hang reports of this session and the
     /// one before). Without it the command copies the version only ([`crate::troubleshooting`]).
     pub troubleshooting: Option<Box<dyn Fn() -> String>>,
+    /// The host fetches the faces of its font indexes that type asks for (RFC-0034; the web build
+    /// does): the Missing Fonts dialog then says such a font is activating, and offers Activate when
+    /// it failed. Without it such a font is only missing.
+    pub fetches_font_sources: bool,
 }
 
 /// Rewrites one window's raw input before egui reads it ([`Services::native_input_hook`]).

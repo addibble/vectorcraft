@@ -399,6 +399,8 @@ fn sample_lines_read_the_icf_box_and_estimate_a_missing_cap_height() {
 /// ascent is the fallback face's.
 #[test]
 fn sample_lines_measure_the_faces_that_draw_the_glyphs() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
     use vectorcraft_text::test_fonts::{PATH_ALIGN_HHEA_FAMILY, path_align_font};
     vectorcraft_text::FontDb::global().add_font(path_align_font(PATH_ALIGN_HHEA_FAMILY).expect("the test font builds"));
     let mut f = inter_font(|_| {});
@@ -453,6 +455,8 @@ fn the_sample_takes_the_custom_sets() {
 /// The sample draws a color font's glyphs in their own colors, not in the dialog's text color.
 #[test]
 fn the_sample_draws_color_glyphs_in_their_colors() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
     use vectorcraft_text::test_fonts::{COLOUR_CHAR, colr_family, colr_font};
     vectorcraft_text::FontDb::global().add_font(colr_font(false).expect("the test font builds"));
     let mut f = inter_font(|_| {});

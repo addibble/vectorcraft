@@ -2563,6 +2563,7 @@ file-filter	Templates	Шаблони
 	No document open.	Документ не відкрито.
 	No filter plug-ins installed	Модулі фільтрів не встановлено
 	No fonts are available.	Шрифти недоступні.
+	This font isn't loaded yet: set type in it to load it.	Цей шрифт ще не завантажено: використайте його в тексті, щоб завантажити.
 	No gradient swatches	Немає градієнтних зразків
 	No graphic styles	Немає графічних стилів
 	No images	Немає зображень
@@ -10379,3 +10380,10 @@ breakText	Glyphs	Гліфи
 # #5804 native-picked raster editor (draft translations; native review welcome).
 	Edit Original with:	Редагувати оригінал у:
 file-filter	Applications	Програми
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	не вдалося завантажити шрифт {font} ({reason}); його текст показано іншим шрифтом
+	Activate	Активувати
+	Activating…	Активація…
+	Activate Font	Активувати шрифт повторно
+@msg	give the font's family	вкажіть сімейство шрифту
+@msg	{family} {style} is no font a font index lists that failed to load	{family} {style} не є шрифтом зі списку шрифтів сторінки, який не вдалося завантажити
+@msg	The fonts this page supplies couldn't be listed: {why}	Не вдалося отримати список шрифтів, які надає ця сторінка: {why}

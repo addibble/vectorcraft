@@ -1,5 +1,6 @@
 # Control protocol
 
+> **Last updated:** 2026-11-18 · **Change:** fonts a host supplies (RFC-0034): Missing Fonts lists a font of a host's font index as activating, or with Activate when it couldn't be loaded (`text.activateFont`), and the page gives its font indexes through the hosting contract; previously: text style commands take a feature with a value (`"features": ["salt=2"]`), the font's alternate number, and shape runs that differ only in features as one piece of text; previously: Confining file access refuses a `:` in a name after the drive on Windows, an NTFS alternate data stream such as `x.svg:evil` (#3604); previously: Object → Expand… dimmed while the selection has an appearance Expand Appearance expands (`object.expand.info`'s `appearance`, #3089); previously: brush library panels (`window.brushLibrary`, `window.brushLibrary.other`, `ui.saveBrushLibrary`); previously: Transform Each opens on the values it was last confirmed with; its Copy button confirms with `copy: true` (#1732); previously: panel docking on craft-ui's layout: `ui.docking`, the parameters of `window.panel.float` and `window.panel.dock`; previously: `ui.screenshot`'s 64 MiB inline-PNG cap and its path-plus-data downgrade; symbol library panels (`window.symbolLibrary`, `window.symbolLibrary.other`, `ui.saveSymbolLibrary`); synthetic input budgets (#1709); bounded transport waits (#1726).
 > **Last updated:** 2026-11-19 · **Change:** #5804 native-picked raster editor merged with main; scores and estimates unchanged; previously: completed the `ui.resize` and `ui.focus` entries and removed a duplicate `ui.render` row; previously: text style commands take a feature with a value (`"features": ["salt=2"]`), the font's alternate number, and shape runs that differ only in features as one piece of text; previously: Confining file access refuses a `:` in a name after the drive on Windows, an NTFS alternate data stream such as `x.svg:evil` (#3604); previously: Object → Expand… dimmed while the selection has an appearance Expand Appearance expands (`object.expand.info`'s `appearance`, #3089); previously: brush library panels (`window.brushLibrary`, `window.brushLibrary.other`, `ui.saveBrushLibrary`); previously: Transform Each opens on the values it was last confirmed with; its Copy button confirms with `copy: true` (#1732); previously: panel docking on craft-ui's layout: `ui.docking`, the parameters of `window.panel.float` and `window.panel.dock`; previously: `ui.screenshot`'s 64 MiB inline-PNG cap and its path-plus-data downgrade; symbol library panels (`window.symbolLibrary`, `window.symbolLibrary.other`, `ui.saveSymbolLibrary`); synthetic input budgets (#1709); bounded transport waits (#1726).
 
 `vectorcraft --control <port>` listens on `127.0.0.1:<port>` (loopback only). The port must be a number
@@ -760,7 +761,11 @@ search. After Find Fonts or Close, the dialog doesn't open again for that open.
 `ui.missingFontsDialog {folder?}` opens the dialog for the active document, searching `folder` when given.
 `ui.findFontsInFolder {folder?}` (Find in Folder… in Type › Find Font…, shown when the document misses fonts) asks for a
 folder, then opens the dialog searching it. The web shows a status line instead of the dialog, and both commands are
-disabled there.
+disabled there. A font a host's font index lists (RFC-0034) activates by itself, as Illustrator's Adobe Fonts do: where
+the host fetches its faces (the web build), its row shows Activating… while its file is on its way, and Activate when
+it couldn't be loaded, which asks for it again (`text.activateFont`); elsewhere it is listed as missing. On the web a
+face that fails opens the dialog of each document set in it once: closed, it opens again only when another font
+fails. `ui.missingFontsDialog` is enabled there once the host gave font indexes.
 
 Text Import Options: placing a `.txt` file through the app (`file.place` with a file and no `text` options, the Place
 dialog, a drop) opens the `textImport` dialog (fields `platform`: `windows`/`mac`, `characterSet`: a `text.characterSet` value,
@@ -1208,10 +1213,17 @@ hidden tab (whose frames the browser pauses) answers when it is shown again.
 
 `request`, `execute`, `commands`, `docInspect`, `uiInspect` and `screenshot` come from [`craft-web-api`](https://github.com/storytold/craft-libs/tree/main/crates/web-api) (storytold/craft-libs#413), the same shape in every Craft app. A call the app does not answer within 30 seconds rejects, and the app drops it unrun if it had not started it. `openFile`, `captureDownloads`, `files`, `readFile` and `inspect` are VectorCraft's own.
 
+The browser has no installed fonts, so the page hosting the web build supplies the fonts its documents use (RFC-0034):
+it gives font indexes in craft-font-index format through the hosting contract's `fonts` message, never through
+`window.vectorcraft`, whose commands can't give one. Each message gives the host's whole set, in place of the one before
+(the last message wins, however long its fetches take), so a host adds an index by sending its set again with it. Type
+set in their families fetches the faces it uses (`docs/mcp.md`, fonts).
+
 ## Revision history
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-18 | minor | Fonts a host supplies (RFC-0034): font indexes through the hosting contract; Missing Fonts' Activating… and Activate (`text.activateFont`). |
 | 2026-11-15 | minor | Completed the `ui.resize` defaults and `ui.focus` contract; kept one `ui.render` entry, including `traceViews`. Documentation only. |
 | 2026-11-07 | minor | Documented OpenType feature values in text commands (`"salt=2"`, the font's alternate number) and that runs differing only in features shape as one piece of text. |
 | 2026-10-31 | minor | Confining file access: on Windows a `:` in a name after the drive (an NTFS alternate data stream) is refused with the device names (#3604). |

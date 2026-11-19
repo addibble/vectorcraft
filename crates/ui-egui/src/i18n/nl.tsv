@@ -2483,6 +2483,7 @@ digits	Malayalam	Malayalam
 	Latin Extended	Latin Extended
 	Latin-1 Supplement	Latin-1 Supplement
 	No fonts are available.	Er zijn geen lettertypen beschikbaar.
+	This font isn't loaded yet: set type in it to load it.	Dit lettertype is nog niet geladen: gebruik het in een tekst om het te laden.
 	Select text or click into text with the Type tool to insert glyphs	Selecteer tekst of klik in de tekst met het Type-gereedschap om glyphs in te voegen
 	Show:	Weergeven:
 	Use the Selected Text's Font	Lettertype van geselecteerde tekst gebruiken
@@ -10796,3 +10797,10 @@ breakText	Glyphs	Glyphs
 # #5804 native-picked raster editor (draft translations; native review welcome).
 	Edit Original with:	Origineel bewerken met:
 file-filter	Applications	Programma’s
+	Activate	Activeren
+	Activating…	Bezig met activeren…
+	Activate Font	Lettertype opnieuw activeren
+@msg	give the font's family	geef de familie van het lettertype
+@msg	{family} {style} is no font a font index lists that failed to load	{family} {style} is geen lettertype uit de lettertypelijst van de pagina dat niet kon worden geladen
+@msg	The fonts this page supplies couldn't be listed: {why}	De lettertypen die deze pagina levert, konden niet worden opgesomd: {why}
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	{font} kan niet worden geladen ({reason}): de tekst wordt in een ander lettertype weergegeven

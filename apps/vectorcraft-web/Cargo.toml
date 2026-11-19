@@ -22,6 +22,8 @@ vectorcraft-ui-egui = { workspace = true }
 craft-web-api = { git = "https://github.com/storytold/craft-libs", rev = "64b181977a0488e4d1e167bc5cc8cfededc2ed4b", version = "0.1.0" }
 vectorcraft-format = { workspace = true }
 vectorcraft-text = { workspace = true }
+# A host's font indexes (RFC-0034): the most bytes one may have, and its SHA-256 checked.
+craft-font-store = { workspace = true }
 egui = { workspace = true }
 log = { workspace = true }
 
@@ -37,4 +39,8 @@ wasm-bindgen-futures = "0.4"
 # the binary picks the random source, not the library.
 getrandom = { version = "0.4", features = ["wasm_js"] }
 js-sys = "0.3"
-web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlElement", "HtmlCanvasElement", "HtmlInputElement", "KeyboardEvent", "HtmlIFrameElement", "HtmlAnchorElement", "Blob", "BlobPropertyBag", "ClipboardEvent", "DataTransfer", "File", "FileList", "Url", "Location", "CssStyleDeclaration", "Event", "EventTarget", "MouseEvent", "PointerEvent", "TouchEvent", "AddEventListenerOptions", "DomRect", "DragEvent", "Storage", "Navigator", "RequestInit", "Response", "AbortController", "AbortSignal"] }
+web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlElement", "HtmlCanvasElement", "HtmlInputElement", "KeyboardEvent", "HtmlIFrameElement", "HtmlAnchorElement", "Blob", "BlobPropertyBag", "ClipboardEvent", "DataTransfer", "File", "FileList", "Url", "Location", "CssStyleDeclaration", "Event", "EventTarget", "MouseEvent", "PointerEvent", "TouchEvent", "AddEventListenerOptions", "DomRect", "DragEvent", "Storage", "Navigator", "RequestInit", "RequestCredentials", "ReferrerPolicy", "Response", "AbortController", "AbortSignal"] }
+
+[dev-dependencies]
+# The tests' font indexes (`vectorcraft_text::test_fonts`).
+vectorcraft-text = { workspace = true, features = ["test-fonts"] }

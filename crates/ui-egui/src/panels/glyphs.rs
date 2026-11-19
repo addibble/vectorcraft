@@ -166,7 +166,9 @@ fn browsed_face(app: &VectorcraftApp, ctx: &egui::Context) -> (String, String, O
     let face = selected_target(app)
         .filter(|t| t.style.font_family.eq_ignore_ascii_case(&family) && t.style.font_style.eq_ignore_ascii_case(&style))
         .and_then(|t| db.style_face(t.style))
-        .or_else(|| db.face(&family, &style));
+        // A family of a host's font index whose face hasn't arrived has none to show yet, and
+        // showing it fetches nothing (RFC-0034 section 2.3): only type set in it does.
+        .or_else(|| (!db.is_unloaded_host_style(&family, &style)).then(|| db.face_without_request(&family, &style)).flatten());
     (family, style, face)
 }
 
@@ -355,6 +357,15 @@ fn grid_glyphs(
     }
 }
 
+/// Ask again for the face of `family` the panel shows, which failed: in `listed`, the style the
+/// family lists for the panel's own (its closest), which is what failed and what
+/// `text.activateFont` takes.
+fn activate(app: &mut VectorcraftApp, family: &str, listed: &str) {
+    if let Err(e) = app.run("text.activateFont", serde_json::json!({ "family": family, "style": listed })) {
+        app.status(e);
+    }
+}
+
 /// Browse and insert glyphs from the chosen font, with font controls below the glyph grid.
 pub fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
@@ -388,7 +399,29 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
         return;
     }
     let Some(face) = face else {
-        ui.label(egui::RichText::new(tl!("No fonts are available.")).color(t.text_dim));
+        // A host's font not loaded yet, by where it is: on its way; failed, which only Activate
+        // asks for again (as Missing Fonts offers it); or not asked for, which only type set in
+        // it does (never from here).
+        // Activating… and Activate only where the host fetches faces (as Missing Fonts shows them):
+        // elsewhere nothing is on its way, and the panel needn't redraw for it.
+        let fetches = app.services.fetches_font_sources;
+        match FontDb::global().unloaded_host_style(&family, &style) {
+            Some((listed, Some(vectorcraft_text::FaceState::Failed))) if fetches => {
+                if ui.button(tl!("Activate")).clicked() {
+                    activate(app, &family, &listed);
+                }
+            }
+            Some((_, Some(_))) if fetches => {
+                ui.label(egui::RichText::new(tl!("Activating…")).color(t.text_dim));
+                ui.ctx().request_repaint_after(std::time::Duration::from_millis(250));
+            }
+            Some(_) => {
+                ui.label(egui::RichText::new(tl!("This font isn't loaded yet: set type in it to load it.")).color(t.text_dim));
+            }
+            None => {
+                ui.label(egui::RichText::new(tl!("No fonts are available.")).color(t.text_dim));
+            }
+        }
         return;
     };
     let (chars, unencoded) = grid_glyphs(&face, category.and_then(|i| face.glyph_categories().get(i)), subset, (lo, hi));
@@ -540,7 +573,7 @@ fn font_row(app: &mut VectorcraftApp, ui: &mut Ui, family: &str, style: &str, w:
         let look = crate::font_menu::MenuLook::of(app);
         let pick = crate::font_menu::font_menu(ui, "gl-family", family, family_w, sample.as_deref(), look);
         if let Some((f, style)) = crate::font_menu::picked(app, pick) {
-            let st = style.unwrap_or_else(|| db.face(&f, "Regular").map_or_else(|| "Regular".into(), |face| face.style.clone()));
+            let st = style.unwrap_or_else(|| db.face_without_request(&f, "Regular").map_or_else(|| "Regular".into(), |face| face.style.clone()));
             set_pstate(ui.ctx(), "gl-font", Some((f, st)));
         }
         let styles = db.styles(family);
@@ -1560,6 +1593,75 @@ mod tests {
         (text_anchors(&shapes), square_sides(&shapes))
     }
 
+    /// A family of a host's font index whose faces haven't arrived shows as unavailable in the
+    /// Glyphs panel, and browsing it fetches nothing (review round 1, item 2; RFC-0034 section 2.3).
+    #[test]
+    fn a_host_family_not_loaded_is_unavailable_and_fetches_nothing() {
+        let _fonts = crate::adding_fonts();
+        const FAMILY: &str = "Glyph Host 01";
+        let _index = vectorcraft_text::test_fonts::add_index_of("glyphs-panel", &[(FAMILY, 400)]).unwrap();
+        let db = FontDb::global();
+        db.take_source_requests();
+        let mut app = VectorcraftApp::new(vectorcraft_engine::Session::new(), Default::default());
+        let ctx = egui::Context::default();
+        set_pstate(&ctx, "gl-font", Some((FAMILY.to_string(), "Regular".to_string())));
+        let (texts, _) = frame(&ctx, &mut app, vec![]);
+        assert!(texts.iter().any(|(t, _)| t == "This font isn't loaded yet: set type in it to load it."), "{texts:?}");
+        assert!(db.take_source_requests().iter().all(|r| r.family != FAMILY), "the panel fetches nothing");
+    }
+
+    /// The panel says where a host's font not loaded yet is: on its way while it is fetched, and
+    /// Activate, which asks for it again, once it failed (review round 3, item 10).
+    #[test]
+    fn a_host_font_s_note_follows_its_state() {
+        let _fonts = crate::adding_fonts();
+        const FAMILY: &str = "Glyph State 01";
+        let _index = vectorcraft_text::test_fonts::add_index_of("glyphs-state", &[(FAMILY, 400)]).unwrap();
+        let db = FontDb::global();
+        let mut app = VectorcraftApp::new(vectorcraft_engine::Session::new(), Default::default());
+        app.services.fetches_font_sources = true;
+        let ctx = egui::Context::default();
+        set_pstate(&ctx, "gl-font", Some((FAMILY.to_string(), "Regular".to_string())));
+        let shown = |app: &mut VectorcraftApp| frame(&ctx, app, vec![]).0.into_iter().map(|(t, _)| t).collect::<Vec<_>>();
+        db.face(FAMILY, "Regular");
+        let src = db.take_source_requests().into_iter().find(|r| r.family == FAMILY).unwrap();
+        assert!(shown(&mut app).iter().any(|t| t == "Activating…"), "on its way");
+        db.settle(&src, Err("HTTP 404".into()));
+        let failed = shown(&mut app);
+        assert!(failed.iter().any(|t| t == "Activate") && !failed.iter().any(|t| t.starts_with("This font")), "{failed:?}");
+    }
+
+    /// Activate asks again for the face that failed, the family's style closest to the panel's own
+    /// (Regular for Medium), which text.activateFont takes by that name; and a host that doesn't
+    /// fetch faces shows no Activating… or Activate, only the not-loaded note (review round 4,
+    /// item E).
+    #[test]
+    fn activate_asks_for_the_style_that_failed_and_only_a_fetching_host_shows_it() {
+        let _fonts = crate::adding_fonts();
+        const FAMILY: &str = "Glyph Act 001";
+        let _index = vectorcraft_text::test_fonts::add_index_of("glyphs-activate", &[(FAMILY, 400)]).unwrap();
+        let db = FontDb::global();
+        let mut app = VectorcraftApp::new(vectorcraft_engine::Session::new(), Default::default());
+        app.services.fetches_font_sources = true;
+        db.face(FAMILY, "Regular");
+        let src = db.take_source_requests().into_iter().find(|r| r.family == FAMILY).unwrap();
+        db.settle(&src, Err("HTTP 404".into()));
+        let (listed, state) = db.unloaded_host_style(FAMILY, "Medium").expect("Regular, the closest, failed");
+        assert_eq!((listed.as_str(), state), ("Regular", Some(vectorcraft_text::FaceState::Failed)));
+        app.ui.status.clear();
+        activate(&mut app, FAMILY, &listed);
+        assert_eq!(app.ui.status, "", "activated");
+        assert!(db.take_source_requests().iter().any(|r| r.family == FAMILY), "asked for again");
+
+        // A host that doesn't fetch: the face is queued, but nothing is on its way.
+        app.services.fetches_font_sources = false;
+        let ctx = egui::Context::default();
+        set_pstate(&ctx, "gl-font", Some((FAMILY.to_string(), "Medium".to_string())));
+        let shown: Vec<String> = frame(&ctx, &mut app, vec![]).0.into_iter().map(|(t, _)| t).collect();
+        assert!(!shown.iter().any(|t| t == "Activating…" || t == "Activate"), "{shown:?}");
+        assert!(shown.iter().any(|t| t.starts_with("This font isn't loaded yet")), "{shown:?}");
+    }
+
     /// The Type tool editing `text` in a new document.
     fn editing(text: &str) -> (VectorcraftApp, serde_json::Value) {
         let mut app = VectorcraftApp::new(vectorcraft_engine::Session::new(), Default::default());
@@ -1805,6 +1907,8 @@ mod tests {
     /// Default Forms keeps it.
     #[test]
     fn a_glyph_choice_lets_the_current_form_be_chosen_again() {
+        // Adds to the shared font database: other tests' font lists hold still meanwhile.
+        let _fonts = crate::adding_fonts();
         use vectorcraft_text::test_fonts::{alternates_family, alternates_font, unencoded_glyphs};
         FontDb::global().add_font(alternates_font(false).expect("the test font builds"));
         let [u1, ..] = unencoded_glyphs().expect("unencoded glyphs");
@@ -1827,6 +1931,8 @@ mod tests {
     /// note, and Show stays on the alternates.
     #[test]
     fn alternates_for_current_selection_lists_and_replaces_the_selected_character() {
+        // Adds to the shared font database: other tests' font lists hold still meanwhile.
+        let _fonts = crate::adding_fonts();
         use vectorcraft_text::test_fonts::{alternates_family, alternates_font, unencoded_glyphs};
         FontDb::global().add_font(alternates_font(true).expect("the test font builds"));
         let [u1, ..] = unencoded_glyphs().expect("unencoded glyphs");
@@ -1908,6 +2014,8 @@ mod tests {
     /// not count as an edit leaves the grid as it was, and the next revision finds them again.
     #[test]
     fn alternates_are_found_once_per_revision() {
+        // Adds to the shared font database: other tests' font lists hold still meanwhile.
+        let _fonts = crate::adding_fonts();
         use vectorcraft_text::test_fonts::{alternates_family, alternates_font, unencoded_glyphs};
         FontDb::global().add_font(alternates_font(true).expect("the test font builds"));
         let [u1, ..] = unencoded_glyphs().expect("unencoded glyphs");
@@ -1936,6 +2044,8 @@ mod tests {
     /// first in the grid, so a chosen alternate can be put back.
     #[test]
     fn the_default_glyph_is_listed_when_the_font_leaves_it_out() {
+        // Adds to the shared font database: other tests' font lists hold still meanwhile.
+        let _fonts = crate::adding_fonts();
         use vectorcraft_text::test_fonts::{alternates_family, alternates_font, unencoded_glyphs};
         FontDb::global().add_font(alternates_font(false).expect("the test font builds"));
         let [u1, ..] = unencoded_glyphs().expect("unencoded glyphs");
@@ -1991,6 +2101,8 @@ mod tests {
     /// the word keeps its joining forms and the text its characters; undo takes it back.
     #[test]
     fn a_double_click_applies_a_feature_value_to_one_letter_of_a_joined_word() {
+        // Adds to the shared font database: other tests' font lists hold still meanwhile.
+        let _fonts = crate::adding_fonts();
         use vectorcraft_text::test_fonts::{JOINING_ALTERNATES_FAMILY, joining_alternates_font, source_sans_gid};
         FontDb::global().add_font(joining_alternates_font().expect("the test font builds"));
         let g = |c| u32::from(source_sans_gid(c).expect("a glyph"));
@@ -2036,6 +2148,8 @@ mod tests {
     /// A variant no feature draws is still enabled: it replaces the glyph (`text.setGlyphAlternate`).
     #[test]
     fn a_variant_no_feature_draws_replaces_the_glyph() {
+        // Adds to the shared font database: other tests' font lists hold still meanwhile.
+        let _fonts = crate::adding_fonts();
         use vectorcraft_text::test_fonts::{alternates_family, alternates_font};
         FontDb::global().add_font(alternates_font(true).expect("the test font builds"));
         let (mut app, id) = editing("xay");
@@ -2063,6 +2177,8 @@ mod tests {
     /// choice validation, even though the isolated character has different alternates.
     #[test]
     fn a_positional_variant_no_feature_draws_replaces_the_glyph() {
+        // Adds to the shared font database: other tests' font lists hold still meanwhile.
+        let _fonts = crate::adding_fonts();
         use vectorcraft_text::test_fonts::{JOINING_ALTERNATES_FAMILY, joining_alternates_font, source_sans_gid};
         FontDb::global().add_font(joining_alternates_font().expect("the test font builds"));
         let face = FontDb::global().face(JOINING_ALTERNATES_FAMILY, "Regular").expect("the test face");
@@ -2141,6 +2257,8 @@ mod tests {
     /// character at the caret drawn with it, as one undo step.
     #[test]
     fn a_cells_corner_triangle_opens_its_alternates_and_a_pick_inserts_one() {
+        // Adds to the shared font database: other tests' font lists hold still meanwhile.
+        let _fonts = crate::adding_fonts();
         use vectorcraft_text::test_fonts::{alternates_family, unencoded_glyphs};
         let [u1, u2, ..] = unencoded_glyphs().expect("unencoded glyphs");
         let (mut app, id, ctx) = basic_latin_of_the_alternates_font("xy");
@@ -2185,6 +2303,8 @@ mod tests {
     /// changes.
     #[test]
     fn a_pick_replaces_the_selected_character_and_says_why_when_it_cannot() {
+        // Adds to the shared font database: other tests' font lists hold still meanwhile.
+        let _fonts = crate::adding_fonts();
         use vectorcraft_text::test_fonts::{alternates_family, unencoded_glyphs};
         let [_, u2, ..] = unencoded_glyphs().expect("unencoded glyphs");
         let (mut app, id, ctx) = basic_latin_of_the_alternates_font("xay");
@@ -2232,6 +2352,8 @@ mod tests {
     /// takes a pick that can be drawn in place of the selection.
     #[test]
     fn a_pick_that_cannot_be_drawn_leaves_the_text_as_it_was() {
+        // Adds to the shared font database: other tests' font lists hold still meanwhile.
+        let _fonts = crate::adding_fonts();
         let [_, u2, ..] = vectorcraft_text::test_fonts::unencoded_glyphs().expect("unencoded glyphs");
         let (mut app, id, ctx) = basic_latin_of_the_alternates_font("xy");
         let text = |app: &VectorcraftApp| match &app.session.active().unwrap().doc.node(NodeId(id.as_u64().unwrap())).unwrap().kind {
@@ -2288,6 +2410,8 @@ mod tests {
     /// does: the character drawn with the glyph stays, in one undo step.
     #[test]
     fn a_pick_replaces_a_threaded_story_that_select_all_selected() {
+        // Adds to the shared font database: other tests' font lists hold still meanwhile.
+        let _fonts = crate::adding_fonts();
         use vectorcraft_text::test_fonts::{alternates_family, alternates_font, unencoded_glyphs};
         let [_, u2, ..] = unencoded_glyphs().expect("unencoded glyphs");
         FontDb::global().add_font(alternates_font(true).expect("the test font builds"));
@@ -2326,6 +2450,8 @@ mod tests {
     /// pick still replaces the whole story's text: the other frames' text goes too.
     #[test]
     fn a_pick_replaces_a_threaded_story_whose_first_frame_holds_one_character() {
+        // Adds to the shared font database: other tests' font lists hold still meanwhile.
+        let _fonts = crate::adding_fonts();
         use vectorcraft_text::test_fonts::{alternates_family, alternates_font, unencoded_glyphs};
         let [_, u2, ..] = unencoded_glyphs().expect("unencoded glyphs");
         FontDb::global().add_font(alternates_font(true).expect("the test font builds"));
@@ -2365,6 +2491,8 @@ mod tests {
     /// edits that frame with the caret after it.
     #[test]
     fn a_pick_at_the_end_of_a_full_frame_follows_the_character_to_the_next_frame() {
+        // Adds to the shared font database: other tests' font lists hold still meanwhile.
+        let _fonts = crate::adding_fonts();
         use vectorcraft_text::test_fonts::{alternates_family, alternates_font, unencoded_glyphs};
         let [_, u2, ..] = unencoded_glyphs().expect("unencoded glyphs");
         FontDb::global().add_font(alternates_font(true).expect("the test font builds"));
@@ -2407,6 +2535,8 @@ mod tests {
     /// frame with the character still selected.
     #[test]
     fn a_wider_pick_on_the_selected_character_moves_the_selection_with_it() {
+        // Adds to the shared font database: other tests' font lists hold still meanwhile.
+        let _fonts = crate::adding_fonts();
         use vectorcraft_text::test_fonts::{alternates_family, alternates_font};
         FontDb::global().add_font(alternates_font(true).expect("the test font builds"));
         let face = FontDb::global().face(alternates_family(true), "Regular").expect("the test face");
@@ -2457,6 +2587,8 @@ mod tests {
     /// character as a double-click on that glyph's cell would put it.
     #[test]
     fn an_unencoded_glyphs_corner_triangle_applies_its_alternates_to_the_selection() {
+        // Adds to the shared font database: other tests' font lists hold still meanwhile.
+        let _fonts = crate::adding_fonts();
         use vectorcraft_text::test_fonts::{JOINING_ALTERNATES_FAMILY, joining_alternates_font, source_sans_gid};
         FontDb::global().add_font(joining_alternates_font().expect("the test font builds"));
         let g = |c| u32::from(source_sans_gid(c).expect("a glyph"));
@@ -2539,6 +2671,8 @@ mod tests {
     /// last cell of a row ends before it.
     #[test]
     fn the_grids_cells_end_before_its_scroll_bar() {
+        // Adds to the shared font database: other tests' font lists hold still meanwhile.
+        let _fonts = crate::adding_fonts();
         use vectorcraft_text::test_fonts::{JOINING_ALTERNATES_FAMILY, joining_alternates_font};
         FontDb::global().add_font(joining_alternates_font().expect("the test font builds"));
         let (mut app, id) = editing("\u{628}");
@@ -2561,6 +2695,8 @@ mod tests {
     /// cells fill the whole width.
     #[test]
     fn the_alternates_grid_leaves_room_for_its_scroll_bar_only_while_it_scrolls() {
+        // Adds to the shared font database: other tests' font lists hold still meanwhile.
+        let _fonts = crate::adding_fonts();
         use vectorcraft_text::test_fonts::{alternates_family, alternates_font};
         FontDb::global().add_font(alternates_font(true).expect("the test font builds"));
         let (mut app, id) = editing("xay");
@@ -2642,6 +2778,8 @@ mod tests {
     /// Show › Entire Font also lists the glyphs no character maps.
     #[test]
     fn entire_font_lists_the_unencoded_glyphs() {
+        // Adds to the shared font database: other tests' font lists hold still meanwhile.
+        let _fonts = crate::adding_fonts();
         use vectorcraft_text::test_fonts::{JOINING_ALTERNATES_FAMILY, joining_alternates_font};
         FontDb::global().add_font(joining_alternates_font().expect("the test font builds"));
         let (mut app, id) = editing("\u{628}");
@@ -2661,6 +2799,8 @@ mod tests {
     /// features give and names it in Show. A font without that category shows Entire Font.
     #[test]
     fn the_show_menu_lists_the_fonts_opentype_categories() {
+        // Adds to the shared font database: other tests' font lists hold still meanwhile.
+        let _fonts = crate::adding_fonts();
         use vectorcraft_text::test_fonts::{CATEGORIES_FAMILY, HALF_FORM_FAMILY, categories_font, half_form_font};
         FontDb::global().add_font(categories_font().expect("the test font builds"));
         FontDb::global().add_font(half_form_font(false).expect("the test font builds"));
@@ -2833,6 +2973,8 @@ mod tests {
     /// Persian yeh, Arabic yeh and alef maksura each have their own `.fina.alt1` to `.fina.alt6`.
     #[test]
     fn a_final_letters_alternates_apply_from_alternates_and_from_entire_font() {
+        // Adds to the shared font database: other tests' font lists hold still meanwhile.
+        let _fonts = crate::adding_fonts();
         let Some(face) = kufi_heavy() else { return };
         for (letter, base) in [('\u{06CC}', "yehfarsi"), ('\u{064A}', "yeh"), ('\u{0649}', "alefmaksura")] {
             let (mut app, id, last) = khwarizmi_in_heavy(letter);
@@ -2873,6 +3015,8 @@ mod tests {
     /// tooltip's reason names the glyph's letter, where in a word it stands and the selected letter.
     #[test]
     fn a_glyph_that_cannot_go_on_the_selection_is_dimmed_and_says_why() {
+        // Adds to the shared font database: other tests' font lists hold still meanwhile.
+        let _fonts = crate::adding_fonts();
         let Some(face) = kufi_heavy() else { return };
         let glyph = gid_named(&face, "yehfarsi.fina.alt2");
         assert_eq!(glyph, 820, "the owner's glyph");
@@ -2920,6 +3064,8 @@ mod tests {
     /// character selected.
     #[test]
     fn entire_font_applies_a_glyph_no_feature_reaches_to_its_letter() {
+        // Adds to the shared font database: other tests' font lists hold still meanwhile.
+        let _fonts = crate::adding_fonts();
         use vectorcraft_text::test_fonts::{alternates_family, alternates_font};
         FontDb::global().add_font(alternates_font(true).expect("the test font builds"));
         let face = FontDb::global().face(alternates_family(true), "Regular").expect("the test face");
@@ -2963,6 +3109,8 @@ mod tests {
     /// the word is shaped as if it were typed, and the status says so.
     #[test]
     fn a_presentation_form_inserts_its_letter_so_the_word_joins() {
+        // Adds to the shared font database: other tests' font lists hold still meanwhile.
+        let _fonts = crate::adding_fonts();
         let Some(face) = kufi_heavy() else { return };
         let (mut app, id, last) = khwarizmi_in_heavy('\u{06CC}');
         let typed = {

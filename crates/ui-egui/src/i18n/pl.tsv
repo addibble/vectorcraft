@@ -1876,6 +1876,7 @@ digits	Malayalam	Malajalam
 	Latin Extended	Łaciński rozszerzony
 	Latin-1 Supplement	Uzupełnienie Latin-1
 	No fonts are available.	Brak dostępnych czcionek.
+	This font isn't loaded yet: set type in it to load it.	Ta czcionka nie jest jeszcze wczytana: użyj jej w tekście, aby ją wczytać.
 	Select text or click into text with the Type tool to insert glyphs	Zaznacz tekst lub kliknij w tekst narzędziem Tekst, aby wstawić glify
 	Show:	Pokaż:
 	Use the Selected Text's Font	Użyj czcionki zaznaczonego tekstu
@@ -10620,3 +10621,10 @@ breakText	Glyphs	Glify
 # #5804 native-picked raster editor (draft translations; native review welcome).
 	Edit Original with:	Edytuj oryginał w:
 file-filter	Applications	Aplikacje
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	nie udało się wczytać czcionki {font} ({reason}) — jej tekst jest wyświetlany inną czcionką
+	Activate	Aktywuj
+	Activating…	Aktywowanie…
+	Activate Font	Aktywuj czcionkę ponownie
+@msg	give the font's family	podaj rodzinę czcionki
+@msg	{family} {style} is no font a font index lists that failed to load	{family} {style} nie jest czcionką z listy czcionek strony, której nie udało się wczytać
+@msg	The fonts this page supplies couldn't be listed: {why}	Nie udało się wyświetlić listy czcionek dostarczanych przez tę stronę: {why}

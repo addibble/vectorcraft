@@ -2891,6 +2891,8 @@ fn rtl_edit_commands_and_undo_preserve_logical_source_and_style_ranges() {
 
 #[test]
 fn touch_type_rtl_move_keeps_neighbors_and_undo_restores_the_original() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
     use vectorcraft_text::test_fonts::{RIGHT_TO_LEFT_OPTICAL_FAMILY, right_to_left_optical_font};
 
     // Repeated registration of this synthetic face is harmless in the shared database.
@@ -2920,6 +2922,8 @@ fn touch_type_rtl_move_keeps_neighbors_and_undo_restores_the_original() {
 
 #[test]
 fn touch_type_rtl_move_keeps_rotated_font_placement() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
     use vectorcraft_text::test_fonts::{PAIR_KERNING_FAMILY, pair_kerning_font};
     vectorcraft_text::FontDb::global().add_font(pair_kerning_font().unwrap());
     let mut s = session();
@@ -2949,6 +2953,8 @@ fn touch_type_rtl_move_keeps_rotated_font_placement() {
 
 #[test]
 fn touch_type_rtl_moves_rotated_characters_in_aligned_and_transformed_text() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
     use vectorcraft_geom::{Affine, Vec2};
     use vectorcraft_text::test_fonts::{RIGHT_TO_LEFT_OPTICAL_FAMILY, right_to_left_optical_font};
 

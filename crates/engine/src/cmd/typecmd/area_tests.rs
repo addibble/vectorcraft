@@ -2407,6 +2407,8 @@ fn digits_are_a_character_attribute_saved_only_when_set() {
 /// 120% of that em size.
 #[test]
 fn font_height_reference_is_a_character_attribute_saved_only_when_not_the_em_box() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
     use vectorcraft_doc::FontHeightReference as R;
     use vectorcraft_text::test_fonts::{HEIGHT_CAP, HEIGHT_FAMILY, height_font};
     vectorcraft_text::FontDb::global().add_font(height_font(true).unwrap());
@@ -2471,6 +2473,8 @@ fn a_leading_step_from_auto_starts_at_each_paragraphs_auto_leading() {
 /// the graphic in it from 24 pt.
 #[test]
 fn a_leading_step_from_auto_starts_at_an_inline_graphics_own_size() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
     use vectorcraft_text::test_fonts::{HEIGHT_CAP, HEIGHT_FAMILY, height_font};
     vectorcraft_text::FontDb::global().add_font(height_font(true).unwrap());
     let mut s = Session::new();

@@ -3199,6 +3199,13 @@ liquify-list-end	{0}, {1}	{0} og {1}
 	Entire Document	Hele dokumentet
 	Report Results	Rapportér resultater
 	Create Outlines	Opret konturer
+	Activate Font	Aktivér skrifttype
+	Activate	Aktivér
+	Activating…	Aktiverer…
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	{font} kunne ikke indlæses ({reason}): teksten vises med en anden skrifttype
+@msg	give the font's family	angiv skrifttypens familie
+@msg	{family} {style} is no font a font index lists that failed to load	{family} {style} er ikke en skrifttype fra sidens skrifttypeliste, der ikke kunne indlæses
+@msg	The fonts this page supplies couldn't be listed: {why}	Skrifttyperne, som denne side leverer, kunne ikke vises: {why}
 	Optical Margin Alignment	Optisk marginjustering
 	Dynamic Text	Dynamisk tekst
 	Dynamic Text Presets	Forudindstillinger for dynamisk tekst
@@ -4612,6 +4619,7 @@ digits	Malayalam	Malayalam
 	Latin Extended	Udvidet latinsk
 	Latin-1 Supplement	Latin-1-supplement
 	No fonts are available.	Ingen skrifttyper er tilgængelige.
+	This font isn't loaded yet: set type in it to load it.	Denne skrifttype er ikke indlæst endnu: brug den i en tekst for at indlæse den.
 	Select text or click into text with the Type tool to insert glyphs	Markér tekst, eller klik i teksten med tekstværktøjet, for at indsætte glyffer
 	Show:	Vis:
 	Use the Selected Text's Font	Brug den markerede teksts skrifttype

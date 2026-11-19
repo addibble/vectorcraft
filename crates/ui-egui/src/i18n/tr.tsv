@@ -2299,6 +2299,7 @@ font-technology	Variable	Değişken
 	No document open.	Hiçbir belge açık değil.
 	No filter plug-ins installed	Filtre eklentisi yüklü değil
 	No fonts are available.	Hiçbir yazı tipi mevcut değil.
+	This font isn't loaded yet: set type in it to load it.	Bu yazı tipi henüz yüklenmedi: yüklemek için bir metinde kullanın.
 	No gradient swatches	Degrade renk örneği yok
 	No graphic styles	Grafik stili yok
 	No images	Resim yok
@@ -10715,3 +10716,10 @@ breakText	Glyphs	Glifler
 # #5804 native-picked raster editor (draft translations; native review welcome).
 	Edit Original with:	Orijinali şununla düzenle:
 file-filter	Applications	Uygulamalar
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	{font} yüklenemedi ({reason}): metni başka bir yazı tipinde gösteriliyor
+	Activate	Etkinleştir
+	Activating…	Etkinleştiriliyor…
+	Activate Font	Yazı tipini yeniden etkinleştir
+@msg	give the font's family	yazı tipinin ailesini verin
+@msg	{family} {style} is no font a font index lists that failed to load	{family} {style}, sayfanın yazı tipi listesinde yüklenemeyen bir yazı tipi değil
+@msg	The fonts this page supplies couldn't be listed: {why}	Bu sayfanın sağladığı yazı tipleri listelenemedi: {why}

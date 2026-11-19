@@ -131,6 +131,9 @@ pub struct MenuLook<'a> {
     pub document: Option<MenuDocument<'a>>,
     /// The time the Recently Added filter counts back from. `None`: the system clock.
     pub clock: Option<std::time::SystemTime>,
+    /// The type the wheel and a family's preview set ([`SelectedType`]): a family is stepped onto
+    /// or previewed only when every style its runs would be fitted to is loaded.
+    pub selected: SelectedType<'a>,
 }
 
 /// The current document as the Document filter reads it.
@@ -166,6 +169,129 @@ impl PartialEq for DocumentKey {
     }
 }
 
+/// The type a font change sets: every run of the selected stories, which `text.setStyle` with a
+/// family fits each to its own style. The wheel and a family's preview take a family of a host's
+/// font index only when the face of each run's fitted style is loaded
+/// ([`vectorcraft_text::FontDb::is_unloaded_host_style`]), so browsing fetches nothing (RFC-0034
+/// section 2.3).
+#[derive(Clone, Copy, Default)]
+pub enum SelectedType<'a> {
+    /// No type: new type's Regular.
+    #[default]
+    None,
+    /// The app's selection, read when asked.
+    App(&'a VectorcraftApp),
+    /// These run styles (tests).
+    Styles(&'a [&'a str]),
+}
+
+impl std::fmt::Debug for SelectedType<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_list().entries(self.styles()).finish()
+    }
+}
+
+impl SelectedType<'_> {
+    /// The distinct styles of the runs a font change sets ([`font_command`]): with the Type tool, the
+    /// runs of its range (its insertion style at a caret, every frame's after Select All in a
+    /// threaded story); else every run of the selected stories. Regular when there are none.
+    pub(crate) fn styles(&self) -> Vec<String> {
+        #[cfg(test)]
+        STYLE_READS.with(|n| n.set(n.get() + 1));
+        let mut out: Vec<String> = match self {
+            SelectedType::None => vec![],
+            SelectedType::App(app) => app_run_styles(app),
+            SelectedType::Styles(styles) => styles.iter().map(|s| s.to_string()).collect(),
+        };
+        out.sort();
+        out.dedup();
+        if out.is_empty() {
+            out.push("Regular".into());
+        }
+        out
+    }
+
+    /// Whether setting `family` on this type would fetch nothing: every style its runs would be
+    /// fitted to is loaded, or no host face.
+    pub(crate) fn can_take(&self, family: &str) -> bool {
+        self.taker()(family)
+    }
+
+    /// [`SelectedType::can_take`] for many families: the runs' styles read once.
+    pub(crate) fn taker(&self) -> impl Fn(&str) -> bool + use<> {
+        let styles = self.styles();
+        move |family: &str| {
+            #[cfg(test)]
+            TAKE_CHECKS.with(|n| n.set(n.get() + 1));
+            let db = vectorcraft_text::FontDb::global();
+            styles.iter().all(|s| !db.is_unloaded_host_style(family, s))
+        }
+    }
+}
+
+/// What a font change sets ([`font_command`]), in its order: every frame of a story after Select
+/// All, the Type tool's range, the whole object it edits at a caret (text.setRangeStyle with no
+/// range), else every frame of each selected story.
+pub(crate) enum FontTarget {
+    Story(Vec<vectorcraft_doc::NodeId>),
+    Range(vectorcraft_doc::NodeId, usize, usize),
+    Object(vectorcraft_doc::NodeId),
+    Selection,
+}
+
+/// What a font change in `app` sets: the one answer [`font_command`] and the wheel's check
+/// ([`SelectedType::styles`]) both use.
+pub(crate) fn font_target(app: &VectorcraftApp) -> FontTarget {
+    use crate::panels::character as ch;
+    if let Some(story) = ch::text_story(app) {
+        return FontTarget::Story(story);
+    }
+    match ch::text_editing(app) {
+        Some((id, a, b)) if b > a => FontTarget::Range(id, a, b),
+        Some((id, ..)) => FontTarget::Object(id),
+        None => FontTarget::Selection,
+    }
+}
+
+/// The styles of the runs a font change in `app` sets ([`font_target`]).
+fn app_run_styles(app: &VectorcraftApp) -> Vec<String> {
+    let Some(st) = app.session.active() else { return vec![] };
+    let runs_of = |id: vectorcraft_doc::NodeId| match st.doc.node(id).map(|n| &n.kind) {
+        Some(vectorcraft_doc::NodeKind::Text(t)) => t.runs.iter().map(|r| r.style.font_style.clone()).collect(),
+        _ => vec![],
+    };
+    match font_target(app) {
+        FontTarget::Story(story) => story.into_iter().flat_map(runs_of).collect(),
+        // A range: the runs it covers, as text.setRangeStyle sets them.
+        FontTarget::Range(id, a, b) => {
+            let Some(vectorcraft_doc::NodeKind::Text(t)) = st.doc.node(id).map(|n| &n.kind) else { return vec![] };
+            let mut at = 0;
+            let mut out = vec![];
+            for run in &t.runs {
+                let end = at + run.text.len();
+                if at < b && end > a {
+                    out.push(run.style.font_style.clone());
+                }
+                at = end;
+            }
+            out
+        }
+        // A caret: the whole object, which text.setRangeStyle with no range restyles.
+        FontTarget::Object(id) => runs_of(id),
+        FontTarget::Selection => {
+            crate::panels::character::selected_story_texts(app).iter().flat_map(|t| t.runs.iter().map(|r| r.style.font_style.clone())).collect()
+        }
+    }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// How many times this thread read the selected runs' styles, and checked a family against
+    /// them ([`SelectedType::taker`]).
+    pub(crate) static STYLE_READS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    pub(crate) static TAKE_CHECKS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 impl Default for MenuLook<'static> {
     /// Samples on in the theme's colors, English names, medium rows, no favorites, no wheel, no
     /// document, the system clock.
@@ -182,6 +308,7 @@ impl Default for MenuLook<'static> {
             name: None,
             document: None,
             clock: None,
+            selected: SelectedType::None,
         }
     }
 }
@@ -204,6 +331,7 @@ impl<'a> MenuLook<'a> {
                 .active()
                 .map(|state| MenuDocument { uid: state.uid, doc: state.interaction.as_ref().map_or(&state.doc, |interaction| &interaction.doc) }),
             clock: None,
+            selected: SelectedType::App(app),
         }
     }
 }
@@ -477,6 +605,8 @@ struct MenuState {
     /// step that leaves a family unused keeps it in the order, so turning the wheel back returns
     /// to it. They are listed again at the first notch after the pointer leaves the field or the
     /// selection changes.
+    /// Which of them the wheel may take is checked again at each notch
+    /// ([`SelectedType::can_take`]).
     wheel_order: Option<Arc<[String]>>,
     wheel_target: Option<WheelTarget>,
 }
@@ -674,20 +804,22 @@ pub fn font_menu(
         if !turns.is_empty() {
             let mut own = vectorcraft_text::FontDb::global().canonical(current, "").0;
             let mut steps = Vec::new();
+            // The runs' styles read once for all the turns' steps.
+            let can = look.selected.taker();
             for turn in turns {
                 match turn {
                     WheelInput::Leave => st.wheel_order = None,
+                    // The order is kept while the pointer stays (#5253); which families it may take
+                    // is checked again at each notch, so one whose faces arrived since is stepped onto.
                     WheelInput::Notches(notches) => {
                         if st.wheel_order.is_none() {
                             st.wheel_order = Some(wheel_order(&mut st, look).into());
                         }
-                        if let Some(order) = st.wheel_order.as_deref() {
-                            let next = wheel_steps(order, &own, notches);
-                            if let Some(last) = next.last() {
-                                own.clone_from(last);
-                            }
-                            steps.extend(next);
+                        let next = wheel_steps(st.wheel_order.as_deref().unwrap_or_default(), &own, notches, &can);
+                        if let Some(last) = next.last() {
+                            own.clone_from(last);
                         }
+                        steps.extend(next);
                     }
                 }
             }
@@ -753,7 +885,8 @@ fn listed(
 
 /// The families the closed field's wheel steps through, in the open menu's order with no search:
 /// the recent families first, then the others, under the menu's filters; with Recently Added, the
-/// newest first. Listed once per wheel gesture ([`MenuState`]'s `wheel_order`).
+/// newest first. Listed once per wheel gesture ([`MenuState`]'s `wheel_order`); [`wheel_steps`]
+/// takes those it may set.
 fn wheel_order(st: &mut MenuState, look: MenuLook) -> Vec<String> {
     wheel_order_in(vectorcraft_text::FontDb::global(), st, look)
 }
@@ -777,14 +910,17 @@ fn wheel_order_in(db: &vectorcraft_text::FontDb, st: &mut MenuState, look: MenuL
 }
 
 /// The families `notches` turns of the wheel step to from family `current` in `order`, one per
-/// notch: forward (down the menu) when positive, back when negative. The steps stop at either end
-/// of the order, and there are none when `current` is not in it.
-fn wheel_steps(order: &[String], current: &str, notches: i32) -> Vec<String> {
+/// notch: forward (down the menu) when positive, back when negative, each a family `can` take
+/// ([`SelectedType::taker`]): a family of a host's font index only when the face of every style
+/// the runs would be fitted to has loaded, as turning the wheel is browsing, which fetches nothing
+/// (RFC-0034 section 2.3). Families are tried from `current` on, only as many as the steps need.
+/// The steps stop at either end of the order, and there are none when `current` is not in it.
+fn wheel_steps(order: &[String], current: &str, notches: i32, can: &dyn Fn(&str) -> bool) -> Vec<String> {
     let Some(at) = order.iter().position(|f| f.eq_ignore_ascii_case(current)) else { return vec![] };
-    let last = order.len().saturating_sub(1);
     let n = notches.unsigned_abs() as usize;
-    let to = if notches >= 0 { at.saturating_add(n).min(last) } else { at.saturating_sub(n) };
-    if to >= at { order.iter().skip(at + 1).take(to - at).cloned().collect() } else { order.iter().take(at).skip(to).rev().cloned().collect() }
+    let ahead: Box<dyn Iterator<Item = &String>> =
+        if notches >= 0 { Box::new(order.iter().skip(at + 1)) } else { Box::new(order.iter().take(at).rev()) };
+    ahead.filter(|f| can(f)).take(n).cloned().collect()
 }
 
 #[derive(Clone)]
@@ -1848,6 +1984,9 @@ fn rows(ui: &mut Ui, range: std::ops::Range<usize>, h: Listed<'_>, sample: Optio
     let lit = st.highlight.and_then(|i| rows.get(i)).and_then(Row::pick);
     match lit {
         Some((f, None)) if f == current => st.previewed.take().map(|_| FontPick::EndPreview),
+        // A family of a host's font index not loaded yet isn't previewed: that would fetch every
+        // family the highlight passes over (RFC-0034 section 2.3). Choosing it fetches it.
+        Some((f, s)) if previews_pending(&f, s.as_deref(), look.selected) => st.previewed.take().map(|_| FontPick::EndPreview),
         Some(pick) if st.previewed.as_ref() != Some(&pick) => {
             st.previewed = Some(pick.clone());
             Some(FontPick::Preview(pick.0, pick.1))
@@ -1946,9 +2085,14 @@ const MAX_SAMPLES: usize = 256;
 
 #[derive(Default)]
 struct Samples {
-    ready: HashMap<Key, Option<egui::TextureHandle>>,
+    /// Each sample with the generation of the font files given as bytes it was drawn in
+    /// ([`vectorcraft_text::FontDb::supplied_generation`]): one drawn before such a file was added
+    /// (a font source's) may be in the fallback face, so it is drawn again, and shown meanwhile.
+    /// A family the menu loads from the installed fonts changes nothing it drew.
+    ready: HashMap<Key, (u64, Option<egui::TextureHandle>)>,
+    /// The samples being drawn, with the generation each was started in.
     #[cfg(not(target_arch = "wasm32"))]
-    pending: HashMap<Key, std::sync::mpsc::Receiver<Option<egui::ColorImage>>>,
+    pending: HashMap<Key, (u64, std::sync::mpsc::Receiver<Option<egui::ColorImage>>)>,
     /// The pass the budget is for, and the samples started in it.
     pass: u64,
     started: usize,
@@ -1980,50 +2124,59 @@ thread_local! {
 /// on native (the worker asks for a frame when it is done), a few per frame; `None` until it is
 /// ready.
 fn sample_texture(ctx: &egui::Context, family: &str, style: Option<&str>, sample: Option<&str>, height: f32) -> Option<egui::TextureHandle> {
+    // Not cached while the font is on its way: its sample draws once it arrives.
+    if is_pending(family, style) {
+        return None;
+    }
     let px = (height * ctx.pixels_per_point()).round().clamp(8.0, 96.0) as u32;
     let key: Key = (family.to_string(), style.unwrap_or("Regular").to_string(), sample.unwrap_or_default().to_string(), px);
     let texture = |img: egui::ColorImage| ctx.load_texture(format!("font-sample-{family}-{px}"), img, egui::TextureOptions::LINEAR);
+    let generation = vectorcraft_text::FontDb::global().supplied_generation();
     SAMPLES.with(|s| {
         let mut s = s.borrow_mut();
-        if let Some(t) = s.ready.get(&key) {
-            return t.clone();
-        }
+        // Drawn before the fonts last changed: shown until it is drawn again.
+        let stale = match s.ready.get(&key) {
+            Some((g, t)) if *g == generation => return t.clone(),
+            Some((_, t)) => t.clone(),
+            None => None,
+        };
         // Up to ~370 KB of texture each (96 px high, 10:1): keep a few screens' worth.
         if s.ready.len() > MAX_SAMPLES {
             s.ready.clear();
         }
         #[cfg(not(target_arch = "wasm32"))]
         {
-            if let Some(rx) = s.pending.get(&key) {
+            if let Some((started, rx)) = s.pending.get(&key) {
+                let started = *started;
                 let img = match rx.try_recv() {
                     Ok(img) => img,
-                    Err(std::sync::mpsc::TryRecvError::Empty) => return None,
+                    Err(std::sync::mpsc::TryRecvError::Empty) => return stale,
                     Err(std::sync::mpsc::TryRecvError::Disconnected) => None,
                 };
                 s.pending.remove(&key);
                 let tex = img.map(texture);
-                s.ready.insert(key, tex.clone());
+                s.ready.insert(key, (started, tex.clone()));
                 return tex;
             }
             if s.pending.len() >= MAX_PENDING {
                 // Finished samples join the ready ones, so samples nobody asks for again (their
                 // text or size changed) do not keep new ones from starting.
                 let mut done = vec![];
-                for (k, rx) in &s.pending {
+                for (k, (started, rx)) in &s.pending {
                     match rx.try_recv() {
                         Err(std::sync::mpsc::TryRecvError::Empty) => {}
-                        Ok(img) => done.push((k.clone(), img)),
-                        Err(std::sync::mpsc::TryRecvError::Disconnected) => done.push((k.clone(), None)),
+                        Ok(img) => done.push((k.clone(), *started, img)),
+                        Err(std::sync::mpsc::TryRecvError::Disconnected) => done.push((k.clone(), *started, None)),
                     }
                 }
-                for (k, img) in done {
+                for (k, started, img) in done {
                     s.pending.remove(&k);
                     let tex = img.map(|img| ctx.load_texture(format!("font-sample-{}-{}", k.0, k.3), img, egui::TextureOptions::LINEAR));
-                    s.ready.insert(k, tex);
+                    s.ready.insert(k, (started, tex));
                 }
             }
             if s.pending.len() >= MAX_PENDING || !s.take_budget(ctx) {
-                return None;
+                return stale;
             }
             let (tx, rx) = std::sync::mpsc::channel();
             let (f, style, text) = (key.0.clone(), key.1.clone(), key.2.clone());
@@ -2034,23 +2187,41 @@ fn sample_texture(ctx: &egui::Context, family: &str, style: Option<&str>, sample
                 repaint.request_repaint();
             });
             if spawned.is_ok() {
-                s.pending.insert(key, rx);
+                s.pending.insert(key, (generation, rx));
             } else {
-                s.ready.insert(key, None);
+                s.ready.insert(key, (generation, None));
             }
-            None
+            stale
         }
         // The web has no threads: a few samples per frame, on this one.
         #[cfg(target_arch = "wasm32")]
         {
             if !s.take_budget(ctx) {
-                return None;
+                return stale;
             }
             let tex = render_sample(&key.0, &key.1, &key.2, px).map(texture);
-            s.ready.insert(key, tex.clone());
+            s.ready.insert(key, (generation, tex.clone()));
             tex
         }
     })
+}
+
+/// Whether the menu draws no sample for `family` in `style` (a family's row: the style nearest
+/// Regular): it is a face of a host's font index not loaded yet
+/// ([`vectorcraft_text::FontDb::is_unloaded_host_style`]), so a Black-only family has no sample
+/// until its Black arrives.
+fn is_pending(family: &str, style: Option<&str>) -> bool {
+    vectorcraft_text::FontDb::global().is_unloaded_host_style(family, style.unwrap_or("Regular"))
+}
+
+/// Whether previewing the row of `family` (in `style`, or a family's row, which fits each of the
+/// selected runs to its own style) would set type in a face of a host's font index not loaded yet,
+/// which would fetch it.
+fn previews_pending(family: &str, style: Option<&str>, selected: SelectedType<'_>) -> bool {
+    match style {
+        Some(style) => vectorcraft_text::FontDb::global().is_pending_source(family, style),
+        None => !selected.can_take(family),
+    }
 }
 
 /// Longest sample, in pixels per pixel of height (wider samples are cut).
@@ -2060,6 +2231,11 @@ const MAX_ASPECT: f32 = 10.0;
 /// `px` pixels high: a coverage mask as white with alpha.
 fn render_sample(family: &str, style: &str, text: &str, px: u32) -> Option<egui::ColorImage> {
     let db = vectorcraft_text::FontDb::global();
+    // A font source not loaded yet has no sample: drawing one would fetch every family the menu
+    // shows. Choosing it sets type in it, which fetches it.
+    if db.is_unloaded_host_style(family, style) {
+        return None;
+    }
     let face: Arc<vectorcraft_text::FontFace> = db.face(family, style)?;
     let covers = |s: &str| !s.trim().is_empty() && s.chars().filter(|c| !c.is_whitespace()).all(|c| face.covers(c));
     let text = if covers(text) { text } else { FALLBACK_SAMPLE };
@@ -2084,6 +2260,15 @@ fn render_sample(family: &str, style: &str, text: &str, px: u32) -> Option<egui:
     Some(egui::ColorImage::new([w, h], mask.iter().map(|&a| Color32::from_rgba_premultiplied(a, a, a, a)).collect()))
 }
 
+/// A row's sample as the menu shows it, waited for when it is drawn on another thread.
+#[cfg(test)]
+pub(crate) fn sample_texture_for_test(ctx: &egui::Context, family: &str, style: Option<&str>) -> Option<egui::TextureHandle> {
+    sample_texture(ctx, family, style, Some("Sample"), 20.0).or_else(|| {
+        wait_for_samples(ctx);
+        sample_texture(ctx, family, style, Some("Sample"), 20.0)
+    })
+}
+
 #[cfg(test)]
 pub(crate) fn render_sample_for_test(family: &str, text: &str, px: u32) -> Option<egui::ColorImage> {
     render_sample(family, "Regular", text, px)
@@ -2097,10 +2282,10 @@ pub(crate) fn wait_for_samples(ctx: &egui::Context) -> bool {
         let mut s = s.borrow_mut();
         let pending: Vec<_> = s.pending.drain().collect();
         let waited = !pending.is_empty();
-        for (key, rx) in pending {
+        for (key, (started, rx)) in pending {
             let tex =
                 rx.recv().ok().flatten().map(|img| ctx.load_texture(format!("font-sample-{}-{}", key.0, key.3), img, egui::TextureOptions::LINEAR));
-            s.ready.insert(key, tex);
+            s.ready.insert(key, (started, tex));
         }
         waited
     })
@@ -2198,8 +2383,14 @@ pub(crate) fn apply(app: &mut VectorcraftApp, ctx: &egui::Context, pick: FontPic
             }
             crate::panels::character::end_typing(app);
             // Each family is its own step, keeping the style when the family has it, else the
-            // closest it has.
+            // closest it has. Turning the wheel is browsing, which fetches nothing (RFC-0034 section
+            // 2.3): a family of a host's font index whose faces haven't arrived is passed over, the
+            // one it would stop on too. Choosing it from the menu sets type in it, which fetches it.
             for f in families {
+                // As the wheel's order took it, by the type as it is now.
+                if !SelectedType::App(app).can_take(&f) {
+                    continue;
+                }
                 let (cmd, params) = font_command(app, &f, None);
                 if app.run(cmd, params).is_err() {
                     break;
@@ -2250,22 +2441,26 @@ fn font_command(app: &VectorcraftApp, family: &str, style: Option<&str>) -> (&'s
     if let Some(s) = style {
         p["style"] = json!(s);
     }
-    // After Select All in threaded text: every frame of the story.
-    if let Some(first) = crate::panels::character::text_story(app).and_then(|story| story.first().copied()) {
-        p["id"] = json!(first.0);
-        p["story"] = json!(true);
-        return ("text.setRangeStyle", p);
-    }
-    match crate::panels::character::text_editing(app) {
-        Some((id, a, b)) => {
-            p["id"] = json!(id.0);
-            if b > a {
-                p["start"] = json!(a);
-                p["end"] = json!(b);
+    match font_target(app) {
+        // After Select All in threaded text: every frame of the story.
+        FontTarget::Story(story) => {
+            if let Some(first) = story.first() {
+                p["id"] = json!(first.0);
             }
+            p["story"] = json!(true);
             ("text.setRangeStyle", p)
         }
-        None => {
+        FontTarget::Range(id, a, b) => {
+            p["id"] = json!(id.0);
+            p["start"] = json!(a);
+            p["end"] = json!(b);
+            ("text.setRangeStyle", p)
+        }
+        FontTarget::Object(id) => {
+            p["id"] = json!(id.0);
+            ("text.setRangeStyle", p)
+        }
+        FontTarget::Selection => {
             // With the Selection tool: every frame of each selected story.
             crate::panels::character::target_selected_stories(app, &mut p);
             ("text.setStyle", p)

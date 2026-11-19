@@ -2555,6 +2555,7 @@ file-filter	Templates	Шаблоны
 	No document open.	Документ не открыт.
 	No filter plug-ins installed	Фильтрующие модули не установлены
 	No fonts are available.	Шрифты недоступны.
+	This font isn't loaded yet: set type in it to load it.	Этот шрифт ещё не загружен: используйте его в тексте, чтобы загрузить.
 	No gradient swatches	Нет градиентных образцов
 	No graphic styles	Нет графических стилей
 	No images	Нет изображений
@@ -10845,3 +10846,10 @@ shape	Open	Открытый
 # #5804 native-picked raster editor (draft translations; native review welcome).
 	Edit Original with:	Редактировать оригинал в:
 file-filter	Applications	Приложения
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	не удалось загрузить шрифт {font} ({reason}); его текст отображается другим шрифтом
+	Activate	Активировать
+	Activating…	Активация…
+	Activate Font	Активировать шрифт повторно
+@msg	give the font's family	укажите семейство шрифта
+@msg	{family} {style} is no font a font index lists that failed to load	{family} {style} не входит в список шрифтов страницы как шрифт, который не удалось загрузить
+@msg	The fonts this page supplies couldn't be listed: {why}	Не удалось получить список шрифтов, которые предоставляет эта страница: {why}

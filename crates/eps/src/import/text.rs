@@ -526,7 +526,8 @@ impl Interp<'_> {
     fn predefined_split<'a>(&mut self, name: &'a str) -> Option<(&'a str, &'a str)> {
         let (cid_font, cmap) = super::predefined_cmap::composite_font(name)?;
         let db = vectorcraft_text::FontDb::global();
-        if db.find_postscript(name).is_some() {
+        // Checks: a face of a host's font index isn't asked for here, only by type set in it.
+        if db.find_postscript_without_request(name).is_some() {
             return None;
         }
         if matches!(cmap, "H" | "V") {
@@ -535,7 +536,7 @@ impl Interp<'_> {
             let cid_font_in = |d: &DictRef| matches!(d.borrow().get(&key), Some(Obj::Dict(f)) if f.borrow().contains_key(&Key::name("CIDFontType")));
             let defined = self.instances(&Obj::name("CIDFont")).is_ok_and(|d| d.borrow().contains_key(&key)) || cid_font_in(&self.fonts);
             // 日 is in the row-and-cell CMaps' character set (JIS X 0208).
-            let installed = || db.find_postscript(cid_font).is_some_and(|face| face.covers('日'));
+            let installed = || db.find_postscript_without_request(cid_font).is_some_and(|face| face.covers('日'));
             let printer = matches!(cid_font, "Ryumin-Light" | "GothicBBB-Medium");
             if !(defined || printer || (cid_font.contains('-') && installed())) {
                 return None;
