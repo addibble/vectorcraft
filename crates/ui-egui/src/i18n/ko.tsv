@@ -2728,6 +2728,7 @@ antiAlias	Sharp	날카롭게
 	No document open	열린 문서 없음
 	No document open.	열린 문서가 없습니다.
 	No fonts are available.	사용할 수 있는 글꼴이 없습니다.
+	This font isn't loaded yet: set type in it to load it.	이 글꼴은 아직 불러오지 않았습니다. 텍스트에 사용하면 불러옵니다.
 	No gradient swatches	그레이디언트 견본 없음
 	No graphic styles	그래픽 스타일 없음
 	No images	이미지 없음
@@ -10366,3 +10367,10 @@ breakText	Glyphs	글리프
 # #5804 native-picked raster editor (draft translations; native review welcome).
 	Edit Original with:	원본 편집 앱:
 file-filter	Applications	응용 프로그램
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	{font}을(를) 불러올 수 없습니다({reason}): 해당 텍스트는 다른 글꼴로 표시됩니다
+	Activate	활성화
+	Activating…	활성화 중…
+	Activate Font	글꼴 다시 활성화
+@msg	give the font's family	글꼴 패밀리를 지정하세요
+@msg	{family} {style} is no font a font index lists that failed to load	{family} {style}은(는) 페이지의 글꼴 목록에서 불러오기에 실패한 글꼴이 아닙니다
+@msg	The fonts this page supplies couldn't be listed: {why}	이 페이지가 제공하는 글꼴을 나열할 수 없습니다: {why}

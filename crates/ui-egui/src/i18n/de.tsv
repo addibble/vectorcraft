@@ -2486,6 +2486,7 @@ file-filter	Templates	Vorlagen
 	No document open.	Kein Dokument geöffnet.
 	No filter plug-ins installed	Keine Filter-Plug-ins installiert
 	No fonts are available.	Es sind keine Schriften verfügbar.
+	This font isn't loaded yet: set type in it to load it.	Diese Schrift ist noch nicht geladen: Setzen Sie Text in ihr, um sie zu laden.
 	No gradient swatches	Keine Verlaufsfelder
 	No graphic styles	Keine Grafikstile
 	No images	Keine Bilder
@@ -10370,3 +10371,10 @@ breakText	Glyphs	Glyphen
 # #5804 native-picked raster editor (draft translations; native review welcome).
 	Edit Original with:	Original bearbeiten mit:
 file-filter	Applications	Anwendungen
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	{font} konnte nicht geladen werden ({reason}): Ihr Text wird in einer anderen Schrift angezeigt
+	Activate	Aktivieren
+	Activating…	Wird aktiviert…
+	Activate Font	Schrift erneut aktivieren
+@msg	give the font's family	geben Sie die Schriftfamilie an
+@msg	{family} {style} is no font a font index lists that failed to load	{family} {style} ist keine Schrift aus der Schriftliste der Seite, die nicht geladen werden konnte
+@msg	The fonts this page supplies couldn't be listed: {why}	Die Schriften dieser Seite konnten nicht aufgelistet werden: {why}

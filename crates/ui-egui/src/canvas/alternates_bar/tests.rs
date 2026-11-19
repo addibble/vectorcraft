@@ -85,6 +85,8 @@ fn character_box(app: &VectorcraftApp, id: &Value, a: usize, b: usize) -> Rect {
 /// each show no row.
 #[test]
 fn one_selected_character_shows_its_alternates_and_a_click_replaces_its_glyph() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
     use vectorcraft_text::test_fonts::{alternates_family, alternates_font, unencoded_glyphs};
     FontDb::global().add_font(alternates_font(true).expect("the test font builds"));
     let [u1, ..] = unencoded_glyphs().expect("unencoded glyphs");
@@ -161,6 +163,8 @@ fn one_selected_character_shows_its_alternates_and_a_click_replaces_its_glyph() 
 /// Selection and changes nothing in the document.
 #[test]
 fn the_arrow_opens_the_glyphs_panel_on_the_alternates() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
     use vectorcraft_text::test_fonts::{alternates_family, alternates_font};
     FontDb::global().add_font(alternates_font(true).expect("the test font builds"));
     let (mut app, id) = editing("xay", false);
@@ -184,6 +188,8 @@ fn the_arrow_opens_the_glyphs_panel_on_the_alternates() {
 /// forms. Three alternates need no arrow.
 #[test]
 fn a_letter_of_a_joined_word_keeps_the_word_joined() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
     use vectorcraft_text::test_fonts::{JOINING_ALTERNATES_FAMILY, joining_alternates_font, source_sans_gid};
     FontDb::global().add_font(joining_alternates_font().expect("the test font builds"));
     let g = |c| u32::from(source_sans_gid(c).expect("a glyph"));
@@ -209,6 +215,8 @@ fn a_letter_of_a_joined_word_keeps_the_word_joined() {
 /// The row stands on the right of a character of vertical type, level with it.
 #[test]
 fn the_row_stands_beside_a_character_of_vertical_type() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
     use vectorcraft_text::test_fonts::{alternates_family, alternates_font};
     FontDb::global().add_font(alternates_font(true).expect("the test font builds"));
     let (mut app, id) = editing("xay", true);

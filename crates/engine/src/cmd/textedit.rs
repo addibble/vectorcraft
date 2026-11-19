@@ -408,16 +408,18 @@ fn get_story(s: &mut Session, p: &Value, id: NodeId) -> Result<Value> {
 }
 
 /// Keep `st`'s font style when its family has it, else take the family's closest one: a family
-/// whose styles are numbered (W3, W6) has no Regular (#4128). A family that isn't installed keeps
-/// the style as it is.
+/// whose styles are numbered (W3, W6) has no Regular (#4128). The one way a style is fitted
+/// ([`vectorcraft_text::FontDb::listed_style`], [`vectorcraft_text::Fit::Closest`]): a composite
+/// font keeps the style (RFC-0034 test 6), then the family's installed and bundled styles, then
+/// those of a host's index, the closest by weight and slant whatever of it has loaded, so the
+/// document doesn't depend on which faces arrived first. A family that lists no style keeps it.
 pub(crate) fn fit_font_style(st: &mut CharStyle) {
     let db = vectorcraft_text::FontDb::global();
-    let styles = db.styles(&st.font_family);
-    if !styles.is_empty()
-        && !styles.iter().any(|s| s.eq_ignore_ascii_case(&st.font_style))
-        && let Some(face) = db.face(&st.font_family, &st.font_style)
-    {
-        st.font_style = face.style.clone();
+    if db.styles(&st.font_family).iter().any(|s| s.eq_ignore_ascii_case(&st.font_style)) {
+        return;
+    }
+    if let Some(listed) = db.listed_style(&st.font_family, &st.font_style, vectorcraft_text::Fit::Closest) {
+        st.font_style = listed.style;
     }
 }
 
@@ -2228,4 +2230,27 @@ fn discard_empty(s: &mut Session, p: &Value) -> Result<Value> {
     }
     s.edit("Discard Empty Type", |d, _| d.remove(id).map(|_| ()).map_err(|_| EngineError::NoNode(id)))?;
     Ok(json!({"removed": true}))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A family named by another of its names (its name without spaces, as a localized or legacy
+    /// name would be) still takes its closest style when it has no Regular (#4128; review round 1,
+    /// item 3): the face found is the family's own under its canonical name.
+    #[test]
+    fn a_family_named_by_an_alias_takes_its_closest_style() {
+        use vectorcraft_text::test_fonts::{NUMBERED_FAMILY, numbered_font};
+        // Adds to the shared font database: other tests' font lists hold still meanwhile.
+        let _fonts = crate::adding_fonts();
+        let db = vectorcraft_text::FontDb::global();
+        db.add_font(numbered_font("W3").unwrap());
+        db.add_font(numbered_font("W6").unwrap());
+        let alias = NUMBERED_FAMILY.replace(' ', "");
+        assert_eq!(db.canonical(&alias, "").0, NUMBERED_FAMILY, "an alias of the family");
+        let mut st = CharStyle { font_family: alias, font_style: "Regular".into(), ..Default::default() };
+        fit_font_style(&mut st);
+        assert!(["W3", "W6"].contains(&st.font_style.as_str()), "{}", st.font_style);
+    }
 }

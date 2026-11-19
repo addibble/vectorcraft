@@ -1964,6 +1964,7 @@ digits	Malayalam	Malajálamské
 	Latin Extended	Rozšířená latinka
 	Latin-1 Supplement	Doplněk Latin-1
 	No fonts are available.	Nejsou k dispozici žádná písma.
+	This font isn't loaded yet: set type in it to load it.	Toto písmo ještě není načteno: použijte ho v textu a načte se.
 	Select text or click into text with the Type tool to insert glyphs	Glyfy vložíte, když vyberete text nebo do něj kliknete nástrojem Text
 	Show:	Zobrazit:
 	Use the Selected Text's Font	Použít písmo vybraného textu
@@ -10757,3 +10758,10 @@ breakText	Glyphs	Glyfy
 # #5804 native-picked raster editor (draft translations; native review welcome).
 	Edit Original with:	Upravit originál v:
 file-filter	Applications	Aplikace
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	písmo {font} se nepodařilo načíst ({reason}): jeho text se zobrazuje jiným písmem
+	Activate	Aktivovat
+	Activating…	Aktivace…
+	Activate Font	Znovu aktivovat písmo
+@msg	give the font's family	zadejte rodinu písma
+@msg	{family} {style} is no font a font index lists that failed to load	{family} {style} není písmo ze seznamu písem stránky, které se nepodařilo načíst
+@msg	The fonts this page supplies couldn't be listed: {why}	Písma, která tato stránka poskytuje, nelze vypsat: {why}

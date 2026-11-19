@@ -2996,6 +2996,7 @@ file-filter	Templates	Sablonok
 	No downsampling	Nincs alulmintavételezés
 	No filter plug-ins installed	Nincs telepített szűrőbővítmény
 	No fonts are available.	Nincs elérhető betűtípus.
+	This font isn't loaded yet: set type in it to load it.	Ez a betűtípus még nincs betöltve: használja egy szövegben a betöltéséhez.
 	No gradient swatches	Nincs színátmenet-színminta
 	No graphic styles	Nincs grafikai stílus
 	No Group	Nincs csoport
@@ -10745,3 +10746,10 @@ breakText	Glyphs	Glifák
 # #5804 native-picked raster editor (draft translations; native review welcome).
 	Edit Original with:	Eredeti szerkesztése ezzel:
 file-filter	Applications	Alkalmazások
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	a(z) {font} nem tölthető be ({reason}); a szövege más betűtípussal jelenik meg
+	Activate	Aktiválás
+	Activating…	Aktiválás folyamatban…
+	Activate Font	Betűtípus újraaktiválása
+@msg	give the font's family	add meg a betűtípus családját
+@msg	{family} {style} is no font a font index lists that failed to load	a(z) {family} {style} nem az oldal betűtípuslistájának olyan betűtípusa, amelynek betöltése sikertelen volt
+@msg	The fonts this page supplies couldn't be listed: {why}	Az oldal által biztosított betűtípusokat nem sikerült listázni: {why}

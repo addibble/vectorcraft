@@ -245,6 +245,8 @@ fn an_envelope_shares_and_expands_the_emoji_of_its_type() {
 /// into the document.
 #[test]
 fn svg_glyph_images_draw_and_outline() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
     let g = source_sans_gid(SVG_CHAR).unwrap();
     let png = vectorcraft_text::test_fonts::solid_png(4, [0, 0, 255, 255]);
     let doc = format!(

@@ -129,7 +129,7 @@ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
         "ui.missingFontsDialog",
         "Missing Fonts Dialog",
         "",
-        "{folder?} open Missing Fonts (dialog `missingFonts`) for the fonts the active document uses that aren't available (text.missingFonts); with folder, it looks for their files there at once (text.findFontFiles). An error when no font is missing. Opening a document whose fonts are missing shows it after the missing linked file questions (dialog `missingLinks`). Disabled on the web",
+        "{folder?} open Missing Fonts (dialog `missingFonts`) for the fonts the active document uses that aren't available (text.missingFonts); with folder, it looks for their files there at once (text.findFontFiles). An error when no font is missing. Opening a document whose fonts are missing shows it after the missing linked file questions (dialog `missingLinks`). Where the host fetches the faces of the font indexes it gives (RFC-0034; the web build), such a font shows Activating… while its file is on its way, and Activate when it couldn't be loaded, which asks for it again (text.activateFont); a face that fails shows it once per document until another font fails. Disabled on the web unless the host gave font indexes",
     ),
     (
         "ui.findFontsInFolder",

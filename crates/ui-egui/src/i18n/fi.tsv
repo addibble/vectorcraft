@@ -1935,6 +1935,7 @@ digits	Malayalam	Malajalam
 	Latin Extended	Laajennettu latinalainen
 	Latin-1 Supplement	Latin-1-täydennys
 	No fonts are available.	Fontteja ei ole saatavilla.
+	This font isn't loaded yet: set type in it to load it.	Tätä fonttia ei ole vielä ladattu: käytä sitä tekstissä, niin se latautuu.
 	Select text or click into text with the Type tool to insert glyphs	Lisää merkkejä valitsemalla tekstiä tai napsauttamalla tekstiä tekstityökalulla
 	Show:	Näytä:
 	Use the Selected Text's Font	Käytä valitun tekstin fonttia
@@ -9024,3 +9025,10 @@ breakText	Glyphs	Merkit
 # #5804 native-picked raster editor (draft translations; native review welcome).
 	Edit Original with:	Muokkaa alkuperäistä sovelluksella:
 file-filter	Applications	Sovellukset
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	fonttia {font} ei voitu ladata ({reason}): sen teksti näytetään toisella fontilla
+	Activate	Aktivoi
+	Activating…	Aktivoidaan…
+	Activate Font	Aktivoi fontti uudelleen
+@msg	give the font's family	anna fontin perhe
+@msg	{family} {style} is no font a font index lists that failed to load	{family} {style} ei ole sivun fonttiluettelon fontti, jonka lataus epäonnistui
+@msg	The fonts this page supplies couldn't be listed: {why}	Tämän sivun tarjoamia fontteja ei voitu luetella: {why}

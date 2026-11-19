@@ -12,6 +12,8 @@ fn names(v: &Value) -> Vec<String> {
 
 #[test]
 fn the_font_list_names_every_available_family_with_its_styles() {
+    // Reads the font list more than once: no test adds to it meanwhile.
+    let _fonts = crate::adding_fonts();
     let mut s = Session::new();
     let fams = names(&s.execute("text.fontList", &json!({})).unwrap()["families"]);
     // Other tests running at the same time add and remove composite fonts, which the lists show
@@ -38,6 +40,8 @@ fn the_font_list_names_every_available_family_with_its_styles() {
 /// order the font menus show; bad params are refused.
 #[test]
 fn similar_fonts_lists_every_family_by_likeness() {
+    // Reads the font list more than once: no test adds to it meanwhile.
+    let _fonts = crate::adding_fonts();
     let mut s = Session::new();
     let db = FontDb::global();
     let r = s.execute("text.similarFonts", &json!({"family": "source sans 3"})).unwrap();
@@ -89,6 +93,8 @@ fn similar_fonts_lists_every_family_by_likeness() {
 
 #[test]
 fn refreshing_the_font_list_redraws_type_without_editing_the_document() {
+    // Reads the font list more than once: no test adds to it meanwhile.
+    let _fonts = crate::adding_fonts();
     let mut s = Session::new();
     s.execute("file.new", &json!({"width": 200, "height": 200})).unwrap();
     s.execute("text.create", &json!({"x": 10, "y": 40, "text": "Type", "font": "No Such Font"})).unwrap();
@@ -106,6 +112,8 @@ fn refreshing_the_font_list_redraws_type_without_editing_the_document() {
 /// stylistic set's name, and refuses a font that isn't available and params that aren't strings.
 #[test]
 fn glyph_categories_list_the_glyphs_of_each_kind_of_feature() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
     use vectorcraft_text::test_fonts::{CATEGORIES_FAMILY, categories_font, source_sans_gid};
     FontDb::global().add_font(categories_font().expect("the test font builds"));
     let mut s = Session::new();

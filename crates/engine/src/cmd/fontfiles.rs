@@ -111,6 +111,21 @@ pub fn missing_fonts(d: &Document) -> Vec<MissingFont> {
         .collect()
 }
 
+/// The font indexes the host gives (RFC-0034), in place of every index it gave before, read all or
+/// nothing as `host:<id>` sources, and the type laid out again so type set in their families asks
+/// for its faces: the engine's API for a host, which no command, control channel, MCP server,
+/// script or plug-in reaches (section 7). Not an edit. Answers `{families}`.
+pub fn set_host_indexes(s: &mut Session, list: Vec<(String, Vec<u8>)>) -> std::result::Result<serde_json::Value, String> {
+    super::fonts::set_host_indexes(s, list)
+}
+
+/// The type of every open document laid out again in the fonts available now: for a host that adds
+/// font files itself (the faces of its font indexes, `FontDb::settle`), several at once,
+/// and lays the type out once for them all. Not an edit: nothing is saved, journaled or undone.
+pub fn relayout_type(s: &mut Session) {
+    super::fonts::relayout_text(s);
+}
+
 /// `text.missingFonts`'s answer for the open document `st`, where searches go by `rules` (this
 /// computer's when `None`).
 pub fn missing_fonts_of(st: &DocState, rules: Option<&findfiles::Rules>) -> Value {

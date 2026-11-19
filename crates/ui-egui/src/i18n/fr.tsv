@@ -2518,6 +2518,7 @@ font-technology	Variable	Variables
 	No document open.	Aucun document ouvert.
 	No filter plug-ins installed	Aucun module externe de filtre installé
 	No fonts are available.	Aucune police disponible.
+	This font isn't loaded yet: set type in it to load it.	Cette police n’est pas encore chargée : utilisez-la dans un texte pour la charger.
 	No gradient swatches	Aucune nuance de dégradé
 	No graphic styles	Aucun style graphique
 	No images	Aucune image
@@ -10743,3 +10744,10 @@ breakText	Glyphs	Glyphes
 # #5804 native-picked raster editor (draft translations; native review welcome).
 	Edit Original with:	Modifier l’original avec :
 file-filter	Applications	Applications
+@msg	{font} couldn't be loaded ({reason}): its text shows in another font	impossible de charger {font} ({reason}) : son texte s’affiche dans une autre police
+	Activate	Activer
+	Activating…	Activation…
+	Activate Font	Réactiver la police
+@msg	give the font's family	indiquez la famille de la police
+@msg	{family} {style} is no font a font index lists that failed to load	{family} {style} n’est pas une police de la liste de polices de la page dont le chargement a échoué
+@msg	The fonts this page supplies couldn't be listed: {why}	Impossible de lister les polices fournies par cette page : {why}

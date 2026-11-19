@@ -95,6 +95,8 @@ fn scaled_character_fields_show_document_sizes_and_mixed_group_values() {
 /// explicit leading shows as it is.
 #[test]
 fn leading_shows_the_auto_leading_of_the_em_size() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
     use vectorcraft_text::test_fonts::{HEIGHT_CAP, HEIGHT_FAMILY, height_font};
     vectorcraft_text::FontDb::global().add_font(height_font(true).unwrap());
     let mut app = VectorcraftApp::new(Session::new(), Default::default());
@@ -124,6 +126,8 @@ fn leading_shows_the_auto_leading_of_the_em_size() {
 /// 24 pt for the graphic alone.
 #[test]
 fn leading_of_an_inline_graphic_follows_its_own_size() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
     use vectorcraft_text::test_fonts::{HEIGHT_FAMILY, height_font};
     vectorcraft_text::FontDb::global().add_font(height_font(true).unwrap());
     let mut app = VectorcraftApp::new(Session::new(), Default::default());
@@ -404,6 +408,8 @@ fn highlight_font_size_focuses_the_font_size_field() {
 #[cfg(feature = "translations")]
 #[test]
 fn variable_fonts_get_a_slider_per_axis() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
     use vectorcraft_text::test_fonts::{TWO_AXIS_FAMILY, two_axis_font};
     let db = vectorcraft_text::FontDb::global();
     db.add_font(two_axis_font().unwrap());
@@ -2046,6 +2052,8 @@ fn selection_tool_anti_aliasing_reaches_every_frame_of_the_story() {
 /// story, in one undo step.
 #[test]
 fn selection_tool_font_axes_reach_every_frame_of_the_story() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
     use vectorcraft_text::test_fonts::{TWO_AXIS_FAMILY, two_axis_font};
     vectorcraft_text::FontDb::global().add_font(two_axis_font().unwrap());
     let (mut app, frames, _) = story_selected_in_its_first_frame();

@@ -191,7 +191,8 @@ fn family(name: &str) -> Row {
 
 /// The families the font menu lists that stay listed, in its order: the menu's list without the
 /// composite fonts at its top, which tests running alongside define and remove in the process-wide
-/// database.
+/// database. Tests that add fonts change it too: a caller holds [`crate::adding_fonts`] while it
+/// uses them.
 fn lasting_families() -> Vec<String> {
     vectorcraft_text::FontDb::global().family_list().iter().filter(|f| !f.starts_with('.')).cloned().collect()
 }
@@ -220,6 +221,8 @@ fn recent_fonts_are_first_available_unique_and_expandable() {
 
 #[test]
 fn recent_section_rebuilds_and_arrows_skip_its_headings() {
+    // Reads the font list more than once: no test adds to it meanwhile.
+    let _fonts = crate::adding_fonts();
     let names = lasting_families();
     if names.len() < 3 {
         return;
@@ -269,6 +272,8 @@ fn recent_section_rebuilds_and_arrows_skip_its_headings() {
 
 #[test]
 fn recent_fonts_obey_search_and_favorite_filters() {
+    // Reads the font list more than once: no test adds to it meanwhile.
+    let _fonts = crate::adding_fonts();
     let names = lasting_families();
     if names.len() < 3 {
         return;
@@ -310,6 +315,8 @@ fn recent_fonts_obey_search_and_favorite_filters() {
 
 #[test]
 fn opening_on_another_font_keeps_the_recent_section_visible() {
+    // Reads the font list more than once: no test adds to it meanwhile.
+    let _fonts = crate::adding_fonts();
     let names = lasting_families();
     let Some(current) = names.last() else { return };
     let recent = vec![names[0].clone()];
@@ -364,7 +371,7 @@ fn expanded_style_rows_do_not_retarget_the_highlight() {
 #[test]
 fn the_wheel_steps_one_family_per_notch_and_stops_at_the_ends() {
     let order: Vec<String> = ["Alpha", "Bravo", "Charlie", "Delta"].map(str::to_string).into();
-    let steps = |current, notches| super::wheel_steps(&order, current, notches);
+    let steps = |current, notches| super::wheel_steps(&order, current, notches, &|_| true);
     assert_eq!(steps("Bravo", 1), ["Charlie"]);
     assert_eq!(steps("bravo", -1), ["Alpha"], "any case");
     assert_eq!(steps("Alpha", 2), ["Bravo", "Charlie"], "a step for each notch");
@@ -378,6 +385,8 @@ fn the_wheel_steps_one_family_per_notch_and_stops_at_the_ends() {
 /// others in the database's order, under the favourites (and other) filters.
 #[test]
 fn the_wheel_follows_the_menus_order_and_filters() {
+    // Reads the font list more than once: no test adds to it meanwhile.
+    let _fonts = crate::adding_fonts();
     let names = lasting_families();
     if names.len() < 3 {
         return;
@@ -394,6 +403,108 @@ fn the_wheel_follows_the_menus_order_and_filters() {
     let mut st = super::MenuState { favorites_only: true, ..Default::default() };
     let order = super::wheel_order(&mut st, super::MenuLook { favorites: &favorites, ..look });
     assert_eq!(order, favorites, "the favourites filter");
+}
+
+/// Design test 14: the wheel steps onto a family of a host's font index whose style for the
+/// selected type has loaded, though another of its styles is still to come, and passes over one
+/// whose style for it hasn't (review round 2, item 3); it asks for nothing. The family the type is
+/// set in stays in the order, so the wheel can step away from it.
+#[test]
+fn the_wheel_steps_by_the_style_the_type_would_take() {
+    use vectorcraft_text::test_fonts::{IndexFile, add_host_index, host_index};
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
+    const LOADED: &str = "Wheel Load 01";
+    const PENDING: &str = "Wheel Pend 01";
+    let regular = vectorcraft_testkit::fonts::renamed(LOADED);
+    let index = host_index(&[
+        (
+            LOADED,
+            &[
+                IndexFile { path: "l/Regular.ttf", bytes: &regular, italic: false, weight: 400 },
+                IndexFile { path: "l/Bold.ttf", bytes: b"bold", italic: false, weight: 700 },
+            ],
+        ),
+        (PENDING, &[IndexFile { path: "p/Regular.ttf", bytes: b"regular", italic: false, weight: 400 }]),
+    ]);
+    let _index = add_host_index("menu-wheel-order", index).unwrap();
+    let db = vectorcraft_text::FontDb::global();
+    assert!(db.add_font(regular) > 0, "the Regular has loaded; the Bold hasn't");
+    db.take_source_requests();
+    let look = super::MenuLook { samples: false, selected: super::SelectedType::Styles(&["Regular"]), ..Default::default() };
+    let can = look.selected.taker();
+    assert!(can(LOADED), "its Regular has loaded: stepped onto");
+    assert!(!can(PENDING), "its Regular hasn't: passed over");
+    let full = super::wheel_order(&mut super::MenuState::default(), look);
+    assert!(!super::wheel_steps(&full, PENDING, 1, &can).is_empty() || full.last().is_some_and(|f| f == PENDING), "the wheel steps away from it");
+    assert!(db.take_source_requests().iter().all(|r| r.family != LOADED && r.family != PENDING), "nothing asked for");
+}
+
+/// The wheel steps onto a family only when every style the selected runs would take of it has
+/// loaded: a selection with a Regular run and a Bold run passes over a family whose Bold hasn't,
+/// though its Regular has (review round 3, items 4 and 5).
+#[test]
+fn the_wheel_needs_every_run_s_style_loaded() {
+    use vectorcraft_text::test_fonts::{IndexFile, add_host_index, host_index};
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
+    const HALF: &str = "Wheel Half 01";
+    let regular = vectorcraft_testkit::fonts::renamed(HALF);
+    let index = host_index(&[(
+        HALF,
+        &[
+            IndexFile { path: "h/Regular.ttf", bytes: &regular, italic: false, weight: 400 },
+            IndexFile { path: "h/Bold.ttf", bytes: b"bold", italic: false, weight: 700 },
+        ],
+    )]);
+    let _index = add_host_index("menu-wheel-runs", index).unwrap();
+    let db = vectorcraft_text::FontDb::global();
+    assert!(db.add_font(regular) > 0);
+    db.take_source_requests();
+    let can = |styles: &'static [&'static str]| super::SelectedType::Styles(styles).taker()(HALF);
+    assert!(can(&["Regular"]), "Regular runs alone: stepped onto");
+    assert!(!can(&["Bold", "Regular"]), "a Bold run too: passed over");
+    assert!(db.take_source_requests().iter().all(|r| r.family != HALF), "nothing asked for");
+}
+
+/// The wheel never targets the same family twice in a row without moving: each notch steps to a
+/// family other than the one the type is in, passing over those it couldn't set (review round 3,
+/// item 5).
+#[test]
+fn each_notch_moves_to_another_family() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
+    let _index = vectorcraft_text::test_fonts::add_index_of("menu-wheel-moves", &[("Wheel Moves 01", 400), ("Wheel Moves 02", 400)]).unwrap();
+    let look = super::MenuLook { samples: false, selected: super::SelectedType::Styles(&["Regular"]), ..Default::default() };
+    // Start just before the families it can't set, so a notch down meets them.
+    let full = super::wheel_order(&mut super::MenuState::default(), look);
+    let at = full.iter().position(|f| f == "Wheel Moves 01").expect("listed");
+    let before = full[at - 1].clone();
+    let can = look.selected.taker();
+    // Review round 4, item G: a notch down lands past both, a notch up from there back before them.
+    let down = super::wheel_steps(&full, &before, 1, &can);
+    let landed = down.last().expect("a notch moves");
+    let past = full.iter().position(|f| f == landed).expect("listed");
+    assert!(past > at + 1, "{before} stepped to {landed}, not past Wheel Moves 01 and 02");
+    let up = super::wheel_steps(&full, landed, -1, &can);
+    assert_eq!(up, [before], "and back over them");
+}
+
+/// The wheel reads the selected runs' styles once a notch and tries families only from the
+/// current one on, as many as its steps need, whatever the length of the menu (review round 4,
+/// item C).
+#[test]
+fn a_notch_checks_only_the_families_it_steps_over() {
+    let look = super::MenuLook { samples: false, selected: super::SelectedType::Styles(&["Regular"]), ..Default::default() };
+    // An order of its own: the process's font list changes while other tests add fonts (review
+    // round 5, item 3).
+    let full: Vec<String> = ["Order One", "Order Two", "Order Three", "Order Four", "Order Five", "Order Six"].map(str::to_string).into();
+    let (reads, checks) = (super::STYLE_READS.with(std::cell::Cell::get), super::TAKE_CHECKS.with(std::cell::Cell::get));
+    let can = look.selected.taker();
+    let steps = super::wheel_steps(&full, &full[0], 2, &can);
+    assert_eq!(steps, ["Order Two", "Order Three"]);
+    assert_eq!(super::STYLE_READS.with(std::cell::Cell::get) - reads, 1, "the styles read once");
+    assert_eq!(super::TAKE_CHECKS.with(std::cell::Cell::get) - checks, 2, "two families checked for two steps");
 }
 
 /// A field removed by a later layout pass must not intercept the next wheel event.
@@ -939,6 +1050,8 @@ fn the_variable_filter_is_named_as_fonts_are() {
 /// filters; clicked again, every family is back.
 #[test]
 fn the_variable_filter_lists_only_variable_families() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
     use vectorcraft_text::FontClass;
     use vectorcraft_text::test_fonts::{TWO_AXIS_FAMILY, two_axis_font};
     let db = vectorcraft_text::FontDb::global();
@@ -1178,6 +1291,7 @@ fn listed_families(st: &super::MenuState) -> Vec<String> {
 /// when it is clicked off.
 #[test]
 fn the_document_filter_lists_the_families_the_documents_type_uses() {
+    let _fonts = crate::adding_fonts();
     let mut app = app_with_type(&["Source Serif 4", "Inter"]);
     app.run("object.hide", serde_json::json!({})).unwrap();
     app.run("text.create", serde_json::json!({"x": 20, "y": 120, "text": "Locked", "font": "Source Sans 3"})).unwrap();
@@ -1749,7 +1863,7 @@ fn finished_samples_no_longer_drawn_do_not_block_new_ones() {
         for i in 0..super::MAX_PENDING {
             let (tx, rx) = std::sync::mpsc::channel();
             tx.send(None).unwrap();
-            s.pending.insert((format!("Old {i}"), "Regular".to_string(), "typed".to_string(), 20), rx);
+            s.pending.insert((format!("Old {i}"), "Regular".to_string(), "typed".to_string(), 20), (0, rx));
         }
     });
     assert!(super::sample_texture(&ctx, "Source Sans 3", Some("Regular"), Some("typed more"), 20.0).is_none());
@@ -1759,5 +1873,53 @@ fn finished_samples_no_longer_drawn_do_not_block_new_ones() {
     });
     assert!(started, "the new sample is rendering");
     assert_eq!(kept, super::MAX_PENDING, "the finished samples are kept");
+    super::wait_for_samples(&ctx);
+}
+
+/// A sample drawn while its family wasn't available (in the fallback face: a font source that
+/// failed, or a font not added yet) is drawn again once a font is added, in the family's own face.
+#[test]
+fn a_sample_drawn_before_its_font_arrived_is_drawn_again() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
+    const FAMILY: &str = "Late Sample 1";
+    let ctx = egui::Context::default();
+    // Each call takes a frame of its own: the samples started in one frame are budgeted. A sample
+    // drawn on another thread is waited for (`wait_for_samples`).
+    let sample = || {
+        ctx.run_ui(egui::RawInput::default(), |_| {}).textures_delta.clear();
+        let t = super::sample_texture(&ctx, FAMILY, None, Some("Late"), 20.0);
+        super::wait_for_samples(&ctx);
+        t.or_else(|| super::sample_texture(&ctx, FAMILY, None, Some("Late"), 20.0))
+    };
+    let before = sample().expect("drawn in the fallback face").id();
+    let db = vectorcraft_text::FontDb::global();
+    assert!(db.add_font(vectorcraft_testkit::fonts::renamed(FAMILY)) > 0);
+    // The old sample shows until the new one is drawn: a frame starts it, the next shows it.
+    sample();
+    assert_ne!(sample().expect("drawn again").id(), before, "drawn again in the font added");
+}
+
+/// A drawn sample is kept while the fonts that draw it stay: a host's font index listed, which changes the
+/// font database's generation (as a family the menu loads from the installed fonts does), draw no
+/// sample again; a font file a host adds, which may draw a family that was in the fallback face,
+/// does.
+#[test]
+fn a_sample_is_drawn_again_only_when_a_font_file_is_added() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
+    let ctx = egui::Context::default();
+    let db = vectorcraft_text::FontDb::global();
+    let draw = || super::sample_texture(&ctx, "Source Sans 3", None, Some("Kept sample"), 20.0);
+    let drawing = || super::SAMPLES.with(|s| !s.borrow().pending.is_empty());
+    draw();
+    super::wait_for_samples(&ctx);
+    assert!(draw().is_some(), "drawn");
+    let _index = vectorcraft_text::test_fonts::add_index_of("menu-generation", &[("Gen Src Fam01", 400)]).unwrap();
+    assert!(draw().is_some());
+    assert!(!drawing(), "a host's index listed draws no sample again");
+    assert!(db.add_font(vectorcraft_testkit::fonts::renamed("Gen Add Fam01")) > 0);
+    assert!(draw().is_some(), "shown while it is drawn again");
+    assert!(drawing(), "a font file added draws it again");
     super::wait_for_samples(&ctx);
 }

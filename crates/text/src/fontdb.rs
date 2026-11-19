@@ -111,6 +111,12 @@ pub struct FontDb {
     generation: AtomicU64,
     /// This database's [`FontDb::id`].
     id: u64,
+    /// The font indexes a host gave ([`FontDb::set_host_indexes`]), and the faces of them type
+    /// asked for, each with its state ([`FontDb::take_source_requests`], [`FontDb::settle`]).
+    sources: RwLock<Sources>,
+    source_requests: Mutex<SourceRequests>,
+    /// [`FontDb::supplied_generation`].
+    supplied_generation: AtomicU64,
     /// System fallback state: characters no system font covers.
     #[cfg(not(target_arch = "wasm32"))]
     sys: Mutex<SysFallback>,
@@ -172,6 +178,209 @@ const CANONICAL_CACHE_MAX: usize = 4_096;
 
 /// [`FontDb::menu_family_list`], with the [`FontDb::family_list`] it was built from.
 type MenuFamilies = (Arc<[String]>, Arc<[String]>);
+
+/// A face of a host's font index (RFC-0034), as the host fetches it: built from the index as it is
+/// when the host takes the request ([`FontDb::take_source_requests`]), so its URLs are current. The
+/// host fetches it from one of `urls` (the best first) and hands the bytes to [`FontDb::settle`],
+/// which checks them against the index before adding them. Until then the type draws in the
+/// fallback face, as Illustrator draws a font Adobe Fonts is still activating.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FontSource {
+    /// The family, as the index names it.
+    pub family: String,
+    /// The style type asked for it in.
+    pub style: String,
+    /// The index's entry for the file: its path, size, sha256, weight, slant and PostScript names.
+    pub file: craft_font_store::FontFile,
+    /// Where the file is, the best first (`craft_font_store::Index::file_urls`).
+    pub urls: Vec<String>,
+    /// Which take of the face this is: [`FontDb::settle`] settles only the latest one, so an
+    /// older fetch of a face asked for again ends quietly.
+    pub take: u64,
+}
+
+impl FontSource {
+    /// The file's Subresource Integrity value, `sha256-<base64>`, for a fetch that the browser
+    /// checks too.
+    pub fn integrity(&self) -> String {
+        let digest: Vec<u8> =
+            (0..self.file.sha256.len() / 2).filter_map(|i| u8::from_str_radix(self.file.sha256.get(2 * i..2 * i + 2)?, 16).ok()).collect();
+        format!("sha256-{}", base64_std(&digest))
+    }
+
+    /// The face's identity: its family and its file.
+    pub fn key(&self) -> FaceKey {
+        FaceKey::new(&self.family, &self.file.sha256)
+    }
+}
+
+/// Standard base64 with padding (RFC 4648 section 4), as Subresource Integrity writes a digest.
+fn base64_std(bytes: &[u8]) -> String {
+    const A: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for c in bytes.chunks(3) {
+        let n = (u32::from(c[0]) << 16) | (u32::from(*c.get(1).unwrap_or(&0)) << 8) | u32::from(*c.get(2).unwrap_or(&0));
+        for (i, shift) in [18, 12, 6, 0].into_iter().enumerate() {
+            out.push(if i <= c.len() { char::from(A[((n >> shift) & 63) as usize]) } else { '=' });
+        }
+    }
+    out
+}
+
+/// A face of a host's font index: its family, in lowercase, and its file's sha256. The family is
+/// part of it because the face is checked to be that family, and one file can be listed under two.
+/// Which index lists it, and where, is no part of it: a face still listed after the host gives a
+/// new set is the same face.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct FaceKey {
+    pub family_lc: String,
+    pub sha256: String,
+}
+
+impl FaceKey {
+    pub fn new(family: &str, sha256: &str) -> Self {
+        FaceKey { family_lc: family.to_ascii_lowercase(), sha256: sha256.to_string() }
+    }
+}
+
+/// One font index a host gave, under its source ID (`host:<id>`): a label, which only the tests'
+/// index-by-index form matches.
+#[derive(Debug)]
+struct HostIndex {
+    source: String,
+    index: craft_font_store::Index,
+}
+
+/// The font indexes a host gave ([`FontDb::set_host_indexes`]), in the order given, and where
+/// each family is: the first index that lists a family owns it, for every lookup.
+#[derive(Debug, Default)]
+struct Sources {
+    indexes: Vec<HostIndex>,
+    /// Each family, keyed in lowercase: its index and its place in that index's families.
+    by_family: HashMap<String, (usize, usize)>,
+    /// How many font files the indexes list in all: at most [`FontDb::MAX_SOURCES`].
+    count: usize,
+}
+
+impl Sources {
+    /// The family `family` (any case) and the index owning it.
+    fn family(&self, family: &str) -> Option<(&craft_font_store::Index, &craft_font_store::Family)> {
+        let &(i, f) = self.by_family.get(&family.to_ascii_lowercase())?;
+        let index = &self.indexes.get(i)?.index;
+        Some((index, index.families().get(f)?))
+    }
+
+    /// The owning family's entry for the face `key`, whatever index, place or path lists it.
+    fn entry(&self, key: &FaceKey) -> Option<(&craft_font_store::Index, &craft_font_store::Family, &craft_font_store::FontFile)> {
+        let (index, family) = self.family(&key.family_lc)?;
+        let file = family.files.iter().find(|f| f.sha256 == key.sha256)?;
+        Some((index, family, file))
+    }
+
+    /// Where each family is, after the indexes changed.
+    fn rebuild(&mut self) {
+        self.by_family.clear();
+        self.count = 0;
+        for (i, h) in self.indexes.iter().enumerate() {
+            for (f, family) in h.index.families().iter().enumerate() {
+                self.count += family.files.len();
+                self.by_family.entry(family.family.to_ascii_lowercase()).or_insert((i, f));
+            }
+        }
+    }
+}
+
+/// Where a face of a host's index is, once type has asked for it ([`FontDb::unloaded_host_style`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FaceState {
+    /// Type asked for it; the host hasn't taken it yet.
+    Queued,
+    /// The host took it and is fetching it, in the take numbered so ([`FontSource::take`]): only
+    /// that take's result settles it.
+    Fetching(u64),
+    /// Its file arrived, passed its checks and was added.
+    Loaded,
+    /// It couldn't be fetched, or failed its checks: Activate asks for it again.
+    Failed,
+}
+
+/// The faces of the host's indexes type asked for: each face's state and the family and style type
+/// asked for it in, and the faces queued for the host, in order. The queue is the only one: the
+/// host takes from it as it has room ([`FontDb::take_source_requests`]).
+#[derive(Debug, Default)]
+struct SourceRequests {
+    faces: HashMap<FaceKey, (FaceState, (String, String))>,
+    /// The last take's number ([`FontSource::take`]).
+    takes: u64,
+    queue: std::collections::VecDeque<FaceKey>,
+}
+
+/// How [`FontDb::settle`] ended a face the host fetched.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Settled {
+    /// Its file passed its checks and was added: what it added.
+    Added(FontsAdded),
+    /// It couldn't be fetched, or its file failed its checks: why. Missing Fonts offers Activate.
+    Refused(String),
+    /// No index the host gives lists it any longer: dropped quietly, no failure.
+    Stale,
+}
+
+/// How [`FontDb::listed_style`] matches a style.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Fit {
+    /// That style only, by its name (any spelling of the same letters and digits) or, for a host's
+    /// index, as `craft_font_store::Family::face` finds it (`700`, `Semi Bold`).
+    Exact,
+    /// That style, else the family's nearest (`build::weight_distance`: weight, and a slant
+    /// penalty less than Regular to Bold). Only an edit fitting type to a family uses it.
+    Closest,
+}
+
+/// Where a listed style comes from ([`FontDb::listed_style`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Origin {
+    /// A composite font of that name: the style is the type's own, and no index is asked.
+    Composite,
+    /// A loaded, installed or bundled face: nothing to fetch.
+    Installed,
+    /// A face of a host's index, fetched when type set in it is drawn.
+    Host(FaceKey),
+}
+
+/// A family's style as [`FontDb::listed_style`] gives it: the family and style to store, their
+/// weight and slant, and where the face comes from.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Listed {
+    pub family: String,
+    pub style: String,
+    pub weight: f32,
+    pub italic: bool,
+    pub origin: Origin,
+}
+
+/// One style a family lists ([`FontDb::styles`]): its name, weight, slant and origin, and the face
+/// of the host's index that has it, when one does (also for a style an installed face has).
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct StyleRow {
+    pub(crate) name: String,
+    pub(crate) weight: f32,
+    pub(crate) italic: bool,
+    pub(crate) origin: Origin,
+    pub(crate) file: Option<FaceKey>,
+}
+
+/// What [`FontDb::add_font_reporting`] did with a font file's bytes.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct FontsAdded {
+    /// The faces the file holds: 0 when it is no TrueType, OpenType or collection font.
+    pub found: usize,
+    /// The faces the file holds, as (family, style), whether or not they were loaded already.
+    pub held: Vec<(String, String)>,
+    /// The faces it added, as (family, style); a face already loaded (the same family, style and
+    /// version) is not added again.
+    pub added: Vec<(String, String)>,
+}
 
 #[cfg(test)]
 mod alias_tests {

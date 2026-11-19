@@ -1,6 +1,6 @@
 # VectorCraft MCP server
 
-> **Last updated:** 2026-11-18 · **Change:** Production Preflight command and report coverage; previously: `text.setFormat {composer}` and paragraph styles also take `standardSingleLine` and `standardEveryLine` (#4935); existing values and responses unchanged. Previously: Pencil ignores Smart Guides and Snap to Point and shows no Smart Guides, #7252; no response-shape change. Previously: Pencil continuation, straight-line and closing cursors; scores and estimates unchanged; no response-shape change. Previously: Snap to Point with Smart Guides off draws no Smart Guides labels or lines, #7250; no response-shape change. Previously: Envelopes: a top object's side whose pieces are all one curve split at anchors follows that curve's parameter (#7097); existing response shapes retained.
+> **Last updated:** 2026-11-18 · **Change:** fonts a host supplies (RFC-0034): the host gives font indexes in craft-font-index format through the hosting contract (no command gives one), each set in place of the one before, their faces fetched on demand and checked against their entries; `text.activateFont` asks again for one that failed; no response-shape change. Previously: Pencil continuation, straight-line and closing cursors; scores and estimates unchanged; no response-shape change. Previously: Snap to Point with Smart Guides off draws no Smart Guides labels or lines, #7250; no response-shape change. Previously: Envelopes: a top object's side whose pieces are all one curve split at anchors follows that curve's parameter (#7097); existing response shapes retained; Production Preflight command and report coverage; previously: `text.setFormat {composer}` and paragraph styles also take `standardSingleLine` and `standardEveryLine` (#4935); existing values and responses unchanged. Previously: Pencil ignores Smart Guides and Snap to Point and shows no Smart Guides, #7252; no response-shape change. Previously: Pencil continuation, straight-line and closing cursors; scores and estimates unchanged; no response-shape change. Previously: Snap to Point with Smart Guides off draws no Smart Guides labels or lines, #7250; no response-shape change. Previously: Envelopes: a top object's side whose pieces are all one curve split at anchors follows that curve's parameter (#7097); existing response shapes retained.
 >
 > Tech Circuit update (2026-11-14): three original procedural brushes; ten built-in brush libraries (G5).
 
@@ -12898,7 +12898,21 @@ first style), empty for a static font. `text.rescanFonts`
 started: type set in a font that became available redraws in it, and type set in a family that was removed redraws in
 the fallback font and is listed as missing, without editing the document. The type in opacity masks and in the art of
 symbols and pattern swatches is laid out again too, and inline graphics take the new size of their symbols' art. The app does so by
-itself when its window comes to the front and a font folder changed meanwhile.
+itself when its window comes to the front and a font folder changed meanwhile. The web build has no installed fonts:
+the page hosting it gives font indexes in craft-font-index format (RFC-0034) through the hosting contract's `fonts`
+message, each read as the source `host:<id>` and checked by the suite's font store, all or nothing (at most 20000 font
+files in all); each message gives the host's whole set, in place of the one before. No command gives an index, so neither MCP, the control channel, a script nor a plug-in can. Their
+families are listed in the font menus and `text.fontList` at once, with the styles each index lists (a menu shows one
+not loaded yet by name, without a sample, and the menus' wheel, previews and Find Font fetch nothing), but are no
+installed family until a face arrives. Type set in one fetches the face of exactly its style, or of its PostScript
+style, from the index's URLs, the best first, with no referrer and credentials only to the page's origin; a style the
+index doesn't list fetches nothing and draws as any style the family lacks does. A fetched face joins the session only
+when it is the file its entry names (size, SHA-256) and the family, style and PostScript name it claims. Until then,
+or when it fails, the type draws in the fallback face, highlighted as a substituted font, and `text.fonts` and
+`text.missingFonts` report it `missing`; Missing Fonts shows Activating… while it is on its way and Activate once it
+failed, which runs `text.activateFont {family, style?}` and fetches it again (`{activating: true}`; an error when that
+face didn't fail). A document's composite font of a host family's name wins in that document. Activation is not an
+edit: nothing is saved, journaled or undone. Desktop and `vectorcraft-cli` take no index.
 
 `text.similarFonts {family, limit?}` gives the families `text.fontList` lists in the order a font menu's Show Similar
 Fonts lists them (the ≈ button on a family's row; the ≈ chip under the filters clears it): `{family, families}`, with
@@ -12919,6 +12933,7 @@ other `limit` with `` `limit` must be a whole number from 1 to 100000 ``.
 {"name":"run_command","arguments":{"command":"text.fontList","params":{"family":"Source Serif 4"}}}
 {"name":"run_command","arguments":{"command":"text.similarFonts","params":{"family":"Source Sans 3","limit":10}}}
 {"name":"run_command","arguments":{"command":"text.rescanFonts","params":{}}}
+{"name":"run_command","arguments":{"command":"text.activateFont","params":{"family":"Roboto Slab","style":"Bold"}}}
 ```
 
 `text.missingFonts` lists the fonts that the active document's type uses, in its layers, its symbols and its pattern
@@ -15300,6 +15315,7 @@ the error text. The interactive fallback applies only to ordinary File > Save, n
 | Date | Change |
 |---|---|
 | 2026-11-18 | Production Preflight: output and artboard scope, four check summaries, clickable canvas ids, effective PPI and explicit unchecked resolution coverage. |
+| 2026-11-18 | Fonts a host supplies (RFC-0034): font indexes through the hosting contract, faces checked against their entries, `text.activateFont`. |
 | 2026-11-14 | Built-in Tech Circuit brush library (id `tech-circuit`): Circuit Trace, Bus Lines and Terminal Nodes; ten built-in libraries. |
 | 2026-11-13 | The Pencil ignores Smart Guides and Snap to Point and shows no Smart Guides; Snap to Grid and Snap to Pixel still move its ends (#7252). |
 | 2026-11-13 | `path.freehand`: `closed`, when given, decides whether a stroke that continues a path (`extend`) closes it; the Pencil and the Paintbrush send it by Close Paths When Ends Are Within. |

@@ -422,3 +422,144 @@ fn the_web_says_how_many_fonts_are_missing() {
     after_open_for(&mut app, &json!({"warnings": ["fonts"]}), true);
     assert_eq!(app.ui.status, "Opened with 1 note: fonts");
 }
+
+/// A host's font index of `family`'s Regular (and Bold, when `bold`), under `id`, taken away when the
+/// guard drops. The files are never fetched here, so their bytes are only what the entries name.
+fn index_of(id: &str, family: &str, bold: bool) -> vectorcraft_text::test_fonts::HostIndexRemoved {
+    use vectorcraft_text::test_fonts::{IndexFile, add_host_index, host_index};
+    let mut files = vec![IndexFile { path: "f/Regular.ttf", bytes: b"a regular face", italic: false, weight: 400 }];
+    if bold {
+        files.push(IndexFile { path: "f/Bold.ttf", bytes: b"a bold face", italic: false, weight: 700 });
+    }
+    add_host_index(id, host_index(&[(family, &files)])).unwrap()
+}
+
+/// A font a host's font index lists isn't counted missing when a document opens on the web: it is
+/// on its way. One that fails to load says so then.
+#[test]
+fn the_web_leaves_out_a_font_an_index_is_fetching() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
+    const FAMILY: &str = "On Its Way 01";
+    let _index = index_of("mf-1", FAMILY, false);
+    let mut app = VectorcraftApp::new(Session::new(), Default::default());
+    app.run("file.new", json!({"width": 400, "height": 300})).unwrap();
+    app.run("text.create", json!({"x": 10, "y": 40, "text": "Coming", "font": FAMILY})).unwrap();
+    app.ui.status.clear();
+    after_open_for(&mut app, &json!({}), true);
+    assert_eq!(app.ui.status, "", "nothing missing while the face is fetched");
+    app.font_source_failed(FAMILY, "HTTP 404");
+    assert_eq!(app.ui.status, "On Its Way 01 couldn't be loaded (HTTP 404): its text shows in another font");
+}
+
+/// On the web a style the index doesn't list is counted missing when a document opens, though the
+/// family's Regular is on its way: no other style is fetched for it (RFC-0034 section 5.4).
+#[test]
+fn the_web_counts_a_style_the_index_does_not_list() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
+    const FAMILY: &str = "Regular Only 01";
+    let _index = index_of("mf-2", FAMILY, false);
+    let mut app = VectorcraftApp::new(Session::new(), Default::default());
+    app.run("file.new", json!({"width": 400, "height": 300})).unwrap();
+    app.run("text.create", json!({"x": 10, "y": 40, "text": "Coming", "font": FAMILY})).unwrap();
+    app.run("text.create", json!({"x": 10, "y": 80, "text": "Never", "font": FAMILY, "style": "Bold"})).unwrap();
+    app.ui.status.clear();
+    after_open_for(&mut app, &json!({}), true);
+    assert_eq!(app.ui.status, "1 font isn't available here: its text shows in another font");
+}
+
+/// Missing Fonts and a host's font index, as Illustrator's Adobe Fonts (RFC-0034 acceptance test
+/// 5): a font on its way is listed as activating; one that couldn't be loaded opens its document's
+/// dialog with Activate, which asks for it again at once.
+#[test]
+fn a_failed_face_is_listed_with_activate() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
+    // Sorting last: other tests' menus list it, and a face not loaded yet is not previewed.
+    const FAMILY: &str = "Zz Pending Src";
+    let _index = index_of("mf-3", FAMILY, false);
+    let db = vectorcraft_text::FontDb::global();
+    let mut app = VectorcraftApp::new(Session::new(), Default::default());
+    // The web build's shell: it fetches what type asks for.
+    app.services.fetches_font_sources = true;
+    app.run("file.new", json!({"width": 400, "height": 300})).unwrap();
+    app.run("text.create", json!({"x": 10, "y": 40, "text": "Coming", "font": FAMILY})).unwrap();
+    let src = db.take_source_requests().into_iter().find(|r| r.family == FAMILY).expect("type asked for it");
+    app.run("ui.missingFontsDialog", json!({})).unwrap();
+    let shown = frame(&mut app);
+    assert!(shown.contains(&format!("{FAMILY} Regular")) && shown.contains("Activating…"), "{shown}");
+    assert!(!shown.contains("Activate"), "no Activate while it is on its way: {shown}");
+    app.ui.dialog = None;
+
+    db.settle(&src, Err("HTTP 404".into()));
+    app.font_source_failed(FAMILY, "HTTP 404");
+    open_next(&mut app);
+    let shown = frame(&mut app);
+    assert!(app.ui.dialog.as_ref().is_some_and(|d| d.kind == KIND), "the dialog opens for the document set in it");
+    assert!(shown.contains("Activate") && !shown.contains("Activating…"), "{shown}");
+
+    // Activate: asked for again.
+    let again = failed_source(FAMILY, "Regular").expect("the failed face");
+    app.run("text.activateFont", again).unwrap();
+    assert!(db.take_source_requests().iter().any(|r| r.key() == src.key()), "asked for again at once: a new take of the face");
+    assert!(failed_source(FAMILY, "Regular").is_none());
+    assert!(frame(&mut app).contains("Activating…"));
+}
+
+/// A face that fails brings its document's Missing Fonts dialog once: closed, it doesn't come back
+/// when the same font fails again, only when another font fails.
+#[test]
+fn a_failed_face_brings_its_dialog_once() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
+    let (_one, _two) = (index_of("mf-4", "Fails Once 01", false), index_of("mf-5", "Fails Next 01", false));
+    let db = vectorcraft_text::FontDb::global();
+    let mut app = VectorcraftApp::new(Session::new(), Default::default());
+    app.services.fetches_font_sources = true;
+    app.run("file.new", json!({"width": 400, "height": 300})).unwrap();
+    app.run("text.create", json!({"x": 10, "y": 40, "text": "One", "font": "Fails Once 01"})).unwrap();
+    app.run("text.create", json!({"x": 10, "y": 80, "text": "Two", "font": "Fails Next 01"})).unwrap();
+    let asked = db.take_source_requests();
+    let first = asked.iter().find(|r| r.family == "Fails Once 01").unwrap().clone();
+    let second = asked.iter().find(|r| r.family == "Fails Next 01").unwrap().clone();
+    db.settle(&first, Err("HTTP 404".into()));
+    app.font_source_failed(&first.family, "HTTP 404");
+    app.font_source_failed(&first.family, "HTTP 404");
+    assert_eq!(app.ui.pending_fonts.len(), 1, "one dialog for the document");
+    open_next(&mut app);
+    assert!(app.ui.dialog.as_ref().is_some_and(|d| d.kind == KIND));
+    app.ui.dialog = None;
+    app.ui.fonts_dialog = None;
+    // The same font failing again (Activate, and failing) brings no dialog.
+    app.run("text.activateFont", json!({"family": first.family})).unwrap();
+    let first = db.take_source_requests().into_iter().find(|r| r.family == first.family).expect("asked for again");
+    db.settle(&first, Err("HTTP 404".into()));
+    app.font_source_failed(&first.family, "HTTP 404");
+    assert!(app.ui.pending_fonts.is_empty(), "closed, it stays closed for the same font");
+    // Another font failing does.
+    db.settle(&second, Err("HTTP 404".into()));
+    app.font_source_failed(&second.family, "HTTP 404");
+    assert_eq!(app.ui.pending_fonts.len(), 1, "a new font that fails brings it again");
+}
+
+/// Without a host that fetches faces (the desktop app), a font of a host's index is listed as
+/// missing with neither Activating… (nothing will arrive) nor Activate.
+#[test]
+fn without_a_host_that_fetches_a_face_is_only_missing() {
+    // Adds to the shared font database: other tests' font lists hold still meanwhile.
+    let _fonts = crate::adding_fonts();
+    const FAMILY: &str = "Zz Desk Src 01";
+    let _index = index_of("mf-6", FAMILY, false);
+    let db = vectorcraft_text::FontDb::global();
+    let mut app = VectorcraftApp::new(Session::new(), Default::default());
+    app.run("file.new", json!({"width": 400, "height": 300})).unwrap();
+    app.run("text.create", json!({"x": 10, "y": 40, "text": "Here", "font": FAMILY})).unwrap();
+    app.run("ui.missingFontsDialog", json!({})).unwrap();
+    let shown = frame(&mut app);
+    assert!(shown.contains(&format!("{FAMILY} Regular")), "{shown}");
+    assert!(!shown.contains("Activat"), "no Activating… or Activate on the desktop: {shown}");
+    let src = db.take_source_requests().into_iter().find(|r| r.family == FAMILY).unwrap();
+    db.settle(&src, Err("HTTP 404".into()));
+    assert!(!frame(&mut app).contains("Activat"), "nor once it failed");
+}
