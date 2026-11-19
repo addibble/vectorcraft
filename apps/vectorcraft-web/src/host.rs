@@ -52,6 +52,12 @@
 //! - `vectorcraft:masks` (from the parent, host-only): `{ image }`, that image's opacity mask
 //!   shown as two tints (its white art red, the rest green), or `{ clear: true }`
 //!   (`protocol::masks`, `vectorcraft_ui_egui::host_region`).
+//! - `vectorcraft:fonts` (from the parent): `{ indexes: [{ bytes } | { url, sha256 }] }`, font
+//!   indexes in craft-font-index format the app lists at once and fetches faces from when type uses
+//!   them (RFC-0034), in craft-web-host's `fonts` shape and bounds (`protocol::fonts`). The `n`th
+//!   index is the host's index `page` (`page-2`, … after it): given again, it replaces the one at
+//!   its place. A list the bridge refuses is answered with `vectorcraft:failed`; one whose indexes
+//!   the app can't fetch or read is refused whole, logged and said on the status line.
 //! - `vectorcraft:failed` (to the parent): `{ error }`. The last message from the parent was
 //!   refused, its `error` beginning with that message's `type` (the app keeps running); the
 //!   listener is up from the start, so this may come before `ready` too. Before `ready`, any other
@@ -108,6 +114,8 @@ pub struct Bridge {
     region: Rc<RefCell<Option<protocol::RegionMessage>>>,
     /// The last `vectorcraft:masks` heard, until the next frame applies it.
     masks: Rc<RefCell<Option<protocol::MasksMessage>>>,
+    /// The `vectorcraft:fonts` lists heard, until the next frame gives them to the app in order.
+    fonts: Rc<RefCell<Vec<Vec<protocol::FontIndex>>>>,
 }
 
 impl Bridge {
@@ -142,6 +150,7 @@ impl Bridge {
             panels: Rc::default(),
             region: Rc::default(),
             masks: Rc::default(),
+            fonts: Rc::default(),
         })
     }
 
@@ -210,6 +219,21 @@ impl Bridge {
         if self.offer.get() && app.ui.dialog.is_none() {
             self.offer.set(false);
             vectorcraft_ui_egui::recovery::offer(app);
+        }
+    }
+
+    /// The font index lists the parent gave, to the app in the order heard (`crate::fonts`, which
+    /// fetches an index given by URL first): only the host gives them (RFC-0034 section 7).
+    pub fn give_fonts(&self, ctx: &egui::Context) {
+        for list in self.fonts.borrow_mut().drain(..) {
+            let list = list
+                .into_iter()
+                .map(|index| match index {
+                    protocol::FontIndex::Bytes(bytes) => crate::fonts::HostFontIndex::Bytes(bytes),
+                    protocol::FontIndex::Url { url, sha256 } => crate::fonts::HostFontIndex::Url { url, sha256 },
+                })
+                .collect();
+            crate::fonts::give_indexes(list, ctx);
         }
     }
 
@@ -384,6 +408,19 @@ impl Bridge {
                     }
                     Err(error) => {
                         log::warn!("refused the page's configuration: {error}");
+                        bridge.post_failed(&error);
+                    }
+                }
+                return;
+            }
+            if string(&data, "type").as_deref() == Some("vectorcraft:fonts") {
+                match protocol::fonts(font_indexes(&data)) {
+                    Ok(list) => {
+                        bridge.fonts.borrow_mut().push(list);
+                        wake();
+                    }
+                    Err(error) => {
+                        log::warn!("refused the page's fonts: {error}");
                         bridge.post_failed(&error);
                     }
                 }
@@ -635,6 +672,31 @@ fn actions(data: &JsValue) -> Option<Vec<protocol::TaskBarActionFields>> {
 /// `bytes` as an `ArrayBuffer` or `Uint8Array`.
 fn bytes(data: &JsValue) -> Option<Vec<u8>> {
     buffer(&js_sys::Reflect::get(data, &JsValue::from_str("bytes")).ok()?)
+}
+
+/// A `vectorcraft:fonts`'s `indexes`: how many entries it has and each one's fields (`None` when it
+/// is no array). Past [`protocol::MAX_FONT_INDEXES`] no entry is read, and bytes past
+/// [`protocol::MAX_FONT_INDEX_BYTES`] are not copied into the app.
+fn font_indexes(data: &JsValue) -> Option<(usize, Vec<protocol::FontIndexFields>)> {
+    let list = js_sys::Reflect::get(data, &JsValue::from_str("indexes")).ok()?.dyn_into::<js_sys::Array>().ok()?;
+    let count = list.length() as usize;
+    if count > protocol::MAX_FONT_INDEXES {
+        return Some((count, vec![]));
+    }
+    let entries = list
+        .iter()
+        .map(|entry| protocol::FontIndexFields {
+            bytes: match js_sys::Reflect::get(&entry, &JsValue::from_str("bytes")) {
+                Ok(v) if v.is_undefined() || v.is_null() => protocol::Field::Absent,
+                Ok(v) if byte_length(&v).is_some_and(|n| n > protocol::MAX_FONT_INDEX_BYTES) => protocol::Field::Wrong,
+                Ok(v) => buffer(&v).map_or(protocol::Field::Wrong, protocol::Field::Given),
+                Err(_) => protocol::Field::Wrong,
+            },
+            url: field(&entry, "url"),
+            sha256: field(&entry, "sha256"),
+        })
+        .collect();
+    Some((count, entries))
 }
 
 /// A value's length in bytes when it is an `ArrayBuffer` or `Uint8Array`, read without copying it.

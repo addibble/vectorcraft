@@ -461,6 +461,7 @@ impl eframe::App for WebShell {
         // image of the document it opened; then the saves the tick posted, and whether anything is
         // unsaved now. A hidden tab runs this pass alone, with no UI pass after it.
         if let Some(bridge) = &self.host.bridge {
+            bridge.give_fonts(ctx);
             bridge.mark(app);
             bridge.follow_saves(app);
             bridge.report_dirty(app);
