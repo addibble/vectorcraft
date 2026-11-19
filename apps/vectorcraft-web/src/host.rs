@@ -54,9 +54,10 @@
 //!   (`protocol::masks`, `vectorcraft_ui_egui::host_region`).
 //! - `vectorcraft:fonts` (from the parent): `{ indexes: [{ bytes } | { url, sha256 }] }`, font
 //!   indexes in craft-font-index format the app lists at once and fetches faces from when type uses
-//!   them (RFC-0034), in craft-web-host's `fonts` shape and bounds (`protocol::fonts`). The `n`th
-//!   index is the host's index `page` (`page-2`, … after it): given again, it replaces the one at
-//!   its place. A list the bridge refuses is answered with `vectorcraft:failed`; one whose indexes
+//!   them (RFC-0034), in craft-web-host's `fonts` shape and bounds (`protocol::fonts`). Each
+//!   message gives the host's whole set, in place of the one before: a host adds an index by
+//!   sending its set again with it, and one it leaves out is gone. The `n`th index is the host's
+//!   index `page` (`page-2`, … after it). The last message wins, however long its fetches take. A list the bridge refuses is answered with `vectorcraft:failed`; one whose indexes
 //!   the app can't fetch or read is refused whole, logged and said on the status line.
 //! - `vectorcraft:failed` (to the parent): `{ error }`. The last message from the parent was
 //!   refused, its `error` beginning with that message's `type` (the app keeps running); the
@@ -114,8 +115,9 @@ pub struct Bridge {
     region: Rc<RefCell<Option<protocol::RegionMessage>>>,
     /// The last `vectorcraft:masks` heard, until the next frame applies it.
     masks: Rc<RefCell<Option<protocol::MasksMessage>>>,
-    /// The `vectorcraft:fonts` lists heard, until the next frame gives them to the app in order.
-    fonts: Rc<RefCell<Vec<Vec<protocol::FontIndex>>>>,
+    /// The last `vectorcraft:fonts` heard, until the next frame gives it to the app: each replaces
+    /// the set before it, so one waiting is replaced by a later one.
+    fonts: Rc<RefCell<protocol::FontsInbox>>,
 }
 
 impl Bridge {
@@ -222,10 +224,11 @@ impl Bridge {
         }
     }
 
-    /// The font index lists the parent gave, to the app in the order heard (`crate::fonts`, which
-    /// fetches an index given by URL first): only the host gives them (RFC-0034 section 7).
+    /// The last font index set the parent gave, to the app (`crate::fonts`, which fetches an index
+    /// given by URL first, and keeps the last set given whatever order fetches end in): only the
+    /// host gives them (RFC-0034 section 7).
     pub fn give_fonts(&self, ctx: &egui::Context) {
-        for list in self.fonts.borrow_mut().drain(..) {
+        if let Some(list) = self.fonts.borrow_mut().take() {
             let list = list
                 .into_iter()
                 .map(|index| match index {
@@ -416,7 +419,7 @@ impl Bridge {
             if string(&data, "type").as_deref() == Some("vectorcraft:fonts") {
                 match protocol::fonts(font_indexes(&data)) {
                     Ok(list) => {
-                        bridge.fonts.borrow_mut().push(list);
+                        bridge.fonts.borrow_mut().heard(list);
                         wake();
                     }
                     Err(error) => {
